@@ -135,6 +135,39 @@ and an ICU (3 beds, ₹4500/day). Sign in with clinic code **`demo-clinic`**.
 Use `/register-clinic` in the web app to spin up an additional lower-tier
 clinic to see tenant isolation and tier gating in action.
 
+## Automated tests
+
+An integration test suite for the server (Jest + Supertest against a real,
+dedicated test Postgres database — `opd_care_test`, never the dev/demo
+database) locks in the invariants that were previously only verified by hand
+each round: multi-tenancy isolation, tier gating (including a live
+upgrade/downgrade taking effect on an already-issued token, no re-login), the
+full Receptionist/Nurse/Head-Nurse/Pharmacist/Lab-Tech/Radiology-Tech role
+boundary matrix, the strip-vs-per-unit pricing math, the "own recorded
+charge never re-derived from a changed catalog price" invariant (Pharmacy
+Reports and IPD radiology charges), per-occupied-bed-segment room billing,
+and deposit-refund-as-normal-outcome. Plus fast unit tests for the pure
+utility functions (`findBestNameMatch`, `suggestPharmacyQuantity`,
+`computeRoomCharges`) that don't need a database at all.
+
+```bash
+# One-time: create the test database (skip if it already exists)
+psql "postgresql://opd:opd@localhost:5432/postgres" -c "CREATE DATABASE opd_care_test OWNER opd"
+
+# Run the suite (applies pending migrations to opd_care_test automatically, via "pretest")
+npm run test:server
+```
+
+`server/tests/unit/` holds the DB-free unit tests; everything else in
+`server/tests/` spins up the real Express app (`server/src/app.ts`, split out
+from `index.ts` precisely so tests can import it without binding a port) via
+Supertest, backed by the real Prisma client pointed at `opd_care_test`
+(`server/.env.test`). Each test creates its own clinic(s) with random
+slugs/emails, so test files are independent of each other and safe to run in
+parallel in CI even though this sandbox runs them serially (`--runInBand`)
+for reliability. There is currently no web/mobile UI test layer (Playwright
+e2e, component tests) — see **What's not built yet**.
+
 ## API contract
 
 All request/response shapes live in `shared/src/index.ts` — it's the single
@@ -194,13 +227,14 @@ the user's `clinicId` and every route scopes its queries by it).
 
 Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD,
 Reporting (financial Actual-vs-Total across all three revenue modules, daily
-activity, follow-ups due), and granular front-desk/nursing staff roles
-(Receptionist, Nurse, Head Nurse), on a multi-tenant hosted architecture.
-Deliberately deferred:
+activity, follow-ups due), granular front-desk/nursing staff roles
+(Receptionist, Nurse, Head Nurse), and a server integration test suite, on a
+multi-tenant hosted architecture. Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
-- Automated tests (unit/integration/e2e)
+- Web/mobile UI test layer (Playwright e2e, component tests) — only the
+  server has automated tests so far
 - SMS/email/push notifications, billing/payments, file uploads
 - CI/CD pipeline and production deployment config
 - Fixed time-slot booking (currently token/queue-based per day, not per time slot)

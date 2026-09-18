@@ -1,0 +1,89 @@
+import request from 'supertest';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { app } from '../src/app';
+import { prisma } from '../src/prisma';
+import type { Role, ClinicTier } from '@opd/shared';
+
+export { app, prisma };
+
+function randomSuffix(): string {
+  return crypto.randomBytes(4).toString('hex');
+}
+
+export function uniqueSlug(prefix = 'test-clinic'): string {
+  return `${prefix}-${randomSuffix()}`;
+}
+
+export function uniqueEmail(prefix = 'user'): string {
+  return `${prefix}-${randomSuffix()}@test.local`;
+}
+
+export async function createClinic(
+  opts: { tier?: ClinicTier; taxPercent?: number; slug?: string; name?: string } = {},
+) {
+  return prisma.clinic.create({
+    data: {
+      name: opts.name ?? 'Test Clinic',
+      slug: opts.slug ?? uniqueSlug(),
+      tier: opts.tier ?? 1,
+      taxPercent: opts.taxPercent ?? 0,
+    },
+  });
+}
+
+export async function createUser(
+  clinicId: string,
+  role: Role,
+  opts: { email?: string; password?: string; name?: string; phone?: string } = {},
+) {
+  const password = opts.password ?? 'password123';
+  const hash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: {
+      clinicId,
+      name: opts.name ?? `${role} Test`,
+      email: opts.email ?? uniqueEmail(role.toLowerCase()),
+      phone: opts.phone,
+      password: hash,
+      role,
+    },
+  });
+  return { user, password };
+}
+
+export async function createDoctor(clinicId: string, opts: { email?: string; password?: string } = {}) {
+  const { user, password } = await createUser(clinicId, 'DOCTOR', opts);
+  const doctorProfile = await prisma.doctorProfile.create({
+    data: { userId: user.id, specialization: 'General Medicine', department: 'OPD', slotMinutes: 15 },
+  });
+  await prisma.schedule.createMany({
+    data: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+      doctorId: doctorProfile.id,
+      dayOfWeek,
+      startTime: '09:00',
+      endTime: '18:00',
+    })),
+  });
+  return { user, password, doctorProfile };
+}
+
+export async function loginAs(clinicSlug: string, email: string, password: string) {
+  const res = await request(app).post('/api/auth/login').send({ clinicSlug, email, password });
+  if (res.status !== 200) {
+    throw new Error(`Login failed for ${email} @ ${clinicSlug}: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  return res.body as { token: string; user: any; clinic: any };
+}
+
+export async function setupClinicWithAdmin(opts: { tier?: ClinicTier; taxPercent?: number } = {}) {
+  const clinic = await createClinic(opts);
+  const email = uniqueEmail('admin');
+  const { password } = await createUser(clinic.id, 'ADMIN', { email });
+  const session = await loginAs(clinic.slug, email, password);
+  return { clinic, adminToken: session.token as string };
+}
+
+export function auth(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}

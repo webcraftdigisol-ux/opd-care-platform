@@ -44,6 +44,7 @@ export function PatientDashboard() {
                   <p className="font-medium">{a.doctor?.user.name}</p>
                   <p className="text-sm text-gray-500">
                     {a.doctor?.specialization} · {a.date}
+                    {a.startTime ? ` · ${a.startTime}` : ''}
                   </p>
                 </div>
                 <div className="text-right">
@@ -73,7 +74,10 @@ export function PatientDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">{a.doctor?.user.name}</p>
-                  <p className="text-sm text-gray-500">{a.date}</p>
+                  <p className="text-sm text-gray-500">
+                    {a.date}
+                    {a.startTime ? ` · ${a.startTime}` : ''}
+                  </p>
                 </div>
                 <StatusBadge status={a.status} />
               </div>

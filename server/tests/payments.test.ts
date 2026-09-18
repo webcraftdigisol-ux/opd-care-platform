@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app, prisma, setupClinicWithAdmin, createUser, createDoctor, loginAs, auth } from './helpers';
+import { app, prisma, setupClinicWithAdmin, createUser, createDoctor, loginAs, auth, tomorrowDateStr } from './helpers';
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -15,7 +15,7 @@ describe('Consultation fee: own-recorded-charge invariant', () => {
     const appt = await request(app)
       .post('/api/appointments')
       .set(auth(patientSession.token))
-      .send({ doctorId: doctorProfile.id, date: new Date().toISOString().slice(0, 10) });
+      .send({ doctorId: doctorProfile.id, date: tomorrowDateStr(), startTime: '09:00' });
     expect(appt.status).toBe(201);
     expect(appt.body.consultationFee).toBe(500);
 
@@ -246,7 +246,7 @@ describe('Payments: role gating mirrors each bill type\'s own access', () => {
     const apptA = await request(app)
       .post('/api/appointments')
       .set(auth(sessionA.token))
-      .send({ doctorId: doctorProfile.id, date: new Date().toISOString().slice(0, 10) });
+      .send({ doctorId: doctorProfile.id, date: tomorrowDateStr(), startTime: '09:00' });
 
     const ownView = await request(app)
       .get('/api/payments')

@@ -55,6 +55,7 @@ export function MyAppointmentsScreen() {
               <Text style={styles.doctorName}>{item.doctor?.user.name}</Text>
               <Text style={styles.meta}>
                 {item.doctor?.specialization} · {item.date}
+                {item.startTime ? ` · ${item.startTime}` : ''}
               </Text>
             </View>
             <Text style={styles.token}>#{item.tokenNumber}</Text>

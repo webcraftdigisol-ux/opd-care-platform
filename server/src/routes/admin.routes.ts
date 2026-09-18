@@ -196,7 +196,7 @@ adminRouter.get(
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
-      orderBy: [{ doctorId: 'asc' }, { tokenNumber: 'asc' }],
+      orderBy: [{ doctorId: 'asc' }, { startTime: 'asc' }, { tokenNumber: 'asc' }],
     });
     res.json(appointments.map(toAppointment));
   }),

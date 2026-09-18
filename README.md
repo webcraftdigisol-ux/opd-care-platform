@@ -1,9 +1,9 @@
 # OPD Care Platform
 
-A multi-tenant clinic/hospital management platform (web + mobile): appointment
-booking, live queue/token tracking, doctor consultations, pharmacy, lab,
-admin scheduling, walk-in registration, patient medical records, billing/
-payment recording, and email notifications.
+A multi-tenant clinic/hospital management platform (web + mobile): fixed
+time-slot appointment booking, live queue/token tracking, doctor
+consultations, pharmacy, lab, admin scheduling, walk-in registration,
+patient medical records, billing/payment recording, and email notifications.
 
 One hosted deployment serves many clinics ("tenants"), each with isolated
 data and its own subscription tier:
@@ -60,6 +60,26 @@ Admins (and doctors, for the follow-ups view and in-patient management) also get
   charges. Discharge computes a final bill from every charge source and nets
   out the deposit — the result can be a refund owed, not just an amount due,
   and the UI presents that as a normal outcome rather than an error state.
+
+## Booking
+
+Patient appointments are fixed time slots, not just a same-day token queue.
+A doctor's `slotMinutes` (admin-settable, default 15) splits each of their
+`Schedule` windows for a given day into a grid; `GET /doctors/:id/slots?date=`
+returns that grid with each slot's `available` flag, and the web/mobile
+booking screens render it as pickable buttons/chips instead of a bare date
+field. Booking `POST /appointments` validates the chosen `startTime` against
+that exact same grid (`server/src/utils/availableSlots.ts` is the one
+function both endpoints call), so what the UI shows as bookable and what the
+API accepts can never drift apart.
+
+A walk-in (`POST /appointments/walk-in`) is deliberately **not** slotted —
+`Appointment.startTime` is null for it, and it's queued in as-they-arrive the
+same way it always was. Slots exist for scheduled patients; walk-ins fit into
+the gaps a real front desk manages by eye. Appointment lists (a doctor's
+queue, the admin/reception day view, a patient's own appointments) sort by
+`startTime` first so slotted visits show in actual visit order, with
+same-day walk-ins falling after them by booking order.
 
 ## Billing & Payments
 
@@ -215,7 +235,11 @@ Supertest, backed by the real Prisma client pointed at `opd_care_test`
 (`server/.env.test`). Each test creates its own clinic(s) with random
 slugs/emails, so test files are independent of each other and safe to run in
 parallel in CI even though this sandbox runs them serially (`--runInBand`)
-for reliability. 53 tests total.
+for reliability. 67 tests total, including `tests/unit/slots.test.ts` (the
+fixed-time-slot grid math) and `tests/booking-slots.test.ts` (booking against
+a real schedule, double-booking rejected, a genuine concurrent-request race
+settling to exactly one winner, cancelling freeing a slot, walk-ins staying
+unaffected).
 
 ### Web/mobile UI tests
 
@@ -226,12 +250,14 @@ targets a third dedicated database, `opd_care_e2e`, so it never collides with
 the Jest suite's `opd_care_test` or the dev database, and each spec creates
 its own clinic(s)/doctor(s)/staff via direct HTTP calls to the running API
 (`e2e/helpers/api.ts`) rather than driving every setup step through the UI —
-only the behavior actually under test happens in the browser. 10 tests
-across four specs: login/role-based routing, patient booking, admin
-walk-in registration + consultation-fee payment recording, and a Nurse-role
-UI-visibility spec that mirrors `server/tests/role-gating.test.ts` at the DOM
-level (a Nurse sees vitals/medication logging but not billing, discharge,
-transfer, or the other clinical-entry forms).
+only the behavior actually under test happens in the browser. 11 tests
+across four specs: login/role-based routing, patient booking (now against
+the fixed-time-slot picker — the spec clicks a real, live-fetched slot
+button rather than just picking a date), admin walk-in registration +
+consultation-fee payment recording, and a Nurse-role UI-visibility spec that
+mirrors `server/tests/role-gating.test.ts` at the DOM level (a Nurse sees
+vitals/medication logging but not billing, discharge, transfer, or the
+other clinical-entry forms).
 
 ```bash
 # One-time: create the e2e database (skip if it already exists)
@@ -255,8 +281,9 @@ instead of Detox/native e2e it gets lightweight `jest-expo` +
 `@testing-library/react-native` component tests: pure rendering/logic
 coverage for a representative screen (`MyAppointmentsScreen` — empty state,
 a fetched appointment's doctor/date/token/status, and the
-future-and-still-booked-only "Cancel appointment" rule) plus a trivial unit
-test on `theme.ts`. 4 tests.
+future-and-still-booked-only "Cancel appointment" rule, and that a slotted
+appointment shows its time while a walk-in's meta line omits it) plus a
+trivial unit test on `theme.ts`. 5 tests.
 
 ```bash
 npm run test:mobile
@@ -403,17 +430,48 @@ the user's `clinicId` and every route scopes its queries by it).
   context just to test what a screen renders for a given API response —
   correct for this kind of test, but worth the comment on the mock so a
   future reader doesn't mistake it for testing focus/blur behavior itself.
+- **A double-booking guard doesn't have to be a DB constraint to be real.**
+  The obvious way to stop two patients booking the same doctor/date/time is
+  a unique index. That breaks the moment a booking is cancelled, though —
+  Postgres has no partial-unique support through Prisma's schema DSL, so a
+  plain `@@unique([doctorId, date, startTime])` would permanently retire a
+  slot the instant anyone cancelled into it, since a `CANCELLED` row still
+  counts as occupying the index. The fix was to drop the constraint idea
+  and reuse the same guard IPD bed admission already relies on
+  (`ipd.routes.ts` `admitPatient`): a check against non-cancelled rows
+  inside a transaction, immediately before the write. Verified directly for
+  the failure mode a unit test can't reach on its own — two real concurrent
+  HTTP requests for the same slot (`booking-slots.test.ts`, "under a genuine
+  race") — asserting exactly one wins and only one row lands in the DB.
+- **One function, not two, decides what's bookable.** `GET
+  /doctors/:id/slots` (what the UI shows) and `POST /appointments` (what it
+  validates) both call the same `getAvailableSlots()` — schedule windows
+  fetched, already-booked start times fetched, `computeDaySlots()` run once.
+  Two separate implementations of "is this slot open" would have been an
+  invitation for them to quietly disagree the next time either one changed;
+  one shared function makes that class of bug impossible rather than merely
+  unlikely.
+- **Walk-ins were left outside the slot system on purpose.** A walk-in
+  patient doesn't have an appointment time to pick — they're standing at the
+  front desk right now. Forcing them through slot selection would have
+  meant either fabricating a time slot for something that isn't scheduled,
+  or querying free/busy state that a same-day walk-in doesn't participate
+  in anyway. `Appointment.startTime` stays `null` for a walk-in, and the
+  existing token-queue behavior for same-day walk-ins is otherwise
+  untouched — this was a scope boundary, not an oversight (see
+  `booking-slots.test.ts`'s "a walk-in is not slotted" case).
 
 ## What's not built yet
 
-Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD,
-Reporting (financial Actual-vs-Total across all three revenue modules, daily
-activity, follow-ups due), granular front-desk/nursing staff roles
-(Receptionist, Nurse, Head Nurse), consultation-fee billing and a
-cash/card/UPI payment ledger across every bill type, email notifications, a
-server integration test suite, a Playwright web e2e suite, mobile component
-tests, and a CI workflow that runs all of it on every push/PR, on a
-multi-tenant hosted architecture. Deliberately deferred:
+Built so far: Tier 1 OPD core with fixed time-slot booking, Tier 2
+Pharmacy/Lab/Radiology, Tier 3 IPD, Reporting (financial Actual-vs-Total
+across all three revenue modules, daily activity, follow-ups due), granular
+front-desk/nursing staff roles (Receptionist, Nurse, Head Nurse),
+consultation-fee billing and a cash/card/UPI payment ledger across every
+bill type, email notifications, a server integration test suite, a
+Playwright web e2e suite, mobile component tests, and a CI workflow that
+runs all of it on every push/PR, on a multi-tenant hosted architecture.
+Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
@@ -428,4 +486,3 @@ multi-tenant hosted architecture. Deliberately deferred:
   inactive — it needs real AWS infrastructure provisioned and GitHub
   secrets configured by hand first (see `deploy/README.md`); nothing has
   actually been deployed anywhere yet
-- Fixed time-slot booking (currently token/queue-based per day, not per time slot)

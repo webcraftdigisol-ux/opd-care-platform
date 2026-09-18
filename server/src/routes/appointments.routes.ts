@@ -5,20 +5,14 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toAppointment } from '../utils/serialize';
 import { notifyPatientEmail } from '../utils/notify';
+import { parseDateOnly } from '../utils/dates';
+import { getAvailableSlots } from '../utils/availableSlots';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
 export const appointmentsRouter = Router();
 
 appointmentsRouter.use(requireAuth);
-
-function parseDateOnly(dateStr: string): Date {
-  const date = new Date(`${dateStr}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) {
-    throw new HttpError(400, 'Invalid date, expected YYYY-MM-DD');
-  }
-  return date;
-}
 
 async function nextTokenNumber(clinicId: string, doctorId: string, date: Date): Promise<number> {
   const count = await prisma.appointment.count({
@@ -41,6 +35,7 @@ async function assertDoctorInClinic(clinicId: string, doctorId: string, date: Da
 const bookSchema = z.object({
   doctorId: z.string().min(1),
   date: z.string().min(1),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Invalid time, expected HH:mm'),
   reason: z.string().optional(),
 });
 
@@ -58,7 +53,26 @@ appointmentsRouter.post(
     }
     const doctor = await assertDoctorInClinic(clinicId, data.doctorId, date);
 
+    // Validated against the exact same slot computation GET /doctors/:id/slots
+    // returns to the UI, so "bookable" and "booked" can never drift apart.
+    const slots = await getAvailableSlots(data.doctorId, date, doctor.slotMinutes);
+    const slot = slots.find((s) => s.startTime === data.startTime);
+    if (!slot || !slot.available) {
+      throw new HttpError(400, 'That time slot is not available -- please pick another');
+    }
+
     const appointment = await prisma.$transaction(async (tx) => {
+      // Re-check inside the transaction as the actual double-booking guard
+      // (the same check-then-write pattern used for bed occupancy in
+      // ipd.routes.ts admitPatient, not a DB-level constraint -- a CANCELLED
+      // appointment must free its slot for someone else to rebook, and
+      // Postgres has no partial-unique support through Prisma's schema DSL).
+      const conflict = await tx.appointment.findFirst({
+        where: { doctorId: data.doctorId, date, startTime: data.startTime, status: { not: 'CANCELLED' } },
+      });
+      if (conflict) {
+        throw new HttpError(409, 'That time slot was just taken -- please pick another');
+      }
       const tokenNumber = await nextTokenNumber(clinicId, data.doctorId, date);
       return tx.appointment.create({
         data: {
@@ -67,6 +81,7 @@ appointmentsRouter.post(
           doctorId: data.doctorId,
           date,
           tokenNumber,
+          startTime: data.startTime,
           reason: data.reason,
           consultationFee: doctor.consultationFee,
         },
@@ -80,7 +95,7 @@ appointmentsRouter.post(
       type: 'APPOINTMENT_CONFIRMED',
       to: appointment.patient.email,
       subject: `Appointment confirmed — Token #${appointment.tokenNumber}`,
-      body: `Hi ${appointment.patient.name}, your appointment with Dr. ${appointment.doctor.user.name} on ${appointment.date.toISOString().slice(0, 10)} is confirmed. Your token number is #${appointment.tokenNumber}.`,
+      body: `Hi ${appointment.patient.name}, your appointment with Dr. ${appointment.doctor.user.name} on ${appointment.date.toISOString().slice(0, 10)} at ${appointment.startTime} is confirmed. Your token number is #${appointment.tokenNumber}.`,
     });
 
     res.status(201).json(toAppointment(appointment));
@@ -97,7 +112,10 @@ appointmentsRouter.get(
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
-      orderBy: [{ date: 'desc' }, { tokenNumber: 'asc' }],
+      // startTime asc puts slotted bookings in visit order; Postgres sorts
+      // NULLs last on ASC by default, so same-day walk-ins (no startTime)
+      // fall after them, broken by booking order via tokenNumber.
+      orderBy: [{ date: 'desc' }, { startTime: 'asc' }, { tokenNumber: 'asc' }],
     });
     res.json(appointments.map(toAppointment));
   }),
@@ -130,7 +148,7 @@ appointmentsRouter.get(
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
-      orderBy: { tokenNumber: 'asc' },
+      orderBy: [{ startTime: 'asc' }, { tokenNumber: 'asc' }],
     });
     res.json(appointments.map(toAppointment));
   }),

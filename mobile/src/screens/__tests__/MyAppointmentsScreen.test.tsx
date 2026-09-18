@@ -23,6 +23,7 @@ function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
     doctorId: 'doctor-1',
     date: '2099-01-01',
     tokenNumber: 3,
+    startTime: '10:30',
     status: 'BOOKED',
     isWalkIn: false,
     consultationFee: 500,
@@ -58,8 +59,17 @@ describe('MyAppointmentsScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Dr. Asha Rao')).toBeTruthy());
     expect(screen.getByText(/Cardiology/)).toBeTruthy();
+    expect(screen.getByText(/10:30/)).toBeTruthy();
     expect(screen.getByText('#3')).toBeTruthy();
     expect(screen.getByText('Booked')).toBeTruthy();
+  });
+
+  it('omits the time from the meta line for a walk-in (no startTime)', async () => {
+    mockListMyAppointments.mockResolvedValue([makeAppointment({ startTime: null, isWalkIn: true })]);
+    render(<MyAppointmentsScreen />);
+
+    await waitFor(() => expect(screen.getByText('Dr. Asha Rao')).toBeTruthy());
+    expect(screen.getByText('Cardiology · 2099-01-01')).toBeTruthy();
   });
 
   it('only shows "Cancel appointment" for a future, still-booked appointment', async () => {

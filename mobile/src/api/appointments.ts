@@ -1,8 +1,13 @@
 import { apiClient } from './client';
-import type { Appointment, BookAppointmentRequest, DoctorProfile } from '@opd/shared';
+import type { Appointment, BookAppointmentRequest, DoctorProfile, DoctorSlot } from '@opd/shared';
 
 export async function listDoctors(): Promise<DoctorProfile[]> {
   const res = await apiClient.get<DoctorProfile[]>('/doctors');
+  return res.data;
+}
+
+export async function getDoctorSlots(doctorId: string, date: string): Promise<DoctorSlot[]> {
+  const res = await apiClient.get<DoctorSlot[]>(`/doctors/${doctorId}/slots`, { params: { date } });
   return res.data;
 }
 

@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app, prisma, setupClinicWithAdmin, createUser, createDoctor, loginAs, auth } from './helpers';
+import { app, prisma, setupClinicWithAdmin, createUser, createDoctor, loginAs, auth, tomorrowDateStr } from './helpers';
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -20,7 +20,7 @@ describe('Notifications: every attempt is logged, sent or not', () => {
     const appt = await request(app)
       .post('/api/appointments')
       .set(auth(session.token))
-      .send({ doctorId: doctorProfile.id, date: new Date().toISOString().slice(0, 10) });
+      .send({ doctorId: doctorProfile.id, date: tomorrowDateStr(), startTime: '09:00' });
     expect(appt.status).toBe(201);
 
     const notification = await prisma.notification.findFirst({

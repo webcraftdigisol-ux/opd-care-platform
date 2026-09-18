@@ -1,6 +1,9 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toDoctorProfile, toSchedule } from '../utils/serialize';
+import { getAvailableSlots } from '../utils/availableSlots';
+import { parseDateOnly } from '../utils/dates';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, type AuthedRequest } from '../middleware/auth';
 
@@ -44,5 +47,22 @@ doctorsRouter.get(
       orderBy: { dayOfWeek: 'asc' },
     });
     res.json(schedules.map(toSchedule));
+  }),
+);
+
+const slotsQuerySchema = z.object({ date: z.string().min(1) });
+
+doctorsRouter.get(
+  '/:id/slots',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { date: dateStr } = slotsQuerySchema.parse(req.query);
+    const date = parseDateOnly(dateStr);
+    const doctor = await prisma.doctorProfile.findFirst({
+      where: { id: req.params.id, user: { clinicId: req.auth!.clinicId } },
+    });
+    if (!doctor) throw new HttpError(404, 'Doctor not found');
+
+    const slots = await getAvailableSlots(doctor.id, date, doctor.slotMinutes);
+    res.json(slots);
   }),
 );

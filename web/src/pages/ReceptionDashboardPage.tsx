@@ -39,6 +39,7 @@ export function ReceptionDashboardPage() {
           <thead className="bg-teal-light text-teal">
             <tr>
               <th className="px-4 py-2">Token</th>
+              <th className="px-4 py-2">Time</th>
               <th className="px-4 py-2">Patient</th>
               <th className="px-4 py-2">Doctor</th>
               <th className="px-4 py-2">Type</th>
@@ -51,6 +52,7 @@ export function ReceptionDashboardPage() {
               <Fragment key={a.id}>
                 <tr className="border-t border-gray-100">
                   <td className="px-4 py-2 font-medium">#{a.tokenNumber}</td>
+                  <td className="px-4 py-2 text-gray-500">{a.startTime ?? '—'}</td>
                   <td className="px-4 py-2">{a.patient?.name}</td>
                   <td className="px-4 py-2">{a.doctor?.user.name}</td>
                   <td className="px-4 py-2 text-gray-500">{a.isWalkIn ? 'Walk-in' : 'Booked'}</td>
@@ -72,7 +74,7 @@ export function ReceptionDashboardPage() {
                 </tr>
                 {expandedFee === a.id && (
                   <tr className="border-t border-gray-100 bg-gray-50">
-                    <td colSpan={6} className="px-4 py-2">
+                    <td colSpan={7} className="px-4 py-2">
                       <PaymentRecorder billType="CONSULTATION" billId={a.id} />
                     </td>
                   </tr>

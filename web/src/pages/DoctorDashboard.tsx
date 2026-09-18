@@ -49,7 +49,12 @@ export function DoctorDashboard() {
                 {a.tokenNumber}
               </div>
               <div>
-                <p className="font-medium">{a.patient?.name}</p>
+                <p className="font-medium">
+                  {a.patient?.name}
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    {a.startTime ?? 'Walk-in'}
+                  </span>
+                </p>
                 <p className="text-sm text-gray-500">{a.reason || 'No reason given'}</p>
               </div>
             </div>

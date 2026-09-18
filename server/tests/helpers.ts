@@ -19,6 +19,18 @@ export function uniqueEmail(prefix = 'user'): string {
   return `${prefix}-${randomSuffix()}@test.local`;
 }
 
+// Booking a fixed time slot for "today" is flaky in tests -- whatever time
+// of day the suite happens to run, an early slot like "09:00" may already be
+// in the past and get filtered out as unavailable. Tomorrow sidesteps that
+// entirely (no past-slot filtering applies to a future date), and every
+// createDoctor() schedule below covers all 7 days 09:00-18:00, so "09:00" is
+// always valid on it.
+export function tomorrowDateStr(): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export async function createClinic(
   opts: { tier?: ClinicTier; taxPercent?: number; slug?: string; name?: string } = {},
 ) {

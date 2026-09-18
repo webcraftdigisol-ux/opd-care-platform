@@ -156,6 +156,15 @@ model Appointment {
   doctor      DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
   date        DateTime
   tokenNumber Int
+  // "HH:mm", 24h. Set for a patient-booked, fixed-slot appointment; null for
+  // a walk-in, which is queued in as-they-arrive rather than pre-slotted.
+  // Deliberately not a DB unique constraint: a CANCELLED appointment must
+  // free its slot for rebooking, and Postgres has no partial-unique support
+  // through Prisma's schema DSL without a hand-written migration. Guarded
+  // instead the same way bed occupancy is (see ipd.routes.ts admitPatient):
+  // an application-level check against non-cancelled rows, inside a
+  // transaction to keep the race window as small as it is elsewhere.
+  startTime       String?
   status          AppointmentStatus @default(BOOKED)
   isWalkIn        Boolean           @default(false)
   reason          String?
@@ -171,7 +180,7 @@ model Appointment {
   radiologyInvoices RadiologyInvoice[]
 
   @@index([clinicId])
-  @@index([doctorId, date])
+  @@index([doctorId, date, startTime])
   @@index([patientId])
 }
 

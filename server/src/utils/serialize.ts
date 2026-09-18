@@ -182,6 +182,7 @@ export function toAppointment(a: AppointmentWithRelations): Appointment {
     doctor: a.doctor ? toDoctorProfile(a.doctor) : undefined,
     date: a.date.toISOString().slice(0, 10),
     tokenNumber: a.tokenNumber,
+    startTime: a.startTime,
     status: a.status,
     isWalkIn: a.isWalkIn,
     reason: a.reason,

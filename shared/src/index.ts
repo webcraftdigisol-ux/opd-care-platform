@@ -68,12 +68,21 @@ export interface Appointment {
   doctor?: DoctorProfile;
   date: string; // ISO date (day only, e.g. 2026-09-18)
   tokenNumber: number;
+  // "HH:mm", 24h. Set for a patient-booked, fixed-slot appointment; null for
+  // a walk-in, which is queued in as-they-arrive rather than pre-slotted.
+  startTime: string | null;
   status: AppointmentStatus;
   isWalkIn: boolean;
   reason: string | null;
   consultationFee: number;
   createdAt: string;
   consultation?: Consultation | null;
+}
+
+export interface DoctorSlot {
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
+  available: boolean;
 }
 
 export interface Vitals {
@@ -160,6 +169,7 @@ export interface AuthResponse {
 export interface BookAppointmentRequest {
   doctorId: string;
   date: string; // "YYYY-MM-DD"
+  startTime: string; // "HH:mm"
   reason?: string;
 }
 

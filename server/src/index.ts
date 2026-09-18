@@ -11,6 +11,7 @@ import { adminRouter } from './routes/admin.routes';
 import { pharmacyRouter } from './routes/pharmacy.routes';
 import { labRouter } from './routes/lab.routes';
 import { reportsRouter } from './routes/reports.routes';
+import { ipdRouter } from './routes/ipd.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/pharmacy', pharmacyRouter);
 app.use('/api/lab', labRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/ipd', ipdRouter);
 
 app.use(errorHandler);
 

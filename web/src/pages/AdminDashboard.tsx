@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 export function AdminDashboard() {
   const { clinic } = useAuth();
   const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
+  const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const { data: appointments, isLoading } = useQuery({
     queryKey: ['admin-appointments', date],
@@ -35,6 +36,16 @@ export function AdminDashboard() {
               </Link>
               <Link to="/admin/staff" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
                 Staff
+              </Link>
+            </>
+          )}
+          {tierAllowsIpd && (
+            <>
+              <Link to="/admin/ipd/admissions" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+                In-Patients
+              </Link>
+              <Link to="/admin/ipd/wards" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+                Wards
               </Link>
             </>
           )}

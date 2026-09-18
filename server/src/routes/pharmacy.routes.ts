@@ -119,6 +119,7 @@ const saleItemSchema = z.object({
 const createSaleSchema = z.object({
   patientId: z.string().min(1),
   appointmentId: z.string().optional(),
+  admissionId: z.string().optional(),
   items: z.array(saleItemSchema).min(1),
 });
 
@@ -131,6 +132,10 @@ pharmacyRouter.post(
 
     const patient = await prisma.user.findFirst({ where: { id: data.patientId, clinicId } });
     if (!patient) throw new HttpError(404, 'Patient not found');
+    if (data.admissionId) {
+      const admission = await prisma.admission.findFirst({ where: { id: data.admissionId, clinicId } });
+      if (!admission) throw new HttpError(404, 'Admission not found');
+    }
 
     const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId } });
     const subtotal = data.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -143,6 +148,7 @@ pharmacyRouter.post(
           clinicId,
           patientId: data.patientId,
           appointmentId: data.appointmentId,
+          admissionId: data.admissionId,
           soldById: req.auth!.userId,
           taxPercent: clinic.taxPercent,
           subtotal,

@@ -42,6 +42,8 @@ model Clinic {
   pharmacySales PharmacySale[]
   labCatalog    LabTestCatalog[]
   labInvoices   LabInvoice[]
+  wards         Ward[]
+  admissions    Admission[]
 }
 
 model User {
@@ -62,6 +64,8 @@ model User {
   pharmacySalesHandled PharmacySale[] @relation("PharmacySaleSeller")
   labResultsOrdered    LabInvoice[]   @relation("LabInvoicePatient")
   labResultsRecorded   LabInvoice[]   @relation("LabInvoiceRecorder")
+  admissions           Admission[]
+  vitalsRecorded       IpdVitals[]
 
   @@unique([clinicId, email])
   @@unique([clinicId, phone])
@@ -77,7 +81,9 @@ model DoctorProfile {
   slotMinutes    Int    @default(15)
 
   schedules    Schedule[]
-  appointments Appointment[] @relation("DoctorAppointments")
+  appointments Appointment[]    @relation("DoctorAppointments")
+  admissions   Admission[]
+  ipdVisits    IpdDoctorVisit[]
 }
 
 model Schedule {
@@ -177,6 +183,8 @@ model PharmacySale {
   patient       User         @relation("PharmacySalePatient", fields: [patientId], references: [id])
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  admissionId   String?
+  admission     Admission?   @relation(fields: [admissionId], references: [id])
   soldById      String
   soldBy        User         @relation("PharmacySaleSeller", fields: [soldById], references: [id])
   taxPercent    Float        @default(0)
@@ -189,6 +197,7 @@ model PharmacySale {
 
   @@index([clinicId])
   @@index([patientId])
+  @@index([admissionId])
 }
 
 model PharmacySaleItem {
@@ -242,6 +251,8 @@ model LabInvoice {
   patient       User         @relation("LabInvoicePatient", fields: [patientId], references: [id])
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  admissionId   String?
+  admission     Admission?   @relation(fields: [admissionId], references: [id])
   recordedById  String
   recordedBy    User         @relation("LabInvoiceRecorder", fields: [recordedById], references: [id])
   taxPercent    Float        @default(0)
@@ -254,6 +265,7 @@ model LabInvoice {
 
   @@index([clinicId])
   @@index([patientId])
+  @@index([admissionId])
 }
 
 model LabResultItem {
@@ -269,4 +281,188 @@ model LabResultItem {
   price         Float
 
   @@index([invoiceId])
+}
+
+// ---- In-Patient / IPD (Tier 3) ----
+
+enum BedStatus {
+  VACANT
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum AdmissionStatus {
+  ADMITTED
+  DISCHARGED
+}
+
+enum MedicationSource {
+  CLINIC_SUPPLIED
+  PATIENT_OWN
+}
+
+model Ward {
+  id       String @id @default(uuid())
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name     String
+
+  beds Bed[]
+
+  @@index([clinicId])
+}
+
+model Bed {
+  id        String    @id @default(uuid())
+  wardId    String
+  ward      Ward      @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  label     String
+  dailyRate Float
+  status    BedStatus @default(VACANT)
+
+  admissions    Admission[]    @relation("BedAdmissions")
+  transfersFrom RoomTransfer[] @relation("TransferFromBed")
+  transfersTo   RoomTransfer[] @relation("TransferToBed")
+
+  @@index([wardId])
+}
+
+// Everything charged during a stay is recorded against the admission at its
+// own price, the same "own recorded charge" discipline as Pharmacy/Lab —
+// the discharge bill sums these rather than re-pricing anything later.
+model Admission {
+  id                String          @id @default(uuid())
+  clinicId          String
+  clinic            Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           User            @relation(fields: [patientId], references: [id])
+  bedId             String
+  bed               Bed             @relation("BedAdmissions", fields: [bedId], references: [id])
+  admittingDoctorId String
+  admittingDoctor   DoctorProfile   @relation(fields: [admittingDoctorId], references: [id])
+  reason            String?
+  depositAmount     Float           @default(0)
+  status            AdmissionStatus @default(ADMITTED)
+  admittedAt        DateTime        @default(now())
+  dischargedAt      DateTime?
+  dischargeSummary  String?
+
+  roomTransfers RoomTransfer[]
+  doctorVisits  IpdDoctorVisit[]
+  procedures    IpdProcedure[]
+  medications   IpdMedication[]
+  vitalsLogs    IpdVitals[]
+  charges       IpdCharge[]
+  pharmacySales PharmacySale[]
+  labInvoices   LabInvoice[]
+  bill          IpdBill?
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([bedId])
+}
+
+model RoomTransfer {
+  id            String    @id @default(uuid())
+  admissionId   String
+  admission     Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  fromBedId     String?
+  fromBed       Bed?      @relation("TransferFromBed", fields: [fromBedId], references: [id])
+  toBedId       String
+  toBed         Bed       @relation("TransferToBed", fields: [toBedId], references: [id])
+  transferredAt DateTime  @default(now())
+
+  @@index([admissionId])
+}
+
+model IpdDoctorVisit {
+  id          String        @id @default(uuid())
+  admissionId String
+  admission   Admission     @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  doctorId    String
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id])
+  notes       String?
+  fee         Float         @default(0)
+  visitedAt   DateTime      @default(now())
+
+  @@index([admissionId])
+}
+
+model IpdProcedure {
+  id            String    @id @default(uuid())
+  admissionId   String
+  admission     Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  name          String
+  notes         String?
+  consentSigned Boolean   @default(false)
+  fee           Float     @default(0)
+  performedAt   DateTime  @default(now())
+
+  @@index([admissionId])
+}
+
+// A clinic-supplied medication is priced and billed; one the patient brought
+// themselves is logged for the medical record but never charged.
+model IpdMedication {
+  id          String           @id @default(uuid())
+  admissionId String
+  admission   Admission        @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  medicine    String
+  dosage      String
+  quantity    Int              @default(1)
+  unitPrice   Float            @default(0)
+  source      MedicationSource
+  givenAt     DateTime         @default(now())
+
+  @@index([admissionId])
+}
+
+model IpdVitals {
+  id           String    @id @default(uuid())
+  admissionId  String
+  admission    Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  pulse        Int?
+  bpSystolic   Int?
+  bpDiastolic  Int?
+  tempC        Float?
+  spo2         Int?
+  recordedById String
+  recordedBy   User      @relation(fields: [recordedById], references: [id])
+  recordedAt   DateTime  @default(now())
+
+  @@index([admissionId])
+}
+
+model IpdCharge {
+  id          String    @id @default(uuid())
+  admissionId String
+  admission   Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  description String
+  amount      Float
+  chargedAt   DateTime  @default(now())
+
+  @@index([admissionId])
+}
+
+// A snapshot taken at discharge, not recomputed afterward — see Admission's
+// note above. amountDue can be negative: a refund owed when the deposit
+// exceeded the final bill, which the UI must present as a normal outcome.
+model IpdBill {
+  id                 String    @id @default(uuid())
+  admissionId        String    @unique
+  admission          Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  roomCharges        Float
+  doctorVisitCharges Float
+  procedureCharges   Float
+  medicationCharges  Float
+  adHocCharges       Float
+  pharmacyCharges    Float
+  labCharges         Float
+  subtotal           Float
+  taxPercent         Float
+  taxAmount          Float
+  total              Float
+  depositAmount      Float
+  amountDue          Float
+  createdAt          DateTime  @default(now())
 }

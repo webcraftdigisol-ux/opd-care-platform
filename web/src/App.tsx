@@ -19,6 +19,10 @@ import { PharmacyInventoryPage } from './pages/PharmacyInventoryPage';
 import { LabCounterPage } from './pages/LabCounterPage';
 import { LabCatalogPage } from './pages/LabCatalogPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { IpdWardsPage } from './pages/IpdWardsPage';
+import { IpdAdmissionsPage } from './pages/IpdAdmissionsPage';
+import { IpdAdmitPatientPage } from './pages/IpdAdmitPatientPage';
+import { IpdAdmissionDetailPage } from './pages/IpdAdmissionDetailPage';
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -127,6 +131,38 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/ipd/wards"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <IpdWardsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/ipd/admissions"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <IpdAdmissionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/ipd/admit"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <IpdAdmitPatientPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/ipd/admissions/:id"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <IpdAdmissionDetailPage />
             </ProtectedRoute>
           }
         />

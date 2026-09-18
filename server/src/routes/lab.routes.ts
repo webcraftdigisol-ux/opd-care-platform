@@ -107,6 +107,7 @@ const resultItemSchema = z.object({
 const createInvoiceSchema = z.object({
   patientId: z.string().min(1),
   appointmentId: z.string().optional(),
+  admissionId: z.string().optional(),
   items: z.array(resultItemSchema).min(1),
 });
 
@@ -119,6 +120,10 @@ labRouter.post(
 
     const patient = await prisma.user.findFirst({ where: { id: data.patientId, clinicId } });
     if (!patient) throw new HttpError(404, 'Patient not found');
+    if (data.admissionId) {
+      const admission = await prisma.admission.findFirst({ where: { id: data.admissionId, clinicId } });
+      if (!admission) throw new HttpError(404, 'Admission not found');
+    }
 
     const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId } });
     const subtotal = data.items.reduce((sum, item) => sum + item.price, 0);
@@ -130,6 +135,7 @@ labRouter.post(
         clinicId,
         patientId: data.patientId,
         appointmentId: data.appointmentId,
+        admissionId: data.admissionId,
         recordedById: req.auth!.userId,
         taxPercent: clinic.taxPercent,
         subtotal,

@@ -7,15 +7,15 @@ admin scheduling, walk-in registration, and patient medical records.
 One hosted deployment serves many clinics ("tenants"), each with isolated
 data and its own subscription tier:
 
-| | Tier 1 — OPD | Tier 2 — OPD + Pharmacy + Lab |
-|---|---|---|
-| Patients, consultations, prescriptions, lab orders | ✅ | ✅ |
-| Pharmacy (priced inventory, dispensing, receipts) | ❌ | ✅ |
-| Lab (priced catalog, results, receipts) | ❌ | ✅ |
+| | Tier 1 — OPD | Tier 2 — + Pharmacy + Lab | Tier 3 — + In-Patient (IPD) |
+|---|---|---|---|
+| Patients, consultations, prescriptions, lab orders | ✅ | ✅ | ✅ |
+| Pharmacy (priced inventory, dispensing, receipts) | ❌ | ✅ | ✅ |
+| Lab (priced catalog, results, receipts) | ❌ | ✅ | ✅ |
+| In-patient: wards/beds, admission, transfers, discharge billing | ❌ | ❌ | ✅ |
 
-Tier 3 (In-Patient/IPD), Radiology, and granular staff roles beyond
-Pharmacist/Lab Technician are planned follow-ups — see **What's not built
-yet** below.
+Radiology and granular staff roles beyond Pharmacist/Lab Technician are
+planned follow-ups — see **What's not built yet** below.
 
 ## Structure
 
@@ -36,11 +36,21 @@ mobile/   Expo (React Native) app — patient booking, queue status, records
 - **Pharmacist** (Tier 2+) — counter workflow: search patient → see prescriptions from their visits, auto-matched to inventory with quantity/price pre-filled → confirm or edit → receipt, with stock decremented automatically. Web.
 - **Lab Technician** (Tier 2+) — same pattern for doctor-ordered lab tests: auto-matched to the priced catalog, record results, receipt. Web.
 
-Admins (and doctors, for the follow-ups view) also get a **Reports** page: a
-Pharmacy/Lab financial report (Actual vs. Total ordered — Tier 2+), a daily
-OPD activity report, and a follow-ups-due dashboard (overdue / due today /
-due this week) with a "mark contacted" action, driven by an optional
-follow-up date doctors can set on a consultation.
+Admins (and doctors, for the follow-ups view and in-patient management) also get:
+- A **Reports** page: a Pharmacy/Lab financial report (Actual vs. Total
+  ordered — Tier 2+), a daily OPD activity report, and a follow-ups-due
+  dashboard (overdue / due today / due this week) with a "mark contacted"
+  action, driven by an optional follow-up date doctors can set on a
+  consultation.
+- **In-Patient / IPD** (Tier 3+): set up wards and bulk-add beds at a daily
+  rate, admit a patient to a vacant bed with a deposit, log doctor visits,
+  procedures (with a consent-signed flag), medications given (clinic-supplied
+  and billed, or the patient's own and not billed), periodic vitals with an
+  inline trend chart, room transfers (billed per bed/day segment at each
+  bed's own rate), ad-hoc charges, and quick in-patient pharmacy/lab charges.
+  Discharge computes a final bill from every charge source and nets out the
+  deposit — the result can be a refund owed, not just an amount due, and the
+  UI presents that as a normal outcome rather than an error state.
 
 ## Multi-tenancy
 
@@ -110,9 +120,10 @@ pharmacy inventory and a lab test catalog:
 | Pharmacist | pharmacist@opdcare.test    | pharmacist123 |
 | Lab Tech   | labtech@opdcare.test       | labtech123    |
 
-Sign in with clinic code **`demo-clinic`**. Use `/register-clinic` in the web
-app to spin up an additional clinic (e.g. a Tier 1 one) to see tenant
-isolation and tier gating in action.
+`demo-clinic` is seeded at **Tier 3**, with a General Ward (6 beds, ₹1200/day)
+and an ICU (3 beds, ₹4500/day). Sign in with clinic code **`demo-clinic`**.
+Use `/register-clinic` in the web app to spin up an additional lower-tier
+clinic to see tenant isolation and tier gating in action.
 
 ## API contract
 
@@ -143,15 +154,22 @@ the user's `clinicId` and every route scopes its queries by it).
   price different from its catalog price, then changing the catalog price
   again, leaves both Actual and Total ordered unchanged at the original
   billed amount.
+- **Deposits net against the final bill, and the result can be negative.**
+  IPD discharge billing computes `total - depositAmount`; when the deposit
+  was larger, `amountDue` is negative and the UI labels it "Refund Owed"
+  rather than treating it as an error. Verified directly: admitting with a
+  ₹20,000 deposit against a ₹1,260 bill produces `amountDue: -18740`.
+- **Room charges are computed per occupied-bed segment, not one rate for the
+  whole stay.** A room transfer splits the stay into segments at each bed's
+  own daily rate — verified directly: a stay split between a ₹1200/day
+  general ward bed and a ₹4500/day ICU bed billed as two one-day segments
+  (₹5700 total), not the general ward's rate applied throughout.
 
 ## What's not built yet
 
-Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab, and Reporting (financial
-Actual-vs-Total, daily activity, follow-ups due), on a multi-tenant hosted
-architecture. Deliberately deferred, roughly in build order:
-- **Tier 3 (IPD)**: admission/discharge, wards & beds, doctor visits,
-  procedures with consent forms, medications given (clinic-supplied vs.
-  patient's-own), vitals trend charts, deposit-aware discharge billing
+Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab, Tier 3 IPD, and Reporting
+(financial Actual-vs-Total, daily activity, follow-ups due), on a
+multi-tenant hosted architecture. Deliberately deferred:
 - **Radiology**: a priced module mirroring Lab
 - **Granular staff roles**: receptionist/nurse/head-nurse distinctions
   beyond today's Admin/Pharmacist/Lab-Technician split

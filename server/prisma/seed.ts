@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -6,11 +7,11 @@ const prisma = new PrismaClient();
 async function main() {
   const clinic = await prisma.clinic.upsert({
     where: { slug: 'demo-clinic' },
-    update: {},
+    update: { tier: 3 },
     create: {
       name: 'Demo Clinic',
       slug: 'demo-clinic',
-      tier: 2,
+      tier: 3,
       taxPercent: 5,
     },
   });
@@ -128,6 +129,33 @@ async function main() {
     if (!existing) {
       await prisma.labTestCatalog.create({ data: { ...test, clinicId: clinic.id } });
     }
+  }
+
+  const generalWard = await prisma.ward.findFirst({ where: { clinicId: clinic.id, name: 'General Ward' } });
+  const generalWardId =
+    generalWard?.id ?? (await prisma.ward.create({ data: { clinicId: clinic.id, name: 'General Ward' } })).id;
+  const existingGeneralBeds = await prisma.bed.count({ where: { wardId: generalWardId } });
+  if (existingGeneralBeds === 0) {
+    await prisma.bed.createMany({
+      data: Array.from({ length: 6 }, (_, i) => ({
+        wardId: generalWardId,
+        label: `G-${i + 1}`,
+        dailyRate: 1200,
+      })),
+    });
+  }
+
+  const icuWard = await prisma.ward.findFirst({ where: { clinicId: clinic.id, name: 'ICU' } });
+  const icuWardId = icuWard?.id ?? (await prisma.ward.create({ data: { clinicId: clinic.id, name: 'ICU' } })).id;
+  const existingIcuBeds = await prisma.bed.count({ where: { wardId: icuWardId } });
+  if (existingIcuBeds === 0) {
+    await prisma.bed.createMany({
+      data: Array.from({ length: 3 }, (_, i) => ({
+        wardId: icuWardId,
+        label: `ICU-${i + 1}`,
+        dailyRate: 4500,
+      })),
+    });
   }
 
   console.log('Seed data ready. Clinic code: demo-clinic');

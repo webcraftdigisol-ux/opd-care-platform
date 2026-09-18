@@ -18,7 +18,7 @@ export function RegisterClinicPage() {
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [tier, setTier] = useState<1 | 2>(1);
+  const [tier, setTier] = useState<1 | 2 | 3>(1);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { setSession } = useAuth();
@@ -83,11 +83,12 @@ export function RegisterClinicPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">Plan</label>
           <select
             value={tier}
-            onChange={(e) => setTier(Number(e.target.value) as 1 | 2)}
+            onChange={(e) => setTier(Number(e.target.value) as 1 | 2 | 3)}
             className="w-full rounded-md border border-gray-300 px-3 py-2"
           >
             <option value={1}>Tier 1 — OPD only</option>
             <option value={2}>Tier 2 — OPD + Pharmacy + Lab</option>
+            <option value={3}>Tier 3 — OPD + Pharmacy + Lab + In-Patient</option>
           </select>
         </div>
         <hr className="border-gray-200" />

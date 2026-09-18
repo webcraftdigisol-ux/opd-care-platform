@@ -253,6 +253,7 @@ export interface PharmacySaleItemInput {
 export interface CreatePharmacySaleRequest {
   patientId: string;
   appointmentId?: string;
+  admissionId?: string;
   items: PharmacySaleItemInput[];
 }
 
@@ -271,6 +272,7 @@ export interface PharmacySale {
   patientId: string;
   patient?: PublicUser;
   appointmentId: string | null;
+  admissionId: string | null;
   soldById: string;
   taxPercent: number;
   subtotal: number;
@@ -315,6 +317,7 @@ export interface LabResultItemInput {
 export interface CreateLabInvoiceRequest {
   patientId: string;
   appointmentId?: string;
+  admissionId?: string;
   items: LabResultItemInput[];
 }
 
@@ -332,6 +335,7 @@ export interface LabInvoice {
   patientId: string;
   patient?: PublicUser;
   appointmentId: string | null;
+  admissionId: string | null;
   recordedById: string;
   taxPercent: number;
   subtotal: number;
@@ -412,6 +416,198 @@ export interface FollowUpsReport {
   overdue: FollowUpItem[];
   dueToday: FollowUpItem[];
   dueThisWeek: FollowUpItem[];
+}
+
+// ---- In-Patient / IPD (Tier 3) ----
+
+export type BedStatus = 'VACANT' | 'OCCUPIED' | 'MAINTENANCE';
+export type AdmissionStatus = 'ADMITTED' | 'DISCHARGED';
+export type MedicationSource = 'CLINIC_SUPPLIED' | 'PATIENT_OWN';
+
+export interface Bed {
+  id: string;
+  wardId: string;
+  label: string;
+  dailyRate: number;
+  status: BedStatus;
+  wardName?: string;
+}
+
+export interface Ward {
+  id: string;
+  name: string;
+  beds: Bed[];
+}
+
+export interface CreateWardRequest {
+  name: string;
+}
+
+export interface BulkAddBedsRequest {
+  startNumber: number;
+  count: number;
+  prefix?: string;
+  dailyRate: number;
+}
+
+export interface DoctorVisitRecord {
+  id: string;
+  admissionId: string;
+  doctorId: string;
+  doctorName: string;
+  notes: string | null;
+  fee: number;
+  visitedAt: string;
+}
+
+export interface ProcedureRecord {
+  id: string;
+  admissionId: string;
+  name: string;
+  notes: string | null;
+  consentSigned: boolean;
+  fee: number;
+  performedAt: string;
+}
+
+export interface MedicationRecord {
+  id: string;
+  admissionId: string;
+  medicine: string;
+  dosage: string;
+  quantity: number;
+  unitPrice: number;
+  source: MedicationSource;
+  givenAt: string;
+}
+
+export interface VitalsRecord {
+  id: string;
+  admissionId: string;
+  pulse: number | null;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  tempC: number | null;
+  spo2: number | null;
+  recordedById: string;
+  recordedByName: string;
+  recordedAt: string;
+}
+
+export interface ChargeRecord {
+  id: string;
+  admissionId: string;
+  description: string;
+  amount: number;
+  chargedAt: string;
+}
+
+export interface RoomTransferRecord {
+  id: string;
+  admissionId: string;
+  fromBedLabel: string | null;
+  toBedLabel: string;
+  transferredAt: string;
+}
+
+export interface Admission {
+  id: string;
+  patientId: string;
+  patient?: PublicUser;
+  bedId: string;
+  bedLabel: string;
+  wardName: string;
+  admittingDoctorId: string;
+  admittingDoctorName: string;
+  reason: string | null;
+  depositAmount: number;
+  status: AdmissionStatus;
+  admittedAt: string;
+  dischargedAt: string | null;
+  dischargeSummary: string | null;
+}
+
+// amountDue can be negative — a refund owed when the deposit exceeded the
+// final bill. A snapshot taken at discharge, not recomputed afterward.
+export interface IpdBill {
+  id: string;
+  admissionId: string;
+  roomCharges: number;
+  doctorVisitCharges: number;
+  procedureCharges: number;
+  medicationCharges: number;
+  adHocCharges: number;
+  pharmacyCharges: number;
+  labCharges: number;
+  subtotal: number;
+  taxPercent: number;
+  taxAmount: number;
+  total: number;
+  depositAmount: number;
+  amountDue: number;
+  createdAt: string;
+}
+
+export interface AdmissionDetail extends Admission {
+  roomTransfers: RoomTransferRecord[];
+  doctorVisits: DoctorVisitRecord[];
+  procedures: ProcedureRecord[];
+  medications: MedicationRecord[];
+  vitalsLogs: VitalsRecord[];
+  charges: ChargeRecord[];
+  pharmacySales: PharmacySale[];
+  labInvoices: LabInvoice[];
+  bill: IpdBill | null;
+}
+
+export interface AdmitPatientRequest {
+  patientId: string;
+  bedId: string;
+  admittingDoctorId: string;
+  reason?: string;
+  depositAmount?: number;
+}
+
+export interface TransferRoomRequest {
+  toBedId: string;
+}
+
+export interface AddDoctorVisitRequest {
+  doctorId: string;
+  notes?: string;
+  fee?: number;
+}
+
+export interface AddProcedureRequest {
+  name: string;
+  notes?: string;
+  consentSigned: boolean;
+  fee?: number;
+}
+
+export interface AddMedicationRequest {
+  medicine: string;
+  dosage: string;
+  quantity: number;
+  unitPrice?: number;
+  source: MedicationSource;
+}
+
+export interface AddVitalsRequest {
+  pulse?: number;
+  bpSystolic?: number;
+  bpDiastolic?: number;
+  tempC?: number;
+  spo2?: number;
+}
+
+export interface AddChargeRequest {
+  description: string;
+  amount: number;
+}
+
+export interface DischargeRequest {
+  dischargeSummary?: string;
 }
 
 export interface ApiError {

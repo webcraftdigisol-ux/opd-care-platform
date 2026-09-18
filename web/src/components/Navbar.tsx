@@ -22,6 +22,7 @@ export function Navbar() {
             : '/';
 
   const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
+  const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
 
   return (
     <nav className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-light bg-white px-6 py-3 shadow-sm">
@@ -44,6 +45,16 @@ export function Navbar() {
                 </Link>
               </>
             )}
+            {tierAllowsIpd && (
+              <>
+                <Link to="/admin/ipd/admissions" className="hover:text-teal">
+                  In-Patients
+                </Link>
+                <Link to="/admin/ipd/wards" className="hover:text-teal">
+                  Wards
+                </Link>
+              </>
+            )}
             <Link to="/admin/reports" className="hover:text-teal">
               Reports
             </Link>
@@ -51,6 +62,11 @@ export function Navbar() {
         )}
         {user?.role === 'DOCTOR' && (
           <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            {tierAllowsIpd && (
+              <Link to="/admin/ipd/admissions" className="hover:text-teal">
+                In-Patients
+              </Link>
+            )}
             <Link to="/admin/reports" className="hover:text-teal">
               Reports
             </Link>

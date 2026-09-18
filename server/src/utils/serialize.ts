@@ -13,6 +13,16 @@ import type {
   LabTestCatalog as PrismaLabTestCatalog,
   LabInvoice as PrismaLabInvoice,
   LabResultItem as PrismaLabResultItem,
+  Ward as PrismaWard,
+  Bed as PrismaBed,
+  Admission as PrismaAdmission,
+  RoomTransfer as PrismaRoomTransfer,
+  IpdDoctorVisit as PrismaIpdDoctorVisit,
+  IpdProcedure as PrismaIpdProcedure,
+  IpdMedication as PrismaIpdMedication,
+  IpdVitals as PrismaIpdVitals,
+  IpdCharge as PrismaIpdCharge,
+  IpdBill as PrismaIpdBill,
 } from '@prisma/client';
 import type {
   PublicUser,
@@ -29,6 +39,17 @@ import type {
   LabTestCatalogEntry,
   LabInvoice,
   LabResultItem,
+  Ward,
+  Bed,
+  Admission,
+  AdmissionDetail,
+  RoomTransferRecord,
+  DoctorVisitRecord,
+  ProcedureRecord,
+  MedicationRecord,
+  VitalsRecord,
+  ChargeRecord,
+  IpdBill,
 } from '@opd/shared';
 
 export function toClinicSummary(clinic: Clinic): ClinicSummary {
@@ -169,6 +190,7 @@ export function toPharmacySale(
     patientId: sale.patientId,
     patient: sale.patient ? toPublicUser(sale.patient) : undefined,
     appointmentId: sale.appointmentId,
+    admissionId: sale.admissionId,
     soldById: sale.soldById,
     taxPercent: sale.taxPercent,
     subtotal: sale.subtotal,
@@ -202,6 +224,7 @@ export function toLabInvoice(
     patientId: invoice.patientId,
     patient: invoice.patient ? toPublicUser(invoice.patient) : undefined,
     appointmentId: invoice.appointmentId,
+    admissionId: invoice.admissionId,
     recordedById: invoice.recordedById,
     taxPercent: invoice.taxPercent,
     subtotal: invoice.subtotal,
@@ -209,5 +232,174 @@ export function toLabInvoice(
     total: invoice.total,
     createdAt: invoice.createdAt.toISOString(),
     items: (invoice.items ?? []).map(toLabResultItem),
+  };
+}
+
+// ---- In-Patient / IPD (Tier 3) ----
+
+export function toBed(bed: PrismaBed): Bed {
+  return {
+    id: bed.id,
+    wardId: bed.wardId,
+    label: bed.label,
+    dailyRate: bed.dailyRate,
+    status: bed.status,
+  };
+}
+
+export function toWard(ward: PrismaWard & { beds?: PrismaBed[] }): Ward {
+  return {
+    id: ward.id,
+    name: ward.name,
+    beds: (ward.beds ?? []).map(toBed),
+  };
+}
+
+export function toRoomTransfer(
+  transfer: PrismaRoomTransfer & { fromBed?: PrismaBed | null; toBed: PrismaBed },
+): RoomTransferRecord {
+  return {
+    id: transfer.id,
+    admissionId: transfer.admissionId,
+    fromBedLabel: transfer.fromBed?.label ?? null,
+    toBedLabel: transfer.toBed.label,
+    transferredAt: transfer.transferredAt.toISOString(),
+  };
+}
+
+export function toDoctorVisit(
+  visit: PrismaIpdDoctorVisit & { doctor: PrismaDoctorProfile & { user: User } },
+): DoctorVisitRecord {
+  return {
+    id: visit.id,
+    admissionId: visit.admissionId,
+    doctorId: visit.doctorId,
+    doctorName: visit.doctor.user.name,
+    notes: visit.notes,
+    fee: visit.fee,
+    visitedAt: visit.visitedAt.toISOString(),
+  };
+}
+
+export function toProcedure(procedure: PrismaIpdProcedure): ProcedureRecord {
+  return {
+    id: procedure.id,
+    admissionId: procedure.admissionId,
+    name: procedure.name,
+    notes: procedure.notes,
+    consentSigned: procedure.consentSigned,
+    fee: procedure.fee,
+    performedAt: procedure.performedAt.toISOString(),
+  };
+}
+
+export function toMedication(medication: PrismaIpdMedication): MedicationRecord {
+  return {
+    id: medication.id,
+    admissionId: medication.admissionId,
+    medicine: medication.medicine,
+    dosage: medication.dosage,
+    quantity: medication.quantity,
+    unitPrice: medication.unitPrice,
+    source: medication.source,
+    givenAt: medication.givenAt.toISOString(),
+  };
+}
+
+export function toVitalsRecord(vitals: PrismaIpdVitals & { recordedBy: User }): VitalsRecord {
+  return {
+    id: vitals.id,
+    admissionId: vitals.admissionId,
+    pulse: vitals.pulse,
+    bpSystolic: vitals.bpSystolic,
+    bpDiastolic: vitals.bpDiastolic,
+    tempC: vitals.tempC,
+    spo2: vitals.spo2,
+    recordedById: vitals.recordedById,
+    recordedByName: vitals.recordedBy.name,
+    recordedAt: vitals.recordedAt.toISOString(),
+  };
+}
+
+export function toCharge(charge: PrismaIpdCharge): ChargeRecord {
+  return {
+    id: charge.id,
+    admissionId: charge.admissionId,
+    description: charge.description,
+    amount: charge.amount,
+    chargedAt: charge.chargedAt.toISOString(),
+  };
+}
+
+export function toIpdBill(bill: PrismaIpdBill): IpdBill {
+  return {
+    id: bill.id,
+    admissionId: bill.admissionId,
+    roomCharges: bill.roomCharges,
+    doctorVisitCharges: bill.doctorVisitCharges,
+    procedureCharges: bill.procedureCharges,
+    medicationCharges: bill.medicationCharges,
+    adHocCharges: bill.adHocCharges,
+    pharmacyCharges: bill.pharmacyCharges,
+    labCharges: bill.labCharges,
+    subtotal: bill.subtotal,
+    taxPercent: bill.taxPercent,
+    taxAmount: bill.taxAmount,
+    total: bill.total,
+    depositAmount: bill.depositAmount,
+    amountDue: bill.amountDue,
+    createdAt: bill.createdAt.toISOString(),
+  };
+}
+
+type AdmissionWithRelations = PrismaAdmission & {
+  patient?: User;
+  bed: PrismaBed & { ward: PrismaWard };
+  admittingDoctor: PrismaDoctorProfile & { user: User };
+};
+
+export function toAdmission(a: AdmissionWithRelations): Admission {
+  return {
+    id: a.id,
+    patientId: a.patientId,
+    patient: a.patient ? toPublicUser(a.patient) : undefined,
+    bedId: a.bedId,
+    bedLabel: a.bed.label,
+    wardName: a.bed.ward.name,
+    admittingDoctorId: a.admittingDoctorId,
+    admittingDoctorName: a.admittingDoctor.user.name,
+    reason: a.reason,
+    depositAmount: a.depositAmount,
+    status: a.status,
+    admittedAt: a.admittedAt.toISOString(),
+    dischargedAt: a.dischargedAt ? a.dischargedAt.toISOString() : null,
+    dischargeSummary: a.dischargeSummary,
+  };
+}
+
+type AdmissionDetailSource = AdmissionWithRelations & {
+  roomTransfers: (PrismaRoomTransfer & { fromBed?: PrismaBed | null; toBed: PrismaBed })[];
+  doctorVisits: (PrismaIpdDoctorVisit & { doctor: PrismaDoctorProfile & { user: User } })[];
+  procedures: PrismaIpdProcedure[];
+  medications: PrismaIpdMedication[];
+  vitalsLogs: (PrismaIpdVitals & { recordedBy: User })[];
+  charges: PrismaIpdCharge[];
+  pharmacySales: (PrismaPharmacySale & { items?: PrismaPharmacySaleItem[]; patient?: User })[];
+  labInvoices: (PrismaLabInvoice & { items?: PrismaLabResultItem[]; patient?: User })[];
+  bill: PrismaIpdBill | null;
+};
+
+export function toAdmissionDetail(a: AdmissionDetailSource): AdmissionDetail {
+  return {
+    ...toAdmission(a),
+    roomTransfers: a.roomTransfers.map(toRoomTransfer),
+    doctorVisits: a.doctorVisits.map(toDoctorVisit),
+    procedures: a.procedures.map(toProcedure),
+    medications: a.medications.map(toMedication),
+    vitalsLogs: a.vitalsLogs.map(toVitalsRecord),
+    charges: a.charges.map(toCharge),
+    pharmacySales: a.pharmacySales.map(toPharmacySale),
+    labInvoices: a.labInvoices.map(toLabInvoice),
+    bill: a.bill ? toIpdBill(a.bill) : null,
   };
 }

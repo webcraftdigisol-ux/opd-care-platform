@@ -222,8 +222,17 @@ Postgres 16 service container, `npm ci`, `prisma generate`, then the full
 build sweep (shared/server/web, mobile typecheck) and the server test suite
 against that service's `opd_care_test` database — the exact same commands
 and `server/.env.test` connection string used locally, so a green run
-locally and a green run in CI mean the same thing. There's no deploy step
-yet (see **What's not built yet**); it's build+test verification only.
+locally and a green run in CI mean the same thing.
+
+`.github/workflows/deploy.yml` handles the CD half: it fires after CI
+succeeds on `main`, and (once configured) SSHes into the production EC2
+box to pull/rebuild/migrate/restart the backend under PM2, then builds the
+frontend and syncs it to S3 with a CloudFront cache invalidation. It's
+scaffolding, not yet active: it checks for a `DEPLOY_HOST` secret first and
+no-ops cleanly (green, not red) until real AWS infrastructure exists and
+the deploy secrets are set — see **`deploy/README.md`** for the one-time
+AWS/DNS setup this depends on (RDS, EC2 + PM2 + Nginx, S3 + CloudFront,
+Route 53) and the exact list of GitHub secrets to configure.
 
 ## API contract
 
@@ -336,6 +345,8 @@ push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
 - Web/mobile UI test layer (Playwright e2e, component tests) — only the
   server has automated tests so far
 - File uploads (lab/radiology report attachments, prescription scans)
-- CD: no deploy step yet — CI currently only builds and tests, it doesn't
-  ship anywhere
+- CD is scaffolded (`deploy/` + `.github/workflows/deploy.yml`) but
+  inactive — it needs real AWS infrastructure provisioned and GitHub
+  secrets configured by hand first (see `deploy/README.md`); nothing has
+  actually been deployed anywhere yet
 - Fixed time-slot booking (currently token/queue-based per day, not per time slot)

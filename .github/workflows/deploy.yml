@@ -1,0 +1,91 @@
+name: Deploy
+
+# Runs after CI finishes on main, not on every push directly -- so a
+# deploy only ever happens on a commit that has already passed the full
+# build+test sweep. See deploy/README.md for the one-time AWS/DNS setup
+# this depends on.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Deployment secrets don't exist until deploy/README.md's steps 1-6
+      # are done. Rather than fail (and turn every push red before
+      # infrastructure exists), every later step checks this and no-ops.
+      - name: Check deployment secrets are configured
+        id: check
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "DEPLOY_HOST is not set -- skipping deploy. See deploy/README.md to enable this."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the commit CI just validated
+        if: steps.check.outputs.configured == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Node.js
+        if: steps.check.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.check.outputs.configured == 'true'
+        run: npm ci
+
+      - name: Build shared types + frontend
+        if: steps.check.outputs.configured == 'true'
+        run: |
+          npm run build:shared
+          npm run build:web
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Deploy backend over SSH
+        if: steps.check.outputs.configured == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            set -e
+            cd /opt/opd-care-platform
+            git fetch origin main
+            git reset --hard origin/main
+            npm ci
+            npm run build:shared
+            npm run build:server
+            (cd server && npx prisma migrate deploy)
+            pm2 startOrReload deploy/ecosystem.config.js
+          '
+
+      - name: Configure AWS credentials
+        if: steps.check.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync frontend to S3
+        if: steps.check.outputs.configured == 'true'
+        run: aws s3 sync web/dist "s3://${{ secrets.S3_BUCKET }}" --delete
+
+      - name: Invalidate CloudFront cache
+        if: steps.check.outputs.configured == 'true'
+        run: aws cloudfront create-invalidation --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"

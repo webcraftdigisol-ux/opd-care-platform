@@ -28,6 +28,41 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum BillType {
+  CONSULTATION
+  PHARMACY
+  LAB
+  RADIOLOGY
+  IPD
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  NETBANKING
+  WALLET
+  RAZORPAY
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMED
+  PAYMENT_RECEIVED
+  FOLLOWUP_REMINDER
+  DISCHARGE_SUMMARY
+}
+
+enum NotificationStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
 // A clinic is a tenant. Every clinic-owned record is scoped by clinicId so
 // one deployment can serve many clinics with isolated data.
 model Clinic {
@@ -50,6 +85,8 @@ model Clinic {
   radiologyInvoices RadiologyInvoice[]
   wards             Ward[]
   admissions        Admission[]
+  payments          Payment[]
+  notifications     Notification[]
 }
 
 model User {
@@ -74,6 +111,9 @@ model User {
   radiologyResultsRecorded RadiologyInvoice[] @relation("RadiologyInvoiceRecorder")
   admissions               Admission[]
   vitalsRecorded           IpdVitals[]
+  paymentsMade             Payment[]      @relation("PatientPayments")
+  paymentsRecorded         Payment[]      @relation("PaymentsRecorded")
+  notificationsReceived    Notification[] @relation("PatientNotifications")
 
   @@unique([clinicId, email])
   @@unique([clinicId, phone])
@@ -81,12 +121,13 @@ model User {
 }
 
 model DoctorProfile {
-  id             String @id @default(uuid())
-  userId         String @unique
-  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  specialization String
-  department     String
-  slotMinutes    Int    @default(15)
+  id              String @id @default(uuid())
+  userId          String @unique
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization  String
+  department      String
+  slotMinutes     Int    @default(15)
+  consultationFee Float  @default(0)
 
   schedules    Schedule[]
   appointments Appointment[]    @relation("DoctorAppointments")
@@ -115,10 +156,14 @@ model Appointment {
   doctor      DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
   date        DateTime
   tokenNumber Int
-  status      AppointmentStatus @default(BOOKED)
-  isWalkIn    Boolean           @default(false)
-  reason      String?
-  createdAt   DateTime          @default(now())
+  status          AppointmentStatus @default(BOOKED)
+  isWalkIn        Boolean           @default(false)
+  reason          String?
+  // Snapshotted from DoctorProfile.consultationFee at booking time -- the
+  // same "own recorded charge" discipline as Pharmacy/Lab/Radiology, so a
+  // later change to the doctor's fee never rewrites an already-booked visit.
+  consultationFee Float             @default(0)
+  createdAt       DateTime          @default(now())
 
   consultation      Consultation?
   pharmacySales     PharmacySale[]
@@ -545,4 +590,60 @@ model IpdBill {
   depositAmount      Float
   amountDue          Float
   createdAt          DateTime  @default(now())
+}
+
+// ---- Payments ----
+
+// A single ledger across every bill type, rather than a separate payments
+// table per module. billId is a polymorphic reference whose meaning depends
+// on billType: an Appointment id for CONSULTATION, a PharmacySale/LabInvoice/
+// RadiologyInvoice id for those, or an Admission id for IPD (looked up via
+// its IpdBill). Manual recording only for now (cash/card/UPI/etc marked by
+// staff at the counter) -- razorpayOrderId/razorpayPaymentId are reserved
+// for a future online-gateway integration, not used yet.
+model Payment {
+  id                String        @id @default(uuid())
+  clinicId          String
+  clinic            Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           User          @relation("PatientPayments", fields: [patientId], references: [id])
+  billType          BillType
+  billId            String
+  amount            Float
+  method            PaymentMethod
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  recordedById      String
+  recordedBy        User          @relation("PaymentsRecorded", fields: [recordedById], references: [id])
+  createdAt         DateTime      @default(now())
+
+  @@index([clinicId])
+  @@index([billType, billId])
+  @@index([patientId])
+}
+
+// ---- Notifications ----
+
+// Every notification attempt is logged, whether it actually sent or not --
+// SKIPPED (no SMTP configured, or no valid recipient) is a normal, expected
+// status, not an error. This is what lets the whole notification pipeline
+// stay testable and auditable even in an environment with no real email
+// provider wired up.
+model Notification {
+  id        String               @id @default(uuid())
+  clinicId  String
+  clinic    Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId String?
+  patient   User?                @relation("PatientNotifications", fields: [patientId], references: [id])
+  channel   NotificationChannel
+  type      NotificationType
+  recipient String
+  subject   String?
+  body      String
+  status    NotificationStatus
+  error     String?
+  createdAt DateTime             @default(now())
+
+  @@index([clinicId])
+  @@index([patientId])
 }

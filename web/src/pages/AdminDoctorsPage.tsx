@@ -1,8 +1,49 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listDoctors, getDoctorSchedule } from '../api/doctors';
-import { createDoctor, updateDoctorSchedule } from '../api/admin';
+import { createDoctor, updateDoctor, updateDoctorSchedule } from '../api/admin';
 import type { UpsertScheduleRequest } from '@opd/shared';
+
+function FeeEditor({ doctorId, currentFee }: { doctorId: string; currentFee: number }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [fee, setFee] = useState(String(currentFee));
+
+  const saveMutation = useMutation({
+    mutationFn: () => updateDoctor(doctorId, { consultationFee: Number(fee) || 0 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctors'] });
+      setEditing(false);
+    },
+  });
+
+  if (!editing) {
+    return (
+      <button onClick={() => setEditing(true)} className="text-sm text-teal hover:underline">
+        Fee: ₹{currentFee.toFixed(2)}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        step="0.01"
+        value={fee}
+        onChange={(e) => setFee(e.target.value)}
+        className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm"
+      />
+      <button
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        className="rounded-md bg-teal px-2 py-1 text-xs text-white disabled:opacity-60"
+      >
+        Save
+      </button>
+    </div>
+  );
+}
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -72,14 +113,15 @@ export function AdminDoctorsPage() {
     password: '',
     specialization: '',
     department: '',
+    consultationFee: '',
   });
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
-    mutationFn: createDoctor,
+    mutationFn: () => createDoctor({ ...form, phone: form.phone || undefined, consultationFee: Number(form.consultationFee) || 0 }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['doctors'] });
-      setForm({ name: '', email: '', phone: '', password: '', specialization: '', department: '' });
+      setForm({ name: '', email: '', phone: '', password: '', specialization: '', department: '', consultationFee: '' });
     },
     onError: (err: any) => setError(err.response?.data?.message ?? 'Could not create doctor'),
   });
@@ -87,7 +129,7 @@ export function AdminDoctorsPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    createMutation.mutate({ ...form, phone: form.phone || undefined });
+    createMutation.mutate();
   }
 
   return (
@@ -140,6 +182,14 @@ export function AdminDoctorsPage() {
           onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
           className="rounded-md border border-gray-300 px-3 py-2"
         />
+        <input
+          type="number"
+          step="0.01"
+          placeholder="Consultation fee (₹)"
+          value={form.consultationFee}
+          onChange={(e) => setForm((f) => ({ ...f, consultationFee: e.target.value }))}
+          className="rounded-md border border-gray-300 px-3 py-2"
+        />
         {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
         <button
           type="submit"
@@ -161,12 +211,15 @@ export function AdminDoctorsPage() {
                   {d.specialization} · {d.department}
                 </p>
               </div>
-              <button
-                onClick={() => setExpanded(expanded === d.id ? null : d.id)}
-                className="text-sm text-teal hover:underline"
-              >
-                {expanded === d.id ? 'Hide schedule' : 'Edit schedule'}
-              </button>
+              <div className="flex items-center gap-3">
+                <FeeEditor doctorId={d.id} currentFee={d.consultationFee} />
+                <button
+                  onClick={() => setExpanded(expanded === d.id ? null : d.id)}
+                  className="text-sm text-teal hover:underline"
+                >
+                  {expanded === d.id ? 'Hide schedule' : 'Edit schedule'}
+                </button>
+              </div>
             </div>
             {expanded === d.id && <ScheduleEditor doctorId={d.id} />}
           </div>

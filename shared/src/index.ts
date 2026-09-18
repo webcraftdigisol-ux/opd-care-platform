@@ -48,6 +48,7 @@ export interface DoctorProfile {
   specialization: string;
   department: string;
   slotMinutes: number;
+  consultationFee: number;
   user: PublicUser;
 }
 
@@ -70,6 +71,7 @@ export interface Appointment {
   status: AppointmentStatus;
   isWalkIn: boolean;
   reason: string | null;
+  consultationFee: number;
   createdAt: string;
   consultation?: Consultation | null;
 }
@@ -213,6 +215,14 @@ export interface CreateDoctorRequest {
   specialization: string;
   department: string;
   slotMinutes?: number;
+  consultationFee?: number;
+}
+
+export interface UpdateDoctorRequest {
+  specialization?: string;
+  department?: string;
+  slotMinutes?: number;
+  consultationFee?: number;
 }
 
 export interface CreateStaffRequest {
@@ -702,6 +712,59 @@ export interface AddChargeRequest {
 
 export interface DischargeRequest {
   dischargeSummary?: string;
+}
+
+// ---- Payments ----
+
+export type BillType = 'CONSULTATION' | 'PHARMACY' | 'LAB' | 'RADIOLOGY' | 'IPD';
+export type PaymentMethod = 'CASH' | 'CARD' | 'UPI' | 'NETBANKING' | 'WALLET' | 'RAZORPAY';
+
+export interface Payment {
+  id: string;
+  patientId: string;
+  billType: BillType;
+  billId: string;
+  amount: number;
+  method: PaymentMethod;
+  recordedById: string;
+  recordedByName?: string;
+  createdAt: string;
+}
+
+export interface RecordPaymentRequest {
+  billType: BillType;
+  billId: string;
+  amount: number;
+  method: PaymentMethod;
+}
+
+export interface BillPaymentsResponse {
+  billType: BillType;
+  billId: string;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  payments: Payment[];
+}
+
+// ---- Notifications ----
+
+export type NotificationChannel = 'EMAIL' | 'SMS';
+export type NotificationType = 'APPOINTMENT_CONFIRMED' | 'PAYMENT_RECEIVED' | 'FOLLOWUP_REMINDER' | 'DISCHARGE_SUMMARY';
+export type NotificationStatus = 'SENT' | 'FAILED' | 'SKIPPED';
+
+export interface Notification {
+  id: string;
+  patientId: string | null;
+  patientName?: string | null;
+  channel: NotificationChannel;
+  type: NotificationType;
+  recipient: string;
+  subject: string | null;
+  body: string;
+  status: NotificationStatus;
+  error: string | null;
+  createdAt: string;
 }
 
 export interface ApiError {

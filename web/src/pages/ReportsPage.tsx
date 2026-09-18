@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDailyActivityReport, getFinancialReport, getFollowUpsReport, markFollowUpContacted } from '../api/reports';
+import {
+  getDailyActivityReport,
+  getFinancialReport,
+  getFollowUpsReport,
+  markFollowUpContacted,
+  sendFollowUpReminder,
+} from '../api/reports';
 import type { FollowUpItem, RevenueSection } from '@opd/shared';
 
 type Tab = 'financial' | 'activity' | 'follow-ups';
@@ -180,11 +186,15 @@ function FollowUpGroup({
   items,
   urgent,
   onContact,
+  onRemind,
+  remindingId,
 }: {
   title: string;
   items: FollowUpItem[];
   urgent?: boolean;
   onContact: (id: string) => void;
+  onRemind: (id: string) => void;
+  remindingId: string | null;
 }) {
   if (items.length === 0) return null;
   return (
@@ -204,9 +214,18 @@ function FollowUpGroup({
                 {item.patientPhone ?? 'No phone'} · Dr. {item.doctorName} · Follow-up {item.followUpDate}
               </p>
             </div>
-            <button onClick={() => onContact(item.consultationId)} className="text-sm text-teal hover:underline">
-              Mark contacted
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onRemind(item.consultationId)}
+                disabled={remindingId === item.consultationId}
+                className="text-sm text-teal hover:underline disabled:opacity-60"
+              >
+                {remindingId === item.consultationId ? 'Sending…' : 'Send reminder'}
+              </button>
+              <button onClick={() => onContact(item.consultationId)} className="text-sm text-teal hover:underline">
+                Mark contacted
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -223,17 +242,40 @@ function FollowUpsTab() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['report-follow-ups'] }),
   });
 
+  const remindMutation = useMutation({ mutationFn: sendFollowUpReminder });
+
   if (isLoading) return <p className="text-gray-500">Loading…</p>;
   if (!data) return null;
 
   const hasNothing = data.overdue.length === 0 && data.dueToday.length === 0 && data.dueThisWeek.length === 0;
+  const remindingId = remindMutation.isPending ? (remindMutation.variables as string) : null;
 
   return (
     <div>
       {hasNothing && <p className="text-gray-500">No follow-ups due in the next 7 days.</p>}
-      <FollowUpGroup title="Overdue" items={data.overdue} urgent onContact={contactMutation.mutate} />
-      <FollowUpGroup title="Due Today" items={data.dueToday} urgent onContact={contactMutation.mutate} />
-      <FollowUpGroup title="Due This Week" items={data.dueThisWeek} onContact={contactMutation.mutate} />
+      <FollowUpGroup
+        title="Overdue"
+        items={data.overdue}
+        urgent
+        onContact={contactMutation.mutate}
+        onRemind={remindMutation.mutate}
+        remindingId={remindingId}
+      />
+      <FollowUpGroup
+        title="Due Today"
+        items={data.dueToday}
+        urgent
+        onContact={contactMutation.mutate}
+        onRemind={remindMutation.mutate}
+        remindingId={remindingId}
+      />
+      <FollowUpGroup
+        title="Due This Week"
+        items={data.dueThisWeek}
+        onContact={contactMutation.mutate}
+        onRemind={remindMutation.mutate}
+        remindingId={remindingId}
+      />
     </div>
   );
 }

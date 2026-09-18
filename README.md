@@ -2,7 +2,8 @@
 
 A multi-tenant clinic/hospital management platform (web + mobile): appointment
 booking, live queue/token tracking, doctor consultations, pharmacy, lab,
-admin scheduling, walk-in registration, and patient medical records.
+admin scheduling, walk-in registration, patient medical records, billing/
+payment recording, and email notifications.
 
 One hosted deployment serves many clinics ("tenants"), each with isolated
 data and its own subscription tier:
@@ -56,6 +57,51 @@ Admins (and doctors, for the follow-ups view and in-patient management) also get
   charges. Discharge computes a final bill from every charge source and nets
   out the deposit — the result can be a refund owed, not just an amount due,
   and the UI presents that as a normal outcome rather than an error state.
+
+## Billing & Payments
+
+Every doctor has a `consultationFee`, snapshotted onto the `Appointment` at
+booking/walk-in time — the same own-recorded-charge discipline as Pharmacy/
+Lab/Radiology, so a later change to a doctor's fee never rewrites an
+already-booked visit. A single `Payment` ledger (cash/card/UPI/net-banking/
+wallet, recorded manually by staff at the counter) tracks amount paid and
+balance due against any bill type — consultation, pharmacy sale, lab
+invoice, radiology invoice, or an IPD admission's final bill — with access
+gated per bill type to exactly the staff who can already see that bill
+(Pharmacist for Pharmacy, Lab Technician for Lab, and so on; IPD payments
+stay Admin/Doctor-only, matching admit/discharge). A patient can check their
+own bill's payment status but not anyone else's. For IPD specifically, the
+payable amount is the bill's `amountDue` (total minus deposit already
+collected), never the raw bill total — an overpaid deposit correctly shows
+₹0 payable through this ledger rather than double-charging the difference.
+
+**Not built**: a live payment gateway (Razorpay, Stripe, etc.) for
+patient-initiated online checkout. This is a deliberate scoping decision,
+not an oversight — there's no real merchant sandbox credentials available to
+test an integration like that against, and shipping an unverified checkout
+flow would be worse than not shipping one. The schema reserves
+`razorpayOrderId`/`razorpayPaymentId` fields on `Payment` for exactly this,
+so a real gateway integration slots in without a schema change once a
+clinic has real credentials to test against.
+
+## Notifications
+
+Email notifications (via `nodemailer`, SMTP configured through
+`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`) fire on:
+appointment booked/walk-in confirmation, payment received (with the
+remaining balance if partial), IPD discharge summary, and a
+manually-triggered follow-up reminder from the Reports → Follow-ups tab.
+Every attempt — sent, failed, or skipped — writes a `Notification` row
+(visible to Admins at **Notifications** in the nav), so the whole pipeline
+is auditable and fully testable even with no real email provider
+configured: `SKIPPED` (no SMTP configured, or no usable recipient — e.g. the
+synthetic `walkin-<phone>@opd.local` placeholder used for phone-only
+walk-ins) is a normal, expected outcome, not a swallowed error. **Not
+built**: an SMS channel (the `NotificationChannel` enum already has `SMS`
+reserved) and scheduled/cron-driven reminders (e.g. an automatic day-before
+appointment reminder) — this deployment has no background job runner yet,
+so every notification here is triggered synchronously by the action that
+causes it, not by a clock.
 
 ## Multi-tenancy
 
@@ -131,7 +177,8 @@ inventory, a lab test catalog, and a radiology test catalog:
 | Head Nurse | headnurse@opdcare.test      | headnurse123     |
 
 `demo-clinic` is seeded at **Tier 3**, with a General Ward (6 beds, ₹1200/day)
-and an ICU (3 beds, ₹4500/day). Sign in with clinic code **`demo-clinic`**.
+and an ICU (3 beds, ₹4500/day), and the seeded doctor has a ₹500
+consultation fee. Sign in with clinic code **`demo-clinic`**.
 Use `/register-clinic` in the web app to spin up an additional lower-tier
 clinic to see tenant isolation and tier gating in action.
 
@@ -246,21 +293,49 @@ the user's `clinicId` and every route scopes its queries by it).
   script on the server workspace (so any install regenerates it, dev or CI)
   plus an explicit generate step in the workflow as a second line of
   defense.
+- **A deposit already collected is not a "total" you can charge again.**
+  The first version of IPD payment recording used the raw `IpdBill.total`
+  as the payable amount, which double-counts the deposit: a patient who
+  deposited ₹20,000 against a ₹1,260 bill (a refund situation) would show
+  ₹1,260 still "payable" through the ledger, on top of money already in
+  hand. Caught before shipping while wiring the discharge-bill payment UI
+  (the same screen already showed "Refund Owed" for this exact scenario)
+  and fixed before any web page used it: the payable amount for IPD is
+  `Math.max(0, IpdBill.amountDue)` (total minus deposit, floored at zero),
+  not the total itself — verified directly for both a
+  deposit that exceeds the bill (payable ₹0, nothing to record) and one
+  that only partially covers it (payable = the positive remainder).
+- **Every notification write doubles as its own test fixture.** Because
+  `notifyPatientEmail` always creates a `Notification` row — `SENT`,
+  `FAILED`, or `SKIPPED`, never silently nothing — the entire pipeline
+  (which trigger fired, who it was addressed to, whether a real send was
+  even attempted) is assertable in tests without a real SMTP server, and
+  auditable in production without one either. The alternative (a bare
+  `try { sendMail() } catch { /* ignore */ }`) would have made "did the
+  confirmation email actually get attempted" an unanswerable question from
+  both angles.
 
 ## What's not built yet
 
 Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD,
 Reporting (financial Actual-vs-Total across all three revenue modules, daily
 activity, follow-ups due), granular front-desk/nursing staff roles
-(Receptionist, Nurse, Head Nurse), a server integration test suite, and a
-CI workflow that runs it on every push/PR, on a multi-tenant hosted
-architecture. Deliberately deferred:
+(Receptionist, Nurse, Head Nurse), consultation-fee billing and a
+cash/card/UPI payment ledger across every bill type, email notifications,
+a server integration test suite, and a CI workflow that runs it on every
+push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
+- A live online payment gateway (Razorpay/Stripe patient checkout) — no real
+  merchant credentials available to test against; the `Payment` schema
+  reserves the fields for it
+- An SMS notification channel (only email is wired up) and scheduled/
+  cron-driven reminders (e.g. an automatic day-before appointment reminder)
+  — there's no background job runner in this deployment yet
 - Web/mobile UI test layer (Playwright e2e, component tests) — only the
   server has automated tests so far
-- SMS/email/push notifications, billing/payments, file uploads
+- File uploads (lab/radiology report attachments, prescription scans)
 - CD: no deploy step yet — CI currently only builds and tests, it doesn't
   ship anywhere
 - Fixed time-slot booking (currently token/queue-based per day, not per time slot)

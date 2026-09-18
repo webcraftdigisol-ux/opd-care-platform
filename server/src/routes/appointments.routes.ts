@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toAppointment } from '../utils/serialize';
+import { notifyPatientEmail } from '../utils/notify';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
@@ -34,6 +35,7 @@ async function assertDoctorInClinic(clinicId: string, doctorId: string, date: Da
   if (!schedule) {
     throw new HttpError(400, 'Doctor is not available on the selected day');
   }
+  return doctor;
 }
 
 const bookSchema = z.object({
@@ -54,7 +56,7 @@ appointmentsRouter.post(
     if (date < startOfToday) {
       throw new HttpError(400, 'Cannot book an appointment in the past');
     }
-    await assertDoctorInClinic(clinicId, data.doctorId, date);
+    const doctor = await assertDoctorInClinic(clinicId, data.doctorId, date);
 
     const appointment = await prisma.$transaction(async (tx) => {
       const tokenNumber = await nextTokenNumber(clinicId, data.doctorId, date);
@@ -66,9 +68,19 @@ appointmentsRouter.post(
           date,
           tokenNumber,
           reason: data.reason,
+          consultationFee: doctor.consultationFee,
         },
         include: { patient: true, doctor: { include: { user: true } } },
       });
+    });
+
+    await notifyPatientEmail({
+      clinicId,
+      patientId: appointment.patientId,
+      type: 'APPOINTMENT_CONFIRMED',
+      to: appointment.patient.email,
+      subject: `Appointment confirmed — Token #${appointment.tokenNumber}`,
+      body: `Hi ${appointment.patient.name}, your appointment with Dr. ${appointment.doctor.user.name} on ${appointment.date.toISOString().slice(0, 10)} is confirmed. Your token number is #${appointment.tokenNumber}.`,
     });
 
     res.status(201).json(toAppointment(appointment));
@@ -194,7 +206,7 @@ appointmentsRouter.post(
     const clinicId = req.auth!.clinicId;
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
-    await assertDoctorInClinic(clinicId, data.doctorId, today);
+    const doctor = await assertDoctorInClinic(clinicId, data.doctorId, today);
 
     let patient = await prisma.user.findUnique({
       where: { clinicId_phone: { clinicId, phone: data.patientPhone } },
@@ -225,9 +237,23 @@ appointmentsRouter.post(
           reason: data.reason,
           isWalkIn: true,
           status: 'CHECKED_IN',
+          consultationFee: doctor.consultationFee,
         },
         include: { patient: true, doctor: { include: { user: true } } },
       });
+    });
+
+    // Walk-ins are usually registered by phone only (a synthetic
+    // walkin-<phone>@opd.local email is used as the account placeholder),
+    // so this correctly ends up SKIPPED for most walk-ins -- notifyPatientEmail
+    // filters that placeholder out rather than sending to it.
+    await notifyPatientEmail({
+      clinicId,
+      patientId: appointment.patientId,
+      type: 'APPOINTMENT_CONFIRMED',
+      to: appointment.patient.email,
+      subject: `Appointment confirmed — Token #${appointment.tokenNumber}`,
+      body: `Hi ${appointment.patient.name}, you're checked in with Dr. ${appointment.doctor.user.name}. Your token number is #${appointment.tokenNumber}.`,
     });
 
     res.status(201).json(toAppointment(appointment));

@@ -14,6 +14,7 @@ import {
   toWard,
 } from '../utils/serialize';
 import { computeIpdBillFigures } from '../utils/ipdBilling';
+import { notifyPatientEmail } from '../utils/notify';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
 
@@ -411,6 +412,18 @@ ipdRouter.post(
     ]);
 
     const updated = await loadAdmissionOrThrow(clinicId, admission.id);
+
+    await notifyPatientEmail({
+      clinicId,
+      patientId: updated.patientId,
+      type: 'DISCHARGE_SUMMARY',
+      to: updated.patient?.email,
+      subject: 'Discharge summary',
+      body: `Hi ${updated.patient?.name}, you have been discharged. ${
+        data.dischargeSummary ? `Summary: ${data.dischargeSummary}. ` : ''
+      }Final bill total: ₹${figures.total.toFixed(2)}, amount due: ₹${figures.amountDue.toFixed(2)}.`,
+    });
+
     res.json(toAdmissionDetail(updated));
   }),
 );

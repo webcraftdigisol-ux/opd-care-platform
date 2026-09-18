@@ -26,6 +26,7 @@ import { IpdAdmissionsPage } from './pages/IpdAdmissionsPage';
 import { IpdAdmitPatientPage } from './pages/IpdAdmitPatientPage';
 import { IpdAdmissionDetailPage } from './pages/IpdAdmissionDetailPage';
 import { ReceptionDashboardPage } from './pages/ReceptionDashboardPage';
+import { AdminNotificationsPage } from './pages/AdminNotificationsPage';
 import { homeRouteForRole } from './utils/roleHome';
 
 function HomeRedirect() {
@@ -108,6 +109,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMIN']}>
               <AdminStaffPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/notifications"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <AdminNotificationsPage />
             </ProtectedRoute>
           }
         />

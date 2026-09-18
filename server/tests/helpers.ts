@@ -52,10 +52,19 @@ export async function createUser(
   return { user, password };
 }
 
-export async function createDoctor(clinicId: string, opts: { email?: string; password?: string } = {}) {
+export async function createDoctor(
+  clinicId: string,
+  opts: { email?: string; password?: string; consultationFee?: number } = {},
+) {
   const { user, password } = await createUser(clinicId, 'DOCTOR', opts);
   const doctorProfile = await prisma.doctorProfile.create({
-    data: { userId: user.id, specialization: 'General Medicine', department: 'OPD', slotMinutes: 15 },
+    data: {
+      userId: user.id,
+      specialization: 'General Medicine',
+      department: 'OPD',
+      slotMinutes: 15,
+      consultationFee: opts.consultationFee ?? 0,
+    },
   });
   await prisma.schedule.createMany({
     data: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({

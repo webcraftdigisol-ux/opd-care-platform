@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { searchPatients } from '../api/patients';
 import { createPharmacySale, getPendingPharmacyLines } from '../api/pharmacy';
+import { PaymentRecorder } from '../components/PaymentRecorder';
 import type { PendingPharmacyLine, PharmacySale, PharmacySaleItemInput, PublicUser } from '@opd/shared';
 
 interface LineState extends PharmacySaleItemInput {
@@ -227,6 +228,7 @@ export function PharmacyCounterPage() {
             </p>
             <p className="text-lg font-semibold">Total: ₹{receipt.total.toFixed(2)}</p>
           </div>
+          <PaymentRecorder billType="PHARMACY" billId={receipt.id} />
           <div className="mt-6 flex gap-3">
             <button
               onClick={() => window.print()}

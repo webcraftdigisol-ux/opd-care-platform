@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { DailyActivityReport, FinancialReport, FollowUpsReport } from '@opd/shared';
+import type { DailyActivityReport, FinancialReport, FollowUpsReport, Notification } from '@opd/shared';
 
 export async function getFinancialReport(from?: string, to?: string): Promise<FinancialReport> {
   const res = await apiClient.get<FinancialReport>('/reports/financial', { params: { from, to } });
@@ -18,4 +18,9 @@ export async function getFollowUpsReport(): Promise<FollowUpsReport> {
 
 export async function markFollowUpContacted(consultationId: string): Promise<void> {
   await apiClient.post(`/reports/follow-ups/${consultationId}/contacted`);
+}
+
+export async function sendFollowUpReminder(consultationId: string): Promise<Notification> {
+  const res = await apiClient.post<Notification>(`/reports/follow-ups/${consultationId}/remind`);
+  return res.data;
 }

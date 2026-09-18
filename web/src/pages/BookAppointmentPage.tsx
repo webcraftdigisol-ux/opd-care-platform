@@ -48,7 +48,7 @@ export function BookAppointmentPage() {
               <option value="">Select a doctor</option>
               {doctors?.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.user.name} — {d.specialization} ({d.department})
+                  {d.user.name} — {d.specialization} ({d.department}){d.consultationFee > 0 ? ` · ₹${d.consultationFee}` : ''}
                 </option>
               ))}
             </select>

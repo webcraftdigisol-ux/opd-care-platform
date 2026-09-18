@@ -4,13 +4,20 @@ import type {
   CreateDoctorRequest,
   CreateStaffRequest,
   DoctorProfile,
+  Notification,
   PublicUser,
   Schedule,
+  UpdateDoctorRequest,
   UpsertScheduleRequest,
 } from '@opd/shared';
 
 export async function createDoctor(data: CreateDoctorRequest): Promise<DoctorProfile> {
   const res = await apiClient.post<DoctorProfile>('/admin/doctors', data);
+  return res.data;
+}
+
+export async function updateDoctor(doctorId: string, data: UpdateDoctorRequest): Promise<DoctorProfile> {
+  const res = await apiClient.put<DoctorProfile>(`/admin/doctors/${doctorId}`, data);
   return res.data;
 }
 
@@ -31,5 +38,10 @@ export async function createStaff(data: CreateStaffRequest): Promise<PublicUser>
 
 export async function listStaff(): Promise<PublicUser[]> {
   const res = await apiClient.get<PublicUser[]>('/admin/staff');
+  return res.data;
+}
+
+export async function listNotifications(patientId?: string): Promise<Notification[]> {
+  const res = await apiClient.get<Notification[]>('/admin/notifications', { params: { patientId } });
   return res.data;
 }

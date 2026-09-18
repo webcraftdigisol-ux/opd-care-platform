@@ -27,6 +27,8 @@ import type {
   IpdVitals as PrismaIpdVitals,
   IpdCharge as PrismaIpdCharge,
   IpdBill as PrismaIpdBill,
+  Payment as PrismaPayment,
+  Notification as PrismaNotification,
 } from '@prisma/client';
 import type {
   PublicUser,
@@ -58,6 +60,8 @@ import type {
   VitalsRecord,
   ChargeRecord,
   IpdBill,
+  Payment,
+  Notification,
 } from '@opd/shared';
 
 export function toClinicSummary(clinic: Clinic): ClinicSummary {
@@ -90,6 +94,7 @@ export function toDoctorProfile(doctor: PrismaDoctorProfile & { user: User }): D
     specialization: doctor.specialization,
     department: doctor.department,
     slotMinutes: doctor.slotMinutes,
+    consultationFee: doctor.consultationFee,
     user: toPublicUser(doctor.user),
   };
 }
@@ -180,6 +185,7 @@ export function toAppointment(a: AppointmentWithRelations): Appointment {
     status: a.status,
     isWalkIn: a.isWalkIn,
     reason: a.reason,
+    consultationFee: a.consultationFee,
     createdAt: a.createdAt.toISOString(),
     consultation: a.consultation ? toConsultation(a.consultation) : a.consultation === null ? null : undefined,
   };
@@ -464,5 +470,37 @@ export function toAdmissionDetail(a: AdmissionDetailSource): AdmissionDetail {
     labInvoices: a.labInvoices.map(toLabInvoice),
     radiologyInvoices: a.radiologyInvoices.map(toRadiologyInvoice),
     bill: a.bill ? toIpdBill(a.bill) : null,
+  };
+}
+
+// ---- Payments & Notifications ----
+
+export function toPayment(payment: PrismaPayment & { recordedBy?: User }): Payment {
+  return {
+    id: payment.id,
+    patientId: payment.patientId,
+    billType: payment.billType,
+    billId: payment.billId,
+    amount: payment.amount,
+    method: payment.method,
+    recordedById: payment.recordedById,
+    recordedByName: payment.recordedBy?.name,
+    createdAt: payment.createdAt.toISOString(),
+  };
+}
+
+export function toNotification(notification: PrismaNotification & { patient?: User | null }): Notification {
+  return {
+    id: notification.id,
+    patientId: notification.patientId,
+    patientName: notification.patient?.name ?? null,
+    channel: notification.channel,
+    type: notification.type,
+    recipient: notification.recipient,
+    subject: notification.subject,
+    body: notification.body,
+    status: notification.status,
+    error: notification.error,
+    createdAt: notification.createdAt.toISOString(),
   };
 }

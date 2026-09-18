@@ -12,6 +12,7 @@ import { labRouter } from './routes/lab.routes';
 import { radiologyRouter } from './routes/radiology.routes';
 import { reportsRouter } from './routes/reports.routes';
 import { ipdRouter } from './routes/ipd.routes';
+import { paymentsRouter } from './routes/payments.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 export const app = express();
@@ -33,5 +34,6 @@ app.use('/api/lab', labRouter);
 app.use('/api/radiology', radiologyRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/ipd', ipdRouter);
+app.use('/api/payments', paymentsRouter);
 
 app.use(errorHandler);

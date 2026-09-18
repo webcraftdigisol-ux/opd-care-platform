@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../prisma';
-import { toAppointment, toDoctorProfile, toPublicUser, toSchedule } from '../utils/serialize';
+import { toAppointment, toDoctorProfile, toNotification, toPublicUser, toSchedule } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
@@ -18,6 +18,7 @@ const createDoctorSchema = z.object({
   specialization: z.string().min(2),
   department: z.string().min(2),
   slotMinutes: z.number().int().positive().optional(),
+  consultationFee: z.number().nonnegative().optional(),
 });
 
 adminRouter.post(
@@ -37,6 +38,7 @@ adminRouter.post(
         specialization: data.specialization,
         department: data.department,
         slotMinutes: data.slotMinutes ?? 15,
+        consultationFee: data.consultationFee ?? 0,
         user: {
           create: {
             clinicId,
@@ -58,6 +60,7 @@ const updateDoctorSchema = z.object({
   specialization: z.string().min(2).optional(),
   department: z.string().min(2).optional(),
   slotMinutes: z.number().int().positive().optional(),
+  consultationFee: z.number().nonnegative().optional(),
 });
 
 async function assertDoctorInClinic(clinicId: string, doctorId: string) {
@@ -196,5 +199,20 @@ adminRouter.get(
       orderBy: [{ doctorId: 'asc' }, { tokenNumber: 'asc' }],
     });
     res.json(appointments.map(toAppointment));
+  }),
+);
+
+adminRouter.get(
+  '/notifications',
+  requireRole('ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const patientId = typeof req.query.patientId === 'string' ? req.query.patientId : undefined;
+    const notifications = await prisma.notification.findMany({
+      where: { clinicId: req.auth!.clinicId, ...(patientId ? { patientId } : {}) },
+      include: { patient: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json(notifications.map(toNotification));
   }),
 );

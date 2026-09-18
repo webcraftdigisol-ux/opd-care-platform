@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listAllAppointments } from '../api/admin';
 import { StatusBadge } from '../components/StatusBadge';
+import { PaymentRecorder } from '../components/PaymentRecorder';
 import { useAuth } from '../context/AuthContext';
 
 export function AdminDashboard() {
@@ -10,6 +11,7 @@ export function AdminDashboard() {
   const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
   const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [expandedFee, setExpandedFee] = useState<string | null>(null);
   const { data: appointments, isLoading } = useQuery({
     queryKey: ['admin-appointments', date],
     queryFn: () => listAllAppointments(date),
@@ -55,6 +57,9 @@ export function AdminDashboard() {
           <Link to="/admin/reports" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
             Reports
           </Link>
+          <Link to="/admin/notifications" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+            Notifications
+          </Link>
         </div>
       </div>
 
@@ -79,19 +84,41 @@ export function AdminDashboard() {
               <th className="px-4 py-2">Doctor</th>
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2">Fee</th>
             </tr>
           </thead>
           <tbody>
             {appointments?.map((a) => (
-              <tr key={a.id} className="border-t border-gray-100">
-                <td className="px-4 py-2 font-medium">#{a.tokenNumber}</td>
-                <td className="px-4 py-2">{a.patient?.name}</td>
-                <td className="px-4 py-2">{a.doctor?.user.name}</td>
-                <td className="px-4 py-2 text-gray-500">{a.isWalkIn ? 'Walk-in' : 'Booked'}</td>
-                <td className="px-4 py-2">
-                  <StatusBadge status={a.status} />
-                </td>
-              </tr>
+              <Fragment key={a.id}>
+                <tr className="border-t border-gray-100">
+                  <td className="px-4 py-2 font-medium">#{a.tokenNumber}</td>
+                  <td className="px-4 py-2">{a.patient?.name}</td>
+                  <td className="px-4 py-2">{a.doctor?.user.name}</td>
+                  <td className="px-4 py-2 text-gray-500">{a.isWalkIn ? 'Walk-in' : 'Booked'}</td>
+                  <td className="px-4 py-2">
+                    <StatusBadge status={a.status} />
+                  </td>
+                  <td className="px-4 py-2">
+                    {a.consultationFee > 0 ? (
+                      <button
+                        onClick={() => setExpandedFee(expandedFee === a.id ? null : a.id)}
+                        className="text-teal hover:underline"
+                      >
+                        ₹{a.consultationFee.toFixed(2)}
+                      </button>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                </tr>
+                {expandedFee === a.id && (
+                  <tr className="border-t border-gray-100 bg-gray-50">
+                    <td colSpan={6} className="px-4 py-2">
+                      <PaymentRecorder billType="CONSULTATION" billId={a.id} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

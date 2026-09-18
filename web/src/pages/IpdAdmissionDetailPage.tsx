@@ -18,6 +18,7 @@ import { createPharmacySale } from '../api/pharmacy';
 import { createLabInvoice } from '../api/lab';
 import { createRadiologyInvoice } from '../api/radiology';
 import { VitalsTrendChart } from '../components/VitalsTrendChart';
+import { PaymentRecorder } from '../components/PaymentRecorder';
 import { useAuth } from '../context/AuthContext';
 import type { MedicationSource } from '@opd/shared';
 
@@ -361,6 +362,9 @@ export function IpdAdmissionDetailPage() {
               <span>₹{Math.abs(admission.bill.amountDue).toFixed(2)}</span>
             </div>
           </div>
+          {canManageClinical && admission.bill.amountDue > 0 && (
+            <PaymentRecorder billType="IPD" billId={admission.id} />
+          )}
         </div>
       )}
 

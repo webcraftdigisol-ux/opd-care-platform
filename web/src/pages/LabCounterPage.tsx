@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { searchPatients } from '../api/patients';
 import { createLabInvoice, getPendingLabLines } from '../api/lab';
+import { PaymentRecorder } from '../components/PaymentRecorder';
 import type { LabInvoice, LabResultItemInput, PendingLabLine, PublicUser } from '@opd/shared';
 
 interface LineState extends LabResultItemInput {
@@ -221,6 +222,7 @@ export function LabCounterPage() {
             </p>
             <p className="text-lg font-semibold">Total: ₹{receipt.total.toFixed(2)}</p>
           </div>
+          <PaymentRecorder billType="LAB" billId={receipt.id} />
           <div className="mt-6 flex gap-3">
             <button
               onClick={() => window.print()}

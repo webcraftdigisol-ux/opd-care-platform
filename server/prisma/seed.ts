@@ -44,12 +44,13 @@ async function main() {
 
   const doctorProfile = await prisma.doctorProfile.upsert({
     where: { userId: doctorUser.id },
-    update: {},
+    update: { consultationFee: 500 },
     create: {
       userId: doctorUser.id,
       specialization: 'General Medicine',
       department: 'OPD',
       slotMinutes: 15,
+      consultationFee: 500,
     },
   });
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { toDoctorProfile, toSchedule } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, type AuthedRequest } from '../middleware/auth';
 
 export const doctorsRouter = Router();
 
@@ -10,8 +10,9 @@ doctorsRouter.use(requireAuth);
 
 doctorsRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const doctors = await prisma.doctorProfile.findMany({
+      where: { user: { clinicId: req.auth!.clinicId } },
       include: { user: true },
       orderBy: { user: { name: 'asc' } },
     });
@@ -21,9 +22,9 @@ doctorsRouter.get(
 
 doctorsRouter.get(
   '/:id',
-  asyncHandler(async (req, res) => {
-    const doctor = await prisma.doctorProfile.findUnique({
-      where: { id: req.params.id },
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const doctor = await prisma.doctorProfile.findFirst({
+      where: { id: req.params.id, user: { clinicId: req.auth!.clinicId } },
       include: { user: true },
     });
     if (!doctor) throw new HttpError(404, 'Doctor not found');
@@ -33,9 +34,13 @@ doctorsRouter.get(
 
 doctorsRouter.get(
   '/:id/schedule',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const doctor = await prisma.doctorProfile.findFirst({
+      where: { id: req.params.id, user: { clinicId: req.auth!.clinicId } },
+    });
+    if (!doctor) throw new HttpError(404, 'Doctor not found');
     const schedules = await prisma.schedule.findMany({
-      where: { doctorId: req.params.id },
+      where: { doctorId: doctor.id },
       orderBy: { dayOfWeek: 'asc' },
     });
     res.json(schedules.map(toSchedule));

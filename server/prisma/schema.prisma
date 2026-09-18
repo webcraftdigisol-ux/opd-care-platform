@@ -11,6 +11,8 @@ enum Role {
   PATIENT
   DOCTOR
   ADMIN
+  PHARMACIST
+  LAB_TECHNICIAN
 }
 
 enum AppointmentStatus {
@@ -22,27 +24,57 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+// A clinic is a tenant. Every clinic-owned record is scoped by clinicId so
+// one deployment can serve many clinics with isolated data.
+model Clinic {
+  id                        String   @id @default(uuid())
+  name                      String
+  slug                      String   @unique
+  tier                      Int      @default(1) // 1 = OPD, 2 = +Pharmacy/Lab, 3 = +IPD
+  logoUrl                   String?
+  taxPercent                Float    @default(0)
+  doctorRevenueSharePercent Float    @default(0)
+  createdAt                 DateTime @default(now())
+
+  users         User[]
+  appointments  Appointment[]
+  pharmacyItems PharmacyItem[]
+  pharmacySales PharmacySale[]
+  labCatalog    LabTestCatalog[]
+  labInvoices   LabInvoice[]
+}
+
 model User {
   id        String   @id @default(uuid())
-  email     String   @unique
-  phone     String?  @unique
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  email     String
+  phone     String?
   password  String
   name      String
   role      Role
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  doctorProfile DoctorProfile?
-  appointments  Appointment[]  @relation("PatientAppointments")
+  doctorProfile        DoctorProfile?
+  appointments         Appointment[]  @relation("PatientAppointments")
+  pharmacyPurchases    PharmacySale[] @relation("PharmacySalePatient")
+  pharmacySalesHandled PharmacySale[] @relation("PharmacySaleSeller")
+  labResultsOrdered    LabInvoice[]   @relation("LabInvoicePatient")
+  labResultsRecorded   LabInvoice[]   @relation("LabInvoiceRecorder")
+
+  @@unique([clinicId, email])
+  @@unique([clinicId, phone])
+  @@index([clinicId])
 }
 
 model DoctorProfile {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String @id @default(uuid())
+  userId         String @unique
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   specialization String
   department     String
-  slotMinutes    Int      @default(15)
+  slotMinutes    Int    @default(15)
 
   schedules    Schedule[]
   appointments Appointment[] @relation("DoctorAppointments")
@@ -61,6 +93,8 @@ model Schedule {
 
 model Appointment {
   id          String            @id @default(uuid())
+  clinicId    String
+  clinic      Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patientId   String
   patient     User              @relation("PatientAppointments", fields: [patientId], references: [id])
   doctorId    String
@@ -72,8 +106,11 @@ model Appointment {
   reason      String?
   createdAt   DateTime          @default(now())
 
-  consultation Consultation?
+  consultation  Consultation?
+  pharmacySales PharmacySale[]
+  labInvoices   LabInvoice[]
 
+  @@index([clinicId])
   @@index([doctorId, date])
   @@index([patientId])
 }
@@ -87,7 +124,8 @@ model Consultation {
   notes         String?
   createdAt     DateTime    @default(now())
 
-  prescriptions Prescription[]
+  prescriptions   Prescription[]
+  labTestsOrdered LabTestOrder[]
 }
 
 model Prescription {
@@ -100,5 +138,131 @@ model Prescription {
   durationDays   Int
   notes          String?
 
+  saleItems PharmacySaleItem[]
+
   @@index([consultationId])
+}
+
+// ---- Pharmacy (Tier 2+) ----
+
+// Pricing is always normalized to a base unit (a tablet/piece), never left
+// ambiguous between "per strip" and "per unit" — every quantity x price
+// calculation elsewhere in the app multiplies quantityInUnits x pricePerUnit,
+// regardless of how the item is packaged.
+model PharmacyItem {
+  id               String   @id @default(uuid())
+  clinicId         String
+  clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name             String
+  unitsPerStrip    Int? // null = sold per unit directly (e.g. a syrup bottle)
+  pricePerUnit     Float
+  costPricePerUnit Float
+  stockUnits       Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  saleItems PharmacySaleItem[]
+
+  @@index([clinicId])
+}
+
+model PharmacySale {
+  id            String       @id @default(uuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       User         @relation("PharmacySalePatient", fields: [patientId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  soldById      String
+  soldBy        User         @relation("PharmacySaleSeller", fields: [soldById], references: [id])
+  taxPercent    Float        @default(0)
+  subtotal      Float
+  taxAmount     Float
+  total         Float
+  createdAt     DateTime     @default(now())
+
+  items PharmacySaleItem[]
+
+  @@index([clinicId])
+  @@index([patientId])
+}
+
+model PharmacySaleItem {
+  id             String        @id @default(uuid())
+  saleId         String
+  sale           PharmacySale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  prescriptionId String?
+  prescription   Prescription? @relation(fields: [prescriptionId], references: [id])
+  itemId         String?
+  item           PharmacyItem? @relation(fields: [itemId], references: [id])
+  medicineName   String
+  quantity       Int
+  unitPrice      Float
+  lineTotal      Float
+
+  @@index([saleId])
+}
+
+// ---- Lab (Tier 2+) ----
+
+// Created when a doctor saves a consultation that orders lab tests. Free-text
+// name, since at order time there may be no catalog match yet.
+model LabTestOrder {
+  id             String       @id @default(uuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  testName       String
+  notes          String?
+
+  resultItems LabResultItem[]
+
+  @@index([consultationId])
+}
+
+model LabTestCatalog {
+  id          String          @id @default(uuid())
+  clinicId    String
+  clinic      Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name        String
+  price       Float
+  resultItems LabResultItem[]
+
+  @@index([clinicId])
+}
+
+model LabInvoice {
+  id            String       @id @default(uuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       User         @relation("LabInvoicePatient", fields: [patientId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  recordedById  String
+  recordedBy    User         @relation("LabInvoiceRecorder", fields: [recordedById], references: [id])
+  taxPercent    Float        @default(0)
+  subtotal      Float
+  taxAmount     Float
+  total         Float
+  createdAt     DateTime     @default(now())
+
+  items LabResultItem[]
+
+  @@index([clinicId])
+  @@index([patientId])
+}
+
+model LabResultItem {
+  id            String          @id @default(uuid())
+  invoiceId     String
+  invoice       LabInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderId       String?
+  order         LabTestOrder?   @relation(fields: [orderId], references: [id])
+  catalogItemId String?
+  catalogItem   LabTestCatalog? @relation(fields: [catalogItemId], references: [id])
+  testName      String
+  resultText    String?
+  price         Float
+
+  @@index([invoiceId])
 }

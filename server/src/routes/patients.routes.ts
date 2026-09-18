@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
-import { toAppointment, toPublicUser } from '../utils/serialize';
+import { toAppointment, toPharmacySale, toLabInvoice, toPublicUser } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
@@ -10,11 +10,12 @@ patientsRouter.use(requireAuth);
 
 patientsRouter.get(
   '/',
-  requireRole('DOCTOR', 'ADMIN'),
-  asyncHandler(async (req, res) => {
+  requireRole('DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
     const patients = await prisma.user.findMany({
       where: {
+        clinicId: req.auth!.clinicId,
         role: 'PATIENT',
         ...(search
           ? {
@@ -37,26 +38,43 @@ patientsRouter.get(
   '/:id/records',
   asyncHandler(async (req: AuthedRequest, res) => {
     const isSelf = req.auth!.role === 'PATIENT' && req.auth!.userId === req.params.id;
-    const isStaff = req.auth!.role === 'DOCTOR' || req.auth!.role === 'ADMIN';
+    const isStaff = ['DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN'].includes(req.auth!.role);
     if (!isSelf && !isStaff) {
       throw new HttpError(403, 'Not authorized to view these records');
     }
 
-    const patient = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const patient = await prisma.user.findFirst({
+      where: { id: req.params.id, clinicId: req.auth!.clinicId },
+    });
     if (!patient || patient.role !== 'PATIENT') throw new HttpError(404, 'Patient not found');
 
     const appointments = await prisma.appointment.findMany({
-      where: { patientId: req.params.id },
+      where: { patientId: req.params.id, clinicId: req.auth!.clinicId },
       include: {
         doctor: { include: { user: true } },
-        consultation: { include: { prescriptions: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true } },
       },
       orderBy: { date: 'desc' },
     });
 
+    const [pharmacySales, labInvoices] = await Promise.all([
+      prisma.pharmacySale.findMany({
+        where: { patientId: req.params.id, clinicId: req.auth!.clinicId },
+        include: { items: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.labInvoice.findMany({
+        where: { patientId: req.params.id, clinicId: req.auth!.clinicId },
+        include: { items: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
     res.json({
       patient: toPublicUser(patient),
       appointments: appointments.map(toAppointment),
+      pharmacySales: pharmacySales.map(toPharmacySale),
+      labInvoices: labInvoices.map(toLabInvoice),
     });
   }),
 );

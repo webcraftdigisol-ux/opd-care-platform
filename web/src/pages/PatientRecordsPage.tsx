@@ -15,6 +15,7 @@ export function PatientRecordsPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-semibold text-teal">My Medical Records</h1>
       {isLoading && <p className="text-gray-500">Loading…</p>}
+
       <div className="space-y-4">
         {data?.appointments
           .filter((a) => a.consultation)
@@ -33,9 +34,7 @@ export function PatientRecordsPage() {
                   {a.consultation.diagnosis}
                 </p>
               )}
-              {a.consultation?.notes && (
-                <p className="text-sm text-gray-600">{a.consultation.notes}</p>
-              )}
+              {a.consultation?.notes && <p className="text-sm text-gray-600">{a.consultation.notes}</p>}
               {a.consultation && a.consultation.prescriptions.length > 0 && (
                 <div className="mt-2">
                   <p className="text-sm font-medium">Prescriptions</p>
@@ -48,12 +47,69 @@ export function PatientRecordsPage() {
                   </ul>
                 </div>
               )}
+              {a.consultation && a.consultation.labTestsOrdered.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-sm font-medium">Lab tests ordered</p>
+                  <ul className="ml-4 list-disc text-sm text-gray-600">
+                    {a.consultation.labTestsOrdered.map((o) => (
+                      <li key={o.id}>{o.testName}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ))}
         {data && data.appointments.filter((a) => a.consultation).length === 0 && (
           <p className="text-gray-500">No medical records yet.</p>
         )}
       </div>
+
+      {data && data.pharmacySales.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Pharmacy Purchases</h2>
+          <div className="space-y-3">
+            {data.pharmacySales.map((sale) => (
+              <div key={sale.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
+                  <span>{new Date(sale.createdAt).toLocaleDateString()}</span>
+                  <span className="font-semibold text-gray-800">₹{sale.total.toFixed(2)}</span>
+                </div>
+                <ul className="ml-4 list-disc text-sm text-gray-600">
+                  {sale.items.map((item) => (
+                    <li key={item.id}>
+                      {item.medicineName} × {item.quantity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data && data.labInvoices.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Lab Results</h2>
+          <div className="space-y-3">
+            {data.labInvoices.map((invoice) => (
+              <div key={invoice.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
+                  <span>{new Date(invoice.createdAt).toLocaleDateString()}</span>
+                  <span className="font-semibold text-gray-800">₹{invoice.total.toFixed(2)}</span>
+                </div>
+                <ul className="ml-4 list-disc text-sm text-gray-600">
+                  {invoice.items.map((item) => (
+                    <li key={item.id}>
+                      {item.testName}
+                      {item.resultText ? `: ${item.resultText}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { login } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
+  const [searchParams] = useSearchParams();
+  const [clinicSlug, setClinicSlug] = useState(searchParams.get('clinic') ?? '');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -16,9 +18,19 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const { token, user } = await login({ email, password });
-      setSession(token, user);
-      navigate(user.role === 'DOCTOR' ? '/doctor' : user.role === 'ADMIN' ? '/admin' : '/');
+      const { token, user, clinic } = await login({ clinicSlug: clinicSlug.trim(), email, password });
+      setSession(token, user, clinic);
+      navigate(
+        user.role === 'DOCTOR'
+          ? '/doctor'
+          : user.role === 'ADMIN'
+            ? '/admin'
+            : user.role === 'PHARMACIST'
+              ? '/pharmacy'
+              : user.role === 'LAB_TECHNICIAN'
+                ? '/lab'
+                : '/',
+      );
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Login failed');
     } finally {
@@ -31,6 +43,16 @@ export function LoginPage() {
       <h1 className="mb-1 text-2xl font-semibold text-teal">Welcome back</h1>
       <p className="mb-6 text-sm text-gray-500">Sign in to OPD Care</p>
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Clinic code</label>
+          <input
+            required
+            placeholder="e.g. sunrise-clinic"
+            value={clinicSlug}
+            onChange={(e) => setClinicSlug(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
+          />
+        </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
           <input
@@ -62,8 +84,14 @@ export function LoginPage() {
       </form>
       <p className="mt-4 text-center text-sm text-gray-500">
         New patient?{' '}
-        <Link to="/register" className="text-teal underline">
+        <Link to={`/register${clinicSlug ? `?clinic=${clinicSlug}` : ''}`} className="text-teal underline">
           Create an account
+        </Link>
+      </p>
+      <p className="mt-2 text-center text-sm text-gray-500">
+        Setting up a new clinic?{' '}
+        <Link to="/register-clinic" className="text-teal underline">
+          Register your clinic
         </Link>
       </p>
     </div>

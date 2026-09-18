@@ -17,6 +17,11 @@ const prescriptionSchema = z.object({
   notes: z.string().optional(),
 });
 
+const labOrderSchema = z.object({
+  testName: z.string().min(1),
+  notes: z.string().optional(),
+});
+
 const vitalsSchema = z
   .object({
     bpSystolic: z.number().optional(),
@@ -34,11 +39,14 @@ const saveSchema = z.object({
   diagnosis: z.string().optional(),
   notes: z.string().optional(),
   prescriptions: z.array(prescriptionSchema).optional(),
+  labTestsOrdered: z.array(labOrderSchema).optional(),
   complete: z.boolean().optional(),
 });
 
 async function assertOwnsAppointment(req: AuthedRequest, appointmentId: string) {
-  const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId } });
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: appointmentId, clinicId: req.auth!.clinicId },
+  });
   if (!appointment) throw new HttpError(404, 'Appointment not found');
   if (req.auth!.role === 'DOCTOR') {
     const doctor = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
@@ -81,6 +89,15 @@ consultationsRouter.put(
         }
       }
 
+      if (data.labTestsOrdered) {
+        await tx.labTestOrder.deleteMany({ where: { consultationId: saved.id } });
+        if (data.labTestsOrdered.length > 0) {
+          await tx.labTestOrder.createMany({
+            data: data.labTestsOrdered.map((o) => ({ ...o, consultationId: saved.id })),
+          });
+        }
+      }
+
       await tx.appointment.update({
         where: { id: appointment.id },
         data: { status: data.complete ? 'COMPLETED' : 'IN_CONSULTATION' },
@@ -88,7 +105,7 @@ consultationsRouter.put(
 
       return tx.consultation.findUniqueOrThrow({
         where: { id: saved.id },
-        include: { prescriptions: true },
+        include: { prescriptions: true, labTestsOrdered: true },
       });
     });
 
@@ -99,7 +116,9 @@ consultationsRouter.put(
 consultationsRouter.get(
   '/:appointmentId',
   asyncHandler(async (req: AuthedRequest, res) => {
-    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.appointmentId } });
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: req.params.appointmentId, clinicId: req.auth!.clinicId },
+    });
     if (!appointment) throw new HttpError(404, 'Appointment not found');
 
     if (req.auth!.role === 'PATIENT' && appointment.patientId !== req.auth!.userId) {
@@ -114,7 +133,7 @@ consultationsRouter.get(
 
     const consultation = await prisma.consultation.findUnique({
       where: { appointmentId: appointment.id },
-      include: { prescriptions: true },
+      include: { prescriptions: true, labTestsOrdered: true },
     });
     if (!consultation) throw new HttpError(404, 'No consultation recorded yet');
     res.json(toConsultation(consultation));

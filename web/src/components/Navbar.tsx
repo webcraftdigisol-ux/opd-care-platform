@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, clinic, logout } = useAuth();
   const navigate = useNavigate();
 
   function handleLogout() {
@@ -11,13 +11,38 @@ export function Navbar() {
   }
 
   const homeLink =
-    user?.role === 'DOCTOR' ? '/doctor' : user?.role === 'ADMIN' ? '/admin' : '/';
+    user?.role === 'DOCTOR'
+      ? '/doctor'
+      : user?.role === 'ADMIN'
+        ? '/admin'
+        : user?.role === 'PHARMACIST'
+          ? '/pharmacy'
+          : user?.role === 'LAB_TECHNICIAN'
+            ? '/lab'
+            : '/';
+
+  const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
 
   return (
-    <nav className="flex items-center justify-between border-b border-teal-light bg-white px-6 py-3 shadow-sm">
-      <Link to={homeLink} className="text-lg font-semibold text-teal">
-        OPD <span className="text-gold">Care</span>
-      </Link>
+    <nav className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-light bg-white px-6 py-3 shadow-sm">
+      <div className="flex items-center gap-6">
+        <Link to={homeLink} className="text-lg font-semibold text-teal">
+          {clinic?.name ?? 'OPD'} <span className="text-gold">Care</span>
+        </Link>
+        {user?.role === 'ADMIN' && tierAllowsPharmacyLab && (
+          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            <Link to="/admin/pharmacy" className="hover:text-teal">
+              Pharmacy
+            </Link>
+            <Link to="/admin/lab" className="hover:text-teal">
+              Lab
+            </Link>
+            <Link to="/admin/staff" className="hover:text-teal">
+              Staff
+            </Link>
+          </div>
+        )}
+      </div>
       {user && (
         <div className="flex items-center gap-4 text-sm">
           <span className="text-gray-600">

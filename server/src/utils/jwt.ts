@@ -6,6 +6,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 export interface JwtPayload {
   sub: string;
   role: Role;
+  clinicId: string;
 }
 
 export function signToken(payload: JwtPayload): string {

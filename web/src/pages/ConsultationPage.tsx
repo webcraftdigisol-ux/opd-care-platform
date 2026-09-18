@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getConsultation, saveConsultation } from '../api/consultations';
-import type { PrescriptionInput, Vitals } from '@opd/shared';
+import { useAuth } from '../context/AuthContext';
+import type { LabTestOrderInput, PrescriptionInput, Vitals } from '@opd/shared';
 
 export function ConsultationPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
+  const { clinic } = useAuth();
 
   const { data: existing } = useQuery({
     queryKey: ['consultation', appointmentId],
@@ -18,6 +20,7 @@ export function ConsultationPage() {
   const [diagnosis, setDiagnosis] = useState('');
   const [notes, setNotes] = useState('');
   const [prescriptions, setPrescriptions] = useState<PrescriptionInput[]>([]);
+  const [labTestsOrdered, setLabTestsOrdered] = useState<LabTestOrderInput[]>([]);
 
   useEffect(() => {
     if (existing) {
@@ -33,16 +36,31 @@ export function ConsultationPage() {
           notes: p.notes ?? undefined,
         })),
       );
+      setLabTestsOrdered(
+        existing.labTestsOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? undefined })),
+      );
     }
   }, [existing]);
 
   const saveMutation = useMutation({
     mutationFn: (complete: boolean) =>
-      saveConsultation(appointmentId!, { vitals, diagnosis, notes, prescriptions, complete }),
+      saveConsultation(appointmentId!, { vitals, diagnosis, notes, prescriptions, labTestsOrdered, complete }),
     onSuccess: (_, complete) => {
       if (complete) navigate('/doctor');
     },
   });
+
+  function addLabTest() {
+    setLabTestsOrdered((prev) => [...prev, { testName: '' }]);
+  }
+
+  function updateLabTest(index: number, field: keyof LabTestOrderInput, value: string) {
+    setLabTestsOrdered((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
+  }
+
+  function removeLabTest(index: number) {
+    setLabTestsOrdered((prev) => prev.filter((_, i) => i !== index));
+  }
 
   function addPrescription() {
     setPrescriptions((prev) => [...prev, { medicine: '', dosage: '', frequency: '', durationDays: 5 }]);
@@ -153,6 +171,39 @@ export function ConsultationPage() {
           {prescriptions.length === 0 && <p className="text-sm text-gray-400">No prescriptions added.</p>}
         </div>
       </section>
+
+      {clinic && clinic.tier >= 2 && (
+        <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700">Lab Tests Ordered</h2>
+            <button onClick={addLabTest} className="text-sm text-teal hover:underline">
+              + Add test
+            </button>
+          </div>
+          <div className="space-y-3">
+            {labTestsOrdered.map((o, i) => (
+              <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-4">
+                <input
+                  placeholder="Test name"
+                  value={o.testName}
+                  onChange={(e) => updateLabTest(i, 'testName', e.target.value)}
+                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
+                />
+                <input
+                  placeholder="Notes (optional)"
+                  value={o.notes ?? ''}
+                  onChange={(e) => updateLabTest(i, 'notes', e.target.value)}
+                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                />
+                <button onClick={() => removeLabTest(i)} className="text-red-400 hover:text-red-600">
+                  Remove
+                </button>
+              </div>
+            ))}
+            {labTestsOrdered.length === 0 && <p className="text-sm text-gray-400">No lab tests ordered.</p>}
+          </div>
+        </section>
+      )}
 
       <div className="flex gap-3">
         <button

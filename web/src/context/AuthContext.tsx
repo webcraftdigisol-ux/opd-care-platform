@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { PublicUser } from '@opd/shared';
+import type { ClinicSummary, PublicUser } from '@opd/shared';
 import { fetchMe } from '../api/auth';
+import { fetchCurrentClinic } from '../api/clinics';
 
 interface AuthContextValue {
   user: PublicUser | null;
+  clinic: ClinicSummary | null;
   loading: boolean;
-  setSession: (token: string, user: PublicUser) => void;
+  setSession: (token: string, user: PublicUser, clinic: ClinicSummary) => void;
   logout: () => void;
 }
 
@@ -16,6 +18,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raw = localStorage.getItem('opd_user');
     return raw ? (JSON.parse(raw) as PublicUser) : null;
   });
+  const [clinic, setClinic] = useState<ClinicSummary | null>(() => {
+    const raw = localStorage.getItem('opd_clinic');
+    return raw ? (JSON.parse(raw) as ClinicSummary) : null;
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,33 +30,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    fetchMe()
-      .then((me) => {
+    Promise.all([fetchMe(), fetchCurrentClinic()])
+      .then(([me, currentClinic]) => {
         setUser(me);
+        setClinic(currentClinic);
         localStorage.setItem('opd_user', JSON.stringify(me));
+        localStorage.setItem('opd_clinic', JSON.stringify(currentClinic));
       })
       .catch(() => {
         localStorage.removeItem('opd_token');
         localStorage.removeItem('opd_user');
+        localStorage.removeItem('opd_clinic');
         setUser(null);
+        setClinic(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  function setSession(token: string, nextUser: PublicUser) {
+  function setSession(token: string, nextUser: PublicUser, nextClinic: ClinicSummary) {
     localStorage.setItem('opd_token', token);
     localStorage.setItem('opd_user', JSON.stringify(nextUser));
+    localStorage.setItem('opd_clinic', JSON.stringify(nextClinic));
     setUser(nextUser);
+    setClinic(nextClinic);
   }
 
   function logout() {
     localStorage.removeItem('opd_token');
     localStorage.removeItem('opd_user');
+    localStorage.removeItem('opd_clinic');
     setUser(null);
+    setClinic(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setSession, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, clinic, loading, setSession, logout }}>{children}</AuthContext.Provider>
   );
 }
 

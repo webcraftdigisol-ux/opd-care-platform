@@ -2,9 +2,9 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../prisma';
-import { toAppointment, toDoctorProfile, toSchedule } from '../utils/serialize';
+import { toAppointment, toDoctorProfile, toPublicUser, toSchedule } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
 export const adminRouter = Router();
 
@@ -22,9 +22,12 @@ const createDoctorSchema = z.object({
 
 adminRouter.post(
   '/doctors',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const data = createDoctorSchema.parse(req.body);
-    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    const clinicId = req.auth!.clinicId;
+    const existing = await prisma.user.findUnique({
+      where: { clinicId_email: { clinicId, email: data.email } },
+    });
     if (existing) throw new HttpError(409, 'An account with this email already exists');
 
     const password = await bcrypt.hash(data.password, 10);
@@ -35,6 +38,7 @@ adminRouter.post(
         slotMinutes: data.slotMinutes ?? 15,
         user: {
           create: {
+            clinicId,
             name: data.name,
             email: data.email,
             phone: data.phone,
@@ -55,10 +59,17 @@ const updateDoctorSchema = z.object({
   slotMinutes: z.number().int().positive().optional(),
 });
 
+async function assertDoctorInClinic(clinicId: string, doctorId: string) {
+  const doctor = await prisma.doctorProfile.findFirst({ where: { id: doctorId, user: { clinicId } } });
+  if (!doctor) throw new HttpError(404, 'Doctor not found');
+  return doctor;
+}
+
 adminRouter.put(
   '/doctors/:id',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const data = updateDoctorSchema.parse(req.body);
+    await assertDoctorInClinic(req.auth!.clinicId, req.params.id);
     const doctor = await prisma.doctorProfile.update({
       where: { id: req.params.id },
       data,
@@ -80,10 +91,9 @@ const scheduleSchema = z.object({
 
 adminRouter.put(
   '/doctors/:id/schedule',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const data = scheduleSchema.parse(req.body);
-    const doctor = await prisma.doctorProfile.findUnique({ where: { id: req.params.id } });
-    if (!doctor) throw new HttpError(404, 'Doctor not found');
+    const doctor = await assertDoctorInClinic(req.auth!.clinicId, req.params.id);
 
     await prisma.$transaction([
       prisma.schedule.deleteMany({ where: { doctorId: doctor.id } }),
@@ -100,17 +110,61 @@ adminRouter.put(
   }),
 );
 
+const createStaffSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().min(6).optional(),
+  password: z.string().min(6),
+  role: z.enum(['PHARMACIST', 'LAB_TECHNICIAN']),
+});
+
+adminRouter.post(
+  '/staff',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = createStaffSchema.parse(req.body);
+    const clinicId = req.auth!.clinicId;
+    const existing = await prisma.user.findUnique({
+      where: { clinicId_email: { clinicId, email: data.email } },
+    });
+    if (existing) throw new HttpError(409, 'An account with this email already exists');
+
+    const password = await bcrypt.hash(data.password, 10);
+    const staff = await prisma.user.create({
+      data: {
+        clinicId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        password,
+        role: data.role,
+      },
+    });
+    res.status(201).json(toPublicUser(staff));
+  }),
+);
+
+adminRouter.get(
+  '/staff',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const staff = await prisma.user.findMany({
+      where: { clinicId: req.auth!.clinicId, role: { in: ['DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN'] } },
+      orderBy: { name: 'asc' },
+    });
+    res.json(staff.map(toPublicUser));
+  }),
+);
+
 adminRouter.get(
   '/appointments',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const dateStr = typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
     const date = new Date(`${dateStr}T00:00:00.000Z`);
     const appointments = await prisma.appointment.findMany({
-      where: { date },
+      where: { clinicId: req.auth!.clinicId, date },
       include: {
         patient: true,
         doctor: { include: { user: true } },
-        consultation: { include: { prescriptions: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true } },
       },
       orderBy: [{ doctorId: 'asc' }, { tokenNumber: 'asc' }],
     });

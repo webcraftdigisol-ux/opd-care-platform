@@ -9,6 +9,7 @@ import { colors } from '../theme';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
+  const [clinicSlug, setClinicSlug] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +20,8 @@ export function LoginScreen({ navigation }: Props) {
     setError(null);
     setSubmitting(true);
     try {
-      const { token, user } = await login({ email, password });
-      await setSession(token, user);
+      const { token, user, clinic } = await login({ clinicSlug: clinicSlug.trim(), email, password });
+      await setSession(token, user, clinic);
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Login failed');
     } finally {
@@ -33,6 +34,13 @@ export function LoginScreen({ navigation }: Props) {
       <Text style={styles.title}>OPD Care</Text>
       <Text style={styles.subtitle}>Sign in to book and track your appointments</Text>
 
+      <TextInput
+        style={styles.input}
+        placeholder="Clinic code (e.g. sunrise-clinic)"
+        autoCapitalize="none"
+        value={clinicSlug}
+        onChangeText={setClinicSlug}
+      />
       <TextInput
         style={styles.input}
         placeholder="Email"

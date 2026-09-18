@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listAllAppointments } from '../api/admin';
 import { StatusBadge } from '../components/StatusBadge';
+import { useAuth } from '../context/AuthContext';
 
 export function AdminDashboard() {
+  const { clinic } = useAuth();
+  const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const { data: appointments, isLoading } = useQuery({
     queryKey: ['admin-appointments', date],
@@ -22,6 +25,19 @@ export function AdminDashboard() {
           <Link to="/admin/walk-in" className="rounded-md bg-teal px-3 py-2 text-sm text-white hover:bg-teal-mid">
             Register Walk-in
           </Link>
+          {tierAllowsPharmacyLab && (
+            <>
+              <Link to="/admin/pharmacy" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+                Pharmacy
+              </Link>
+              <Link to="/admin/lab" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+                Lab
+              </Link>
+              <Link to="/admin/staff" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+                Staff
+              </Link>
+            </>
+          )}
         </div>
       </div>
 

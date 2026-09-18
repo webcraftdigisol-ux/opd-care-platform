@@ -9,6 +9,7 @@ import { colors } from '../theme';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
 export function RegisterScreen({ navigation }: Props) {
+  const [clinicSlug, setClinicSlug] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -21,8 +22,14 @@ export function RegisterScreen({ navigation }: Props) {
     setError(null);
     setSubmitting(true);
     try {
-      const { token, user } = await register({ name, email, phone: phone || undefined, password });
-      await setSession(token, user);
+      const { token, user, clinic } = await register({
+        clinicSlug: clinicSlug.trim(),
+        name,
+        email,
+        phone: phone || undefined,
+        password,
+      });
+      await setSession(token, user, clinic);
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Registration failed');
     } finally {
@@ -34,6 +41,13 @@ export function RegisterScreen({ navigation }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Create your account</Text>
 
+      <TextInput
+        style={styles.input}
+        placeholder="Clinic code (e.g. sunrise-clinic)"
+        autoCapitalize="none"
+        value={clinicSlug}
+        onChangeText={setClinicSlug}
+      />
       <TextInput style={styles.input} placeholder="Full name" value={name} onChangeText={setName} />
       <TextInput
         style={styles.input}

@@ -168,6 +168,16 @@ parallel in CI even though this sandbox runs them serially (`--runInBand`)
 for reliability. There is currently no web/mobile UI test layer (Playwright
 e2e, component tests) — see **What's not built yet**.
 
+## CI/CD
+
+`.github/workflows/ci.yml` runs on every push and pull request to `main`: a
+Postgres 16 service container, `npm ci`, `prisma generate`, then the full
+build sweep (shared/server/web, mobile typecheck) and the server test suite
+against that service's `opd_care_test` database — the exact same commands
+and `server/.env.test` connection string used locally, so a green run
+locally and a green run in CI mean the same thing. There's no deploy step
+yet (see **What's not built yet**); it's build+test verification only.
+
 ## API contract
 
 All request/response shapes live in `shared/src/index.ts` — it's the single
@@ -222,19 +232,35 @@ the user's `clinicId` and every route scopes its queries by it).
   `GET .../bill-preview` even though nothing stops a browser from sending
   those requests; a Head Nurse's token gets 200 on transfer/bill-preview but
   still 403 on admission and discharge.
+- **A clean install must regenerate the Prisma Client — this isn't
+  optional.** `@prisma/client`'s generated code is written to `node_modules`
+  (hoisted to the repo root under npm workspaces) by `prisma generate`, and
+  a fresh `npm ci` does not run that automatically. Locally this stays
+  invisible for months because `node_modules` already has a generated
+  client from the last `prisma generate` you ran by hand — it only breaks on
+  a genuinely clean checkout, which is exactly what CI does on every run.
+  Caught directly while building the CI workflow: `npm run build:server`
+  failed with dozens of `Module '"@prisma/client"' has no exported member`
+  errors after a clean `npm ci`, even though the exact same command had been
+  passing locally all along. Fixed with a `postinstall: "prisma generate"`
+  script on the server workspace (so any install regenerates it, dev or CI)
+  plus an explicit generate step in the workflow as a second line of
+  defense.
 
 ## What's not built yet
 
 Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD,
 Reporting (financial Actual-vs-Total across all three revenue modules, daily
 activity, follow-ups due), granular front-desk/nursing staff roles
-(Receptionist, Nurse, Head Nurse), and a server integration test suite, on a
-multi-tenant hosted architecture. Deliberately deferred:
+(Receptionist, Nurse, Head Nurse), a server integration test suite, and a
+CI workflow that runs it on every push/PR, on a multi-tenant hosted
+architecture. Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
 - Web/mobile UI test layer (Playwright e2e, component tests) — only the
   server has automated tests so far
 - SMS/email/push notifications, billing/payments, file uploads
-- CI/CD pipeline and production deployment config
+- CD: no deploy step yet — CI currently only builds and tests, it doesn't
+  ship anywhere
 - Fixed time-slot booking (currently token/queue-based per day, not per time slot)

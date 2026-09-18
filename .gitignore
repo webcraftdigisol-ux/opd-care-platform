@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+*.tsbuildinfo
+.DS_Store
+
+# Prisma
+server/prisma/dev.db
+
+# Expo
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+
+# Editors
+.vscode/
+.idea/

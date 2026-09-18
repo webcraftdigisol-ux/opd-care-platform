@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CHECKED_IN
+  IN_CONSULTATION
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  phone     String?  @unique
+  password  String
+  name      String
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctorProfile DoctorProfile?
+  appointments  Appointment[]  @relation("PatientAppointments")
+}
+
+model DoctorProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization String
+  department     String
+  slotMinutes    Int      @default(15)
+
+  schedules    Schedule[]
+  appointments Appointment[] @relation("DoctorAppointments")
+}
+
+model Schedule {
+  id        String        @id @default(uuid())
+  doctorId  String
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek Int
+  startTime String
+  endTime   String
+
+  @@index([doctorId])
+}
+
+model Appointment {
+  id          String            @id @default(uuid())
+  patientId   String
+  patient     User              @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctorId    String
+  doctor      DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  date        DateTime
+  tokenNumber Int
+  status      AppointmentStatus @default(BOOKED)
+  isWalkIn    Boolean           @default(false)
+  reason      String?
+  createdAt   DateTime          @default(now())
+
+  consultation Consultation?
+
+  @@index([doctorId, date])
+  @@index([patientId])
+}
+
+model Consultation {
+  id            String      @id @default(uuid())
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  vitals        Json?
+  diagnosis     String?
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  prescriptions Prescription[]
+}
+
+model Prescription {
+  id             String       @id @default(uuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  medicine       String
+  dosage         String
+  frequency      String
+  durationDays   Int
+  notes          String?
+
+  @@index([consultationId])
+}

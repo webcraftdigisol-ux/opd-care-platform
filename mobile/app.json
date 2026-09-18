@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "OPD Care",
+    "slug": "opd-care-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0B6259"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.webcraftdigisol.opdcare"
+    },
+    "android": {
+      "package": "com.webcraftdigisol.opdcare"
+    }
+  }
+}

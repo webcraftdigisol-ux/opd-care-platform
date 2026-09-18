@@ -19,6 +19,7 @@ export function ConsultationPage() {
   const [vitals, setVitals] = useState<Vitals>({});
   const [diagnosis, setDiagnosis] = useState('');
   const [notes, setNotes] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
   const [prescriptions, setPrescriptions] = useState<PrescriptionInput[]>([]);
   const [labTestsOrdered, setLabTestsOrdered] = useState<LabTestOrderInput[]>([]);
 
@@ -27,6 +28,7 @@ export function ConsultationPage() {
       setVitals(existing.vitals ?? {});
       setDiagnosis(existing.diagnosis ?? '');
       setNotes(existing.notes ?? '');
+      setFollowUpDate(existing.followUpDate ?? '');
       setPrescriptions(
         existing.prescriptions.map((p) => ({
           medicine: p.medicine,
@@ -44,7 +46,15 @@ export function ConsultationPage() {
 
   const saveMutation = useMutation({
     mutationFn: (complete: boolean) =>
-      saveConsultation(appointmentId!, { vitals, diagnosis, notes, prescriptions, labTestsOrdered, complete }),
+      saveConsultation(appointmentId!, {
+        vitals,
+        diagnosis,
+        notes,
+        followUpDate: followUpDate || undefined,
+        prescriptions,
+        labTestsOrdered,
+        complete,
+      }),
     onSuccess: (_, complete) => {
       if (complete) navigate('/doctor');
     },
@@ -122,7 +132,14 @@ export function ConsultationPage() {
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Consultation notes"
           rows={4}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
+          className="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
+        />
+        <label className="mb-1 block text-xs font-medium text-gray-500">Follow-up date (optional)</label>
+        <input
+          type="date"
+          value={followUpDate}
+          onChange={(e) => setFollowUpDate(e.target.value)}
+          className="rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
         />
       </section>
 

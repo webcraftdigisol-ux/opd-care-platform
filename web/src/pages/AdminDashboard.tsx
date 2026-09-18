@@ -38,6 +38,9 @@ export function AdminDashboard() {
               </Link>
             </>
           )}
+          <Link to="/admin/reports" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+            Reports
+          </Link>
         </div>
       </div>
 

@@ -3,29 +3,14 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toPharmacyItem, toPharmacySale } from '../utils/serialize';
 import { suggestPharmacyQuantity } from '../utils/dosage';
+import { findBestNameMatch } from '../utils/match';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
 import type { PendingPharmacyLine } from '@opd/shared';
-import type { PharmacyItem as PrismaPharmacyItem } from '@prisma/client';
 
 export const pharmacyRouter = Router();
 
 pharmacyRouter.use(requireAuth, requireTier(2));
-
-async function findCatalogMatch(clinicId: string, medicineName: string): Promise<PrismaPharmacyItem | null> {
-  const exact = await prisma.pharmacyItem.findFirst({
-    where: { clinicId, name: { equals: medicineName, mode: 'insensitive' } },
-  });
-  if (exact) return exact;
-
-  const candidates = await prisma.pharmacyItem.findMany({ where: { clinicId } });
-  const needle = medicineName.trim().toLowerCase();
-  return (
-    candidates.find(
-      (c) => c.name.toLowerCase().includes(needle) || needle.includes(c.name.toLowerCase()),
-    ) ?? null
-  );
-}
 
 // ---- Catalog ----
 
@@ -84,12 +69,15 @@ pharmacyRouter.get(
     const patient = await prisma.user.findFirst({ where: { id: req.params.patientId, clinicId } });
     if (!patient) throw new HttpError(404, 'Patient not found');
 
-    const appointments = await prisma.appointment.findMany({
-      where: { patientId: patient.id, clinicId },
-      include: { consultation: { include: { prescriptions: true } } },
-      orderBy: { date: 'desc' },
-      take: 10,
-    });
+    const [appointments, catalog] = await Promise.all([
+      prisma.appointment.findMany({
+        where: { patientId: patient.id, clinicId },
+        include: { consultation: { include: { prescriptions: true } } },
+        orderBy: { date: 'desc' },
+        take: 10,
+      }),
+      prisma.pharmacyItem.findMany({ where: { clinicId } }),
+    ]);
 
     const lines: PendingPharmacyLine[] = [];
     for (const appointment of appointments) {
@@ -98,7 +86,7 @@ pharmacyRouter.get(
         const alreadyDispensed = await prisma.pharmacySaleItem.findFirst({
           where: { prescriptionId: prescription.id },
         });
-        const matched = await findCatalogMatch(clinicId, prescription.medicine);
+        const matched = findBestNameMatch(catalog, prescription.medicine);
         const suggestedQuantity = suggestPharmacyQuantity(prescription.frequency, prescription.durationDays);
         lines.push({
           prescriptionId: prescription.id,

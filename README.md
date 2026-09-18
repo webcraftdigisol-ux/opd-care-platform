@@ -36,6 +36,12 @@ mobile/   Expo (React Native) app — patient booking, queue status, records
 - **Pharmacist** (Tier 2+) — counter workflow: search patient → see prescriptions from their visits, auto-matched to inventory with quantity/price pre-filled → confirm or edit → receipt, with stock decremented automatically. Web.
 - **Lab Technician** (Tier 2+) — same pattern for doctor-ordered lab tests: auto-matched to the priced catalog, record results, receipt. Web.
 
+Admins (and doctors, for the follow-ups view) also get a **Reports** page: a
+Pharmacy/Lab financial report (Actual vs. Total ordered — Tier 2+), a daily
+OPD activity report, and a follow-ups-due dashboard (overdue / due today /
+due this week) with a "mark contacted" action, driven by an optional
+follow-up date doctors can set on a consultation.
+
 ## Multi-tenancy
 
 Every clinic ("tenant") is a `Clinic` row with its own `slug` (used to sign
@@ -129,18 +135,20 @@ the user's `clinicId` and every route scopes its queries by it).
   strip-vs-tablet ambiguity to get wrong.
 - **Dispensed/resulted lines record their own charge.** A `PharmacySaleItem`
   / `LabResultItem` stores its own `medicineName`/`testName` and price at the
-  time of sale, rather than re-deriving it from the current catalog — this is
-  what a future "Actual vs. Total ordered" report (not yet built) will need
-  to stay consistent, per the reference build's hard-won lesson about that
-  exact bug.
+  time of sale, rather than re-deriving it from the current catalog. The
+  Reports "Actual vs. Total ordered" numbers rely on exactly this: once a
+  prescription/lab order has a linked sale/result item, its contribution to
+  "Total ordered" is that item's own recorded charge, forever — even if the
+  catalog price changes afterward. Verified directly: dispensing an item at a
+  price different from its catalog price, then changing the catalog price
+  again, leaves both Actual and Total ordered unchanged at the original
+  billed amount.
 
 ## What's not built yet
 
-Built so far: Tier 1 OPD core + Tier 2 Pharmacy/Lab, on a multi-tenant
-hosted architecture. Deliberately deferred, roughly in build order:
-- **Reporting**: the "Actual vs. Total ordered" financial report, and the
-  follow-ups-due dashboard (the data model already supports both — see notes
-  above)
+Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab, and Reporting (financial
+Actual-vs-Total, daily activity, follow-ups due), on a multi-tenant hosted
+architecture. Deliberately deferred, roughly in build order:
 - **Tier 3 (IPD)**: admission/discharge, wards & beds, doctor visits,
   procedures with consent forms, medications given (clinic-supplied vs.
   patient's-own), vitals trend charts, deposit-aware discharge billing

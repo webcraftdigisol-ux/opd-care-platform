@@ -3,7 +3,7 @@ import type { Consultation, SaveConsultationRequest } from '@opd/shared';
 
 export async function saveConsultation(
   appointmentId: string,
-  data: SaveConsultationRequest & { complete?: boolean },
+  data: SaveConsultationRequest,
 ): Promise<Consultation> {
   const res = await apiClient.put<Consultation>(`/consultations/${appointmentId}`, data);
   return res.data;

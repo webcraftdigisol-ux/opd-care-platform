@@ -105,6 +105,8 @@ export function toConsultation(
     vitals: (c.vitals as Consultation['vitals']) ?? null,
     diagnosis: c.diagnosis,
     notes: c.notes,
+    followUpDate: c.followUpDate ? c.followUpDate.toISOString().slice(0, 10) : null,
+    followUpContacted: c.followUpContacted,
     createdAt: c.createdAt.toISOString(),
     prescriptions: (c.prescriptions ?? []).map(toPrescription),
     labTestsOrdered: (c.labTestsOrdered ?? []).map(toLabTestOrder),

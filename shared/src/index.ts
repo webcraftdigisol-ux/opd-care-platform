@@ -98,6 +98,8 @@ export interface Consultation {
   vitals: Vitals | null;
   diagnosis: string | null;
   notes: string | null;
+  followUpDate: string | null;
+  followUpContacted: boolean;
   createdAt: string;
   prescriptions: Prescription[];
   labTestsOrdered: LabTestOrder[];
@@ -172,6 +174,7 @@ export interface SaveConsultationRequest {
   vitals?: Vitals;
   diagnosis?: string;
   notes?: string;
+  followUpDate?: string; // "YYYY-MM-DD"
   prescriptions?: PrescriptionInput[];
   labTestsOrdered?: LabTestOrderInput[];
   complete?: boolean;
@@ -343,6 +346,72 @@ export interface PatientRecordsResponse {
   appointments: Appointment[];
   pharmacySales: PharmacySale[];
   labInvoices: LabInvoice[];
+}
+
+// ---- Reports ----
+
+// "Actual" = real transactions that happened in-house, at their own recorded
+// price. "Total ordered" = everything a doctor ordered in the date range,
+// whether fulfilled in-house or not — an item that was billed keeps its own
+// recorded charge here too (never re-derived from a fresh catalog lookup),
+// and an item never billed is valued at current catalog pricing when a name
+// match exists. This number must never shrink just because something later
+// gets fulfilled.
+export interface ReportItemBreakdown {
+  name: string;
+  actualQuantity: number;
+  actualTotal: number;
+  orderedQuantity: number;
+  orderedTotal: number;
+  unmatchedOrderedCount: number;
+}
+
+export interface RevenueSection {
+  actual: { count: number; total: number };
+  totalOrdered: { count: number; total: number; unmatchedCount: number };
+  byItem: ReportItemBreakdown[];
+}
+
+export interface PharmacyLabReport {
+  from: string;
+  to: string;
+  pharmacy: RevenueSection;
+  lab: RevenueSection;
+}
+
+export interface DoctorActivitySummary {
+  doctorId: string;
+  doctorName: string;
+  total: number;
+  completed: number;
+}
+
+export interface DailyActivityReport {
+  date: string;
+  totalAppointments: number;
+  booked: number;
+  walkIns: number;
+  completed: number;
+  cancelled: number;
+  noShow: number;
+  byDoctor: DoctorActivitySummary[];
+}
+
+export interface FollowUpItem {
+  consultationId: string;
+  appointmentId: string;
+  patientId: string;
+  patientName: string;
+  patientPhone: string | null;
+  doctorName: string;
+  followUpDate: string;
+  contacted: boolean;
+}
+
+export interface FollowUpsReport {
+  overdue: FollowUpItem[];
+  dueToday: FollowUpItem[];
+  dueThisWeek: FollowUpItem[];
 }
 
 export interface ApiError {

@@ -18,6 +18,7 @@ import { PharmacyCounterPage } from './pages/PharmacyCounterPage';
 import { PharmacyInventoryPage } from './pages/PharmacyInventoryPage';
 import { LabCounterPage } from './pages/LabCounterPage';
 import { LabCatalogPage } from './pages/LabCatalogPage';
+import { ReportsPage } from './pages/ReportsPage';
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -118,6 +119,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMIN']}>
               <LabCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/reports"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <ReportsPage />
             </ProtectedRoute>
           }
         />

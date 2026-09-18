@@ -2,29 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toLabInvoice, toLabTestCatalogEntry } from '../utils/serialize';
+import { findBestNameMatch } from '../utils/match';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
 import type { PendingLabLine } from '@opd/shared';
-import type { LabTestCatalog as PrismaLabTestCatalog } from '@prisma/client';
 
 export const labRouter = Router();
 
 labRouter.use(requireAuth, requireTier(2));
-
-async function findCatalogMatch(clinicId: string, testName: string): Promise<PrismaLabTestCatalog | null> {
-  const exact = await prisma.labTestCatalog.findFirst({
-    where: { clinicId, name: { equals: testName, mode: 'insensitive' } },
-  });
-  if (exact) return exact;
-
-  const candidates = await prisma.labTestCatalog.findMany({ where: { clinicId } });
-  const needle = testName.trim().toLowerCase();
-  return (
-    candidates.find(
-      (c) => c.name.toLowerCase().includes(needle) || needle.includes(c.name.toLowerCase()),
-    ) ?? null
-  );
-}
 
 // ---- Catalog ----
 
@@ -78,19 +63,22 @@ labRouter.get(
     const patient = await prisma.user.findFirst({ where: { id: req.params.patientId, clinicId } });
     if (!patient) throw new HttpError(404, 'Patient not found');
 
-    const appointments = await prisma.appointment.findMany({
-      where: { patientId: patient.id, clinicId },
-      include: { consultation: { include: { labTestsOrdered: true } } },
-      orderBy: { date: 'desc' },
-      take: 10,
-    });
+    const [appointments, catalog] = await Promise.all([
+      prisma.appointment.findMany({
+        where: { patientId: patient.id, clinicId },
+        include: { consultation: { include: { labTestsOrdered: true } } },
+        orderBy: { date: 'desc' },
+        take: 10,
+      }),
+      prisma.labTestCatalog.findMany({ where: { clinicId } }),
+    ]);
 
     const lines: PendingLabLine[] = [];
     for (const appointment of appointments) {
       if (!appointment.consultation) continue;
       for (const order of appointment.consultation.labTestsOrdered) {
         const alreadyResulted = await prisma.labResultItem.findFirst({ where: { orderId: order.id } });
-        const matched = await findCatalogMatch(clinicId, order.testName);
+        const matched = findBestNameMatch(catalog, order.testName);
         lines.push({
           orderId: order.id,
           appointmentId: appointment.id,

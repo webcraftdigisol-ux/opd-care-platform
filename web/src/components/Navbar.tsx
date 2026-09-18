@@ -29,16 +29,30 @@ export function Navbar() {
         <Link to={homeLink} className="text-lg font-semibold text-teal">
           {clinic?.name ?? 'OPD'} <span className="text-gold">Care</span>
         </Link>
-        {user?.role === 'ADMIN' && tierAllowsPharmacyLab && (
+        {user?.role === 'ADMIN' && (
           <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            <Link to="/admin/pharmacy" className="hover:text-teal">
-              Pharmacy
+            {tierAllowsPharmacyLab && (
+              <>
+                <Link to="/admin/pharmacy" className="hover:text-teal">
+                  Pharmacy
+                </Link>
+                <Link to="/admin/lab" className="hover:text-teal">
+                  Lab
+                </Link>
+                <Link to="/admin/staff" className="hover:text-teal">
+                  Staff
+                </Link>
+              </>
+            )}
+            <Link to="/admin/reports" className="hover:text-teal">
+              Reports
             </Link>
-            <Link to="/admin/lab" className="hover:text-teal">
-              Lab
-            </Link>
-            <Link to="/admin/staff" className="hover:text-teal">
-              Staff
+          </div>
+        )}
+        {user?.role === 'DOCTOR' && (
+          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            <Link to="/admin/reports" className="hover:text-teal">
+              Reports
             </Link>
           </div>
         )}

@@ -38,6 +38,7 @@ const saveSchema = z.object({
   vitals: vitalsSchema,
   diagnosis: z.string().optional(),
   notes: z.string().optional(),
+  followUpDate: z.string().optional(),
   prescriptions: z.array(prescriptionSchema).optional(),
   labTestsOrdered: z.array(labOrderSchema).optional(),
   complete: z.boolean().optional(),
@@ -64,12 +65,19 @@ consultationsRouter.put(
     const data = saveSchema.parse(req.body);
     const appointment = await assertOwnsAppointment(req, req.params.appointmentId);
 
+    const followUpDate = data.followUpDate ? new Date(`${data.followUpDate}T00:00:00.000Z`) : undefined;
+
     const consultation = await prisma.$transaction(async (tx) => {
       const existing = await tx.consultation.findUnique({ where: { appointmentId: appointment.id } });
       const saved = existing
         ? await tx.consultation.update({
             where: { appointmentId: appointment.id },
-            data: { vitals: data.vitals ?? undefined, diagnosis: data.diagnosis, notes: data.notes },
+            data: {
+              vitals: data.vitals ?? undefined,
+              diagnosis: data.diagnosis,
+              notes: data.notes,
+              followUpDate,
+            },
           })
         : await tx.consultation.create({
             data: {
@@ -77,6 +85,7 @@ consultationsRouter.put(
               vitals: data.vitals ?? undefined,
               diagnosis: data.diagnosis,
               notes: data.notes,
+              followUpDate,
             },
           });
 

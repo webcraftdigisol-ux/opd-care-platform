@@ -3,11 +3,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createStaff, listStaff } from '../api/admin';
 import type { Role } from '@opd/shared';
 
-const ROLE_LABELS: Record<'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN', string> = {
+type StaffRole = Extract<
+  Role,
+  'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN' | 'RECEPTIONIST' | 'NURSE' | 'HEAD_NURSE'
+>;
+
+const ROLE_LABELS: Record<StaffRole, string> = {
   PHARMACIST: 'Pharmacist',
   LAB_TECHNICIAN: 'Lab Technician',
   RADIOLOGY_TECHNICIAN: 'Radiology Technician',
+  RECEPTIONIST: 'Receptionist',
+  NURSE: 'Nurse',
+  HEAD_NURSE: 'Head Nurse',
 };
+
+const STAFF_ROLES = Object.keys(ROLE_LABELS) as StaffRole[];
+
+function isStaffRole(role: string): role is StaffRole {
+  return (STAFF_ROLES as string[]).includes(role);
+}
 
 export function AdminStaffPage() {
   const queryClient = useQueryClient();
@@ -18,7 +32,7 @@ export function AdminStaffPage() {
     email: '',
     phone: '',
     password: '',
-    role: 'PHARMACIST' as Extract<Role, 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN'>,
+    role: 'PHARMACIST' as StaffRole,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +53,7 @@ export function AdminStaffPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-semibold text-teal">Pharmacy / Lab / Radiology Staff</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-teal">Staff</h1>
 
       <form onSubmit={handleSubmit} className="mb-8 grid grid-cols-2 gap-3 rounded-xl bg-white p-6 shadow-sm">
         <input
@@ -74,12 +88,14 @@ export function AdminStaffPage() {
         />
         <select
           value={form.role}
-          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as typeof form.role }))}
+          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as StaffRole }))}
           className="col-span-2 rounded-md border border-gray-300 px-3 py-2"
         >
-          <option value="PHARMACIST">Pharmacist</option>
-          <option value="LAB_TECHNICIAN">Lab Technician</option>
-          <option value="RADIOLOGY_TECHNICIAN">Radiology Technician</option>
+          {STAFF_ROLES.map((role) => (
+            <option key={role} value={role}>
+              {ROLE_LABELS[role]}
+            </option>
+          ))}
         </select>
         {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
         <button
@@ -93,10 +109,7 @@ export function AdminStaffPage() {
 
       <div className="space-y-2">
         {staff
-          ?.filter(
-            (s): s is typeof s & { role: keyof typeof ROLE_LABELS } =>
-              s.role === 'PHARMACIST' || s.role === 'LAB_TECHNICIAN' || s.role === 'RADIOLOGY_TECHNICIAN',
-          )
+          ?.filter((s): s is typeof s & { role: StaffRole } => isStaffRole(s.role))
           .map((s) => (
             <div key={s.id} className="rounded-lg border border-gray-200 bg-white p-3">
               <p className="font-medium">{s.name}</p>

@@ -118,6 +118,45 @@ async function main() {
     },
   });
 
+  const receptionistPassword = await bcrypt.hash('receptionist123', 10);
+  await prisma.user.upsert({
+    where: { clinicId_email: { clinicId: clinic.id, email: 'receptionist@opdcare.test' } },
+    update: {},
+    create: {
+      clinicId: clinic.id,
+      name: 'Kavita Shah',
+      email: 'receptionist@opdcare.test',
+      password: receptionistPassword,
+      role: 'RECEPTIONIST',
+    },
+  });
+
+  const nursePassword = await bcrypt.hash('nurse123', 10);
+  await prisma.user.upsert({
+    where: { clinicId_email: { clinicId: clinic.id, email: 'nurse@opdcare.test' } },
+    update: {},
+    create: {
+      clinicId: clinic.id,
+      name: 'Anjali Deshmukh',
+      email: 'nurse@opdcare.test',
+      password: nursePassword,
+      role: 'NURSE',
+    },
+  });
+
+  const headNursePassword = await bcrypt.hash('headnurse123', 10);
+  await prisma.user.upsert({
+    where: { clinicId_email: { clinicId: clinic.id, email: 'headnurse@opdcare.test' } },
+    update: {},
+    create: {
+      clinicId: clinic.id,
+      name: 'Sunita Reddy',
+      email: 'headnurse@opdcare.test',
+      password: headNursePassword,
+      role: 'HEAD_NURSE',
+    },
+  });
+
   const pharmacyItems: { name: string; unitsPerStrip: number | null; pricePerUnit: number; costPricePerUnit: number; stockUnits: number }[] = [
     { name: 'Paracetamol 500mg', unitsPerStrip: 10, pricePerUnit: 2, costPricePerUnit: 1, stockUnits: 500 },
     { name: 'Amoxicillin 250mg', unitsPerStrip: 10, pricePerUnit: 5, costPricePerUnit: 3, stockUnits: 300 },
@@ -191,6 +230,9 @@ async function main() {
   console.log('  Pharmacist: pharmacist@opdcare.test / pharmacist123');
   console.log('  Lab tech:   labtech@opdcare.test / labtech123');
   console.log('  Radiology:  radiologytech@opdcare.test / radiologytech123');
+  console.log('  Reception:  receptionist@opdcare.test / receptionist123');
+  console.log('  Nurse:      nurse@opdcare.test / nurse123');
+  console.log('  Head Nurse: headnurse@opdcare.test / headnurse123');
 }
 
 main()

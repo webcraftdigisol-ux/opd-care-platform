@@ -8,7 +8,7 @@ import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth
 
 export const adminRouter = Router();
 
-adminRouter.use(requireAuth, requireRole('ADMIN'));
+adminRouter.use(requireAuth);
 
 const createDoctorSchema = z.object({
   name: z.string().min(2),
@@ -22,6 +22,7 @@ const createDoctorSchema = z.object({
 
 adminRouter.post(
   '/doctors',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createDoctorSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;
@@ -67,6 +68,7 @@ async function assertDoctorInClinic(clinicId: string, doctorId: string) {
 
 adminRouter.put(
   '/doctors/:id',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = updateDoctorSchema.parse(req.body);
     await assertDoctorInClinic(req.auth!.clinicId, req.params.id);
@@ -91,6 +93,7 @@ const scheduleSchema = z.object({
 
 adminRouter.put(
   '/doctors/:id/schedule',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = scheduleSchema.parse(req.body);
     const doctor = await assertDoctorInClinic(req.auth!.clinicId, req.params.id);
@@ -115,11 +118,19 @@ const createStaffSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(6).optional(),
   password: z.string().min(6),
-  role: z.enum(['PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN']),
+  role: z.enum([
+    'PHARMACIST',
+    'LAB_TECHNICIAN',
+    'RADIOLOGY_TECHNICIAN',
+    'RECEPTIONIST',
+    'NURSE',
+    'HEAD_NURSE',
+  ]),
 });
 
 adminRouter.post(
   '/staff',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createStaffSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;
@@ -145,11 +156,23 @@ adminRouter.post(
 
 adminRouter.get(
   '/staff',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const staff = await prisma.user.findMany({
       where: {
         clinicId: req.auth!.clinicId,
-        role: { in: ['DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN'] },
+        role: {
+          in: [
+            'DOCTOR',
+            'ADMIN',
+            'PHARMACIST',
+            'LAB_TECHNICIAN',
+            'RADIOLOGY_TECHNICIAN',
+            'RECEPTIONIST',
+            'NURSE',
+            'HEAD_NURSE',
+          ],
+        },
       },
       orderBy: { name: 'asc' },
     });
@@ -159,6 +182,7 @@ adminRouter.get(
 
 adminRouter.get(
   '/appointments',
+  requireRole('ADMIN', 'RECEPTIONIST'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const dateStr = typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
     const date = new Date(`${dateStr}T00:00:00.000Z`);

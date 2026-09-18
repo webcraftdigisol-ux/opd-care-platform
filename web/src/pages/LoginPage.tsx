@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { login } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
+import { homeRouteForRole } from '../utils/roleHome';
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -20,19 +21,7 @@ export function LoginPage() {
     try {
       const { token, user, clinic } = await login({ clinicSlug: clinicSlug.trim(), email, password });
       setSession(token, user, clinic);
-      navigate(
-        user.role === 'DOCTOR'
-          ? '/doctor'
-          : user.role === 'ADMIN'
-            ? '/admin'
-            : user.role === 'PHARMACIST'
-              ? '/pharmacy'
-              : user.role === 'LAB_TECHNICIAN'
-                ? '/lab'
-                : user.role === 'RADIOLOGY_TECHNICIAN'
-                  ? '/radiology'
-                  : '/',
-      );
+      navigate(homeRouteForRole(user.role));
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Login failed');
     } finally {

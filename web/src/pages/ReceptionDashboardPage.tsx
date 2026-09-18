@@ -3,12 +3,8 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listAllAppointments } from '../api/admin';
 import { StatusBadge } from '../components/StatusBadge';
-import { useAuth } from '../context/AuthContext';
 
-export function AdminDashboard() {
-  const { clinic } = useAuth();
-  const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
-  const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
+export function ReceptionDashboardPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const { data: appointments, isLoading } = useQuery({
     queryKey: ['admin-appointments', date],
@@ -18,44 +14,10 @@ export function AdminDashboard() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-teal">Admin Overview</h1>
-        <div className="flex gap-2">
-          <Link to="/admin/doctors" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Manage Doctors
-          </Link>
-          <Link to="/admin/walk-in" className="rounded-md bg-teal px-3 py-2 text-sm text-white hover:bg-teal-mid">
-            Register Walk-in
-          </Link>
-          {tierAllowsPharmacyLab && (
-            <>
-              <Link to="/admin/pharmacy" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Pharmacy
-              </Link>
-              <Link to="/admin/lab" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Lab
-              </Link>
-              <Link to="/admin/radiology" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Radiology
-              </Link>
-            </>
-          )}
-          <Link to="/admin/staff" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Staff
-          </Link>
-          {tierAllowsIpd && (
-            <>
-              <Link to="/admin/ipd/admissions" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                In-Patients
-              </Link>
-              <Link to="/admin/ipd/wards" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Wards
-              </Link>
-            </>
-          )}
-          <Link to="/admin/reports" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Reports
-          </Link>
-        </div>
+        <h1 className="text-2xl font-semibold text-teal">Front Desk</h1>
+        <Link to="/admin/walk-in" className="rounded-md bg-teal px-4 py-2 text-sm font-medium text-white hover:bg-teal-mid">
+          Register Walk-in
+        </Link>
       </div>
 
       <div className="mb-4">

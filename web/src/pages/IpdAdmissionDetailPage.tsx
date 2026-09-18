@@ -18,6 +18,7 @@ import { createPharmacySale } from '../api/pharmacy';
 import { createLabInvoice } from '../api/lab';
 import { createRadiologyInvoice } from '../api/radiology';
 import { VitalsTrendChart } from '../components/VitalsTrendChart';
+import { useAuth } from '../context/AuthContext';
 import type { MedicationSource } from '@opd/shared';
 
 function AmountLine({ label, value }: { label: string; value: number }) {
@@ -32,6 +33,16 @@ function AmountLine({ label, value }: { label: string; value: number }) {
 export function IpdAdmissionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Admission, discharge, billing, and non-nursing clinical entries (doctor
+  // visits, procedures, ad-hoc/pharmacy/lab/radiology charges) stay with
+  // Admin/Doctor. Head Nurse additionally manages bed transfers and can see
+  // billing read-only. Nurse gets ward-floor logging (vitals, medications)
+  // without any financial visibility.
+  const canManageClinical = user?.role === 'ADMIN' || user?.role === 'DOCTOR';
+  const canManageBeds = canManageClinical || user?.role === 'HEAD_NURSE';
+  const canDoNursing = canManageClinical || user?.role === 'NURSE' || user?.role === 'HEAD_NURSE';
+  const canViewBilling = canManageClinical || user?.role === 'HEAD_NURSE';
 
   const { data: admission, isLoading } = useQuery({
     queryKey: ['ipd-admission', id],
@@ -193,7 +204,7 @@ export function IpdAdmissionDetailPage() {
   const { data: billPreview } = useQuery({
     queryKey: ['ipd-bill-preview', id],
     queryFn: () => getBillPreview(id!),
-    enabled: showDischarge && admission?.status === 'ADMITTED',
+    enabled: showDischarge && admission?.status === 'ADMITTED' && canViewBilling,
   });
   const [dischargeSummary, setDischargeSummary] = useState('');
   const dischargeMutation = useMutation({
@@ -230,23 +241,27 @@ export function IpdAdmissionDetailPage() {
             </span>
           </div>
         </div>
-        {isAdmitted && (
+        {isAdmitted && (canManageBeds || canManageClinical) && (
           <div className="mt-4 flex gap-2">
-            <button
-              onClick={() => setShowTransfer((v) => !v)}
-              className="rounded-md border border-teal px-3 py-1.5 text-sm text-teal hover:bg-teal-light"
-            >
-              Transfer Room
-            </button>
-            <button
-              onClick={() => setShowDischarge((v) => !v)}
-              className="rounded-md bg-teal px-3 py-1.5 text-sm text-white hover:bg-teal-mid"
-            >
-              Discharge
-            </button>
+            {canManageBeds && (
+              <button
+                onClick={() => setShowTransfer((v) => !v)}
+                className="rounded-md border border-teal px-3 py-1.5 text-sm text-teal hover:bg-teal-light"
+              >
+                Transfer Room
+              </button>
+            )}
+            {canManageClinical && (
+              <button
+                onClick={() => setShowDischarge((v) => !v)}
+                className="rounded-md bg-teal px-3 py-1.5 text-sm text-white hover:bg-teal-mid"
+              >
+                Discharge
+              </button>
+            )}
           </div>
         )}
-        {showTransfer && (
+        {showTransfer && canManageBeds && (
           <div className="mt-3 flex gap-2 rounded-md bg-gray-50 p-3">
             <select value={toBedId} onChange={(e) => setToBedId(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm">
               <option value="">Select a vacant bed</option>
@@ -317,7 +332,7 @@ export function IpdAdmissionDetailPage() {
         </div>
       )}
 
-      {admission.bill && (
+      {admission.bill && canViewBilling && (
         <div className="mb-6 rounded-xl border-2 border-teal bg-white p-6 shadow-sm">
           <h2 className="mb-3 font-semibold text-teal">Final Bill</h2>
           <div className="space-y-1">
@@ -375,7 +390,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.vitalsLogs.length === 0 && <p className="text-sm text-gray-400">No vitals recorded yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canDoNursing && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <input placeholder="Pulse" type="number" value={vitalsForm.pulse} onChange={(e) => setVitalsForm((f) => ({ ...f, pulse: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <input placeholder="BP Sys" type="number" value={vitalsForm.bpSystolic} onChange={(e) => setVitalsForm((f) => ({ ...f, bpSystolic: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -401,7 +416,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.doctorVisits.length === 0 && <p className="text-sm text-gray-400">No visits logged yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canManageClinical && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <select value={visitForm.doctorId} onChange={(e) => setVisitForm((f) => ({ ...f, doctorId: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2">
               <option value="">Doctor</option>
@@ -433,7 +448,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.procedures.length === 0 && <p className="text-sm text-gray-400">No procedures logged yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canManageClinical && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <input placeholder="Procedure name" value={procedureForm.name} onChange={(e) => setProcedureForm((f) => ({ ...f, name: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input placeholder="Notes" value={procedureForm.notes} onChange={(e) => setProcedureForm((f) => ({ ...f, notes: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -462,7 +477,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.medications.length === 0 && <p className="text-sm text-gray-400">None logged yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canDoNursing && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
             <input placeholder="Medicine" value={medForm.medicine} onChange={(e) => setMedForm((f) => ({ ...f, medicine: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input placeholder="Dosage" value={medForm.dosage} onChange={(e) => setMedForm((f) => ({ ...f, dosage: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -493,7 +508,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.charges.length === 0 && <p className="text-sm text-gray-400">None yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canManageClinical && (
           <div className="flex gap-2">
             <input placeholder="Description (e.g. Oxygen, Nursing care)" value={chargeForm.description} onChange={(e) => setChargeForm((f) => ({ ...f, description: e.target.value }))} className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <input placeholder="Amount" type="number" value={chargeForm.amount} onChange={(e) => setChargeForm((f) => ({ ...f, amount: e.target.value }))} className="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -514,7 +529,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.pharmacySales.length === 0 && <p className="text-sm text-gray-400">None yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canManageClinical && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <input placeholder="Medicine" value={pharmForm.medicine} onChange={(e) => setPharmForm((f) => ({ ...f, medicine: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input placeholder="Qty" type="number" value={pharmForm.quantity} onChange={(e) => setPharmForm((f) => ({ ...f, quantity: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -538,7 +553,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.labInvoices.length === 0 && <p className="text-sm text-gray-400">None yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canManageClinical && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <input placeholder="Test name" value={labForm.testName} onChange={(e) => setLabForm((f) => ({ ...f, testName: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input placeholder="Result" value={labForm.resultText} onChange={(e) => setLabForm((f) => ({ ...f, resultText: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -562,7 +577,7 @@ export function IpdAdmissionDetailPage() {
           ))}
           {admission.radiologyInvoices.length === 0 && <p className="text-sm text-gray-400">None yet.</p>}
         </div>
-        {isAdmitted && (
+        {isAdmitted && canManageClinical && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <input placeholder="Test name (e.g. Chest X-Ray)" value={radiologyForm.testName} onChange={(e) => setRadiologyForm((f) => ({ ...f, testName: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input placeholder="Result" value={radiologyForm.resultText} onChange={(e) => setRadiologyForm((f) => ({ ...f, resultText: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />

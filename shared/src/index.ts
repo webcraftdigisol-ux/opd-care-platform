@@ -1,7 +1,16 @@
 // Shared types used by the server, web app, and mobile app.
 // Keep this the single source of truth for the API contract.
 
-export type Role = 'PATIENT' | 'DOCTOR' | 'ADMIN' | 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN';
+export type Role =
+  | 'PATIENT'
+  | 'DOCTOR'
+  | 'ADMIN'
+  | 'PHARMACIST'
+  | 'LAB_TECHNICIAN'
+  | 'RADIOLOGY_TECHNICIAN'
+  | 'RECEPTIONIST'
+  | 'NURSE'
+  | 'HEAD_NURSE';
 
 export type AppointmentStatus =
   | 'BOOKED'
@@ -211,7 +220,10 @@ export interface CreateStaffRequest {
   email: string;
   phone?: string;
   password: string;
-  role: Extract<Role, 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN'>;
+  role: Extract<
+    Role,
+    'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN' | 'RECEPTIONIST' | 'NURSE' | 'HEAD_NURSE'
+  >;
 }
 
 export interface UpsertScheduleRequest {

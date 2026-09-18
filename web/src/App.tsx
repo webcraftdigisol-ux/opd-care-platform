@@ -25,16 +25,14 @@ import { IpdWardsPage } from './pages/IpdWardsPage';
 import { IpdAdmissionsPage } from './pages/IpdAdmissionsPage';
 import { IpdAdmitPatientPage } from './pages/IpdAdmitPatientPage';
 import { IpdAdmissionDetailPage } from './pages/IpdAdmissionDetailPage';
+import { ReceptionDashboardPage } from './pages/ReceptionDashboardPage';
+import { homeRouteForRole } from './utils/roleHome';
 
 function HomeRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'DOCTOR') return <Navigate to="/doctor" replace />;
-  if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
-  if (user.role === 'PHARMACIST') return <Navigate to="/pharmacy" replace />;
-  if (user.role === 'LAB_TECHNICIAN') return <Navigate to="/lab" replace />;
-  if (user.role === 'RADIOLOGY_TECHNICIAN') return <Navigate to="/radiology" replace />;
-  return <PatientDashboard />;
+  if (user.role === 'PATIENT') return <PatientDashboard />;
+  return <Navigate to={homeRouteForRole(user.role)} replace />;
 }
 
 export default function App() {
@@ -100,7 +98,7 @@ export default function App() {
         <Route
           path="/admin/walk-in"
           element={
-            <ProtectedRoute roles={['ADMIN']}>
+            <ProtectedRoute roles={['ADMIN', 'RECEPTIONIST']}>
               <AdminWalkInPage />
             </ProtectedRoute>
           }
@@ -148,7 +146,7 @@ export default function App() {
         <Route
           path="/admin/ipd/wards"
           element={
-            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'HEAD_NURSE']}>
               <IpdWardsPage />
             </ProtectedRoute>
           }
@@ -156,7 +154,7 @@ export default function App() {
         <Route
           path="/admin/ipd/admissions"
           element={
-            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE']}>
               <IpdAdmissionsPage />
             </ProtectedRoute>
           }
@@ -172,7 +170,7 @@ export default function App() {
         <Route
           path="/admin/ipd/admissions/:id"
           element={
-            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE']}>
               <IpdAdmissionDetailPage />
             </ProtectedRoute>
           }
@@ -199,6 +197,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
               <RadiologyCounterPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reception"
+          element={
+            <ProtectedRoute roles={['RECEPTIONIST', 'ADMIN']}>
+              <ReceptionDashboardPage />
             </ProtectedRoute>
           }
         />

@@ -10,7 +10,7 @@ patientsRouter.use(requireAuth);
 
 patientsRouter.get(
   '/',
-  requireRole('DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN'),
+  requireRole('DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
     const patients = await prisma.user.findMany({
@@ -38,9 +38,15 @@ patientsRouter.get(
   '/:id/records',
   asyncHandler(async (req: AuthedRequest, res) => {
     const isSelf = req.auth!.role === 'PATIENT' && req.auth!.userId === req.params.id;
-    const isStaff = ['DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN'].includes(
-      req.auth!.role,
-    );
+    const isStaff = [
+      'DOCTOR',
+      'ADMIN',
+      'PHARMACIST',
+      'LAB_TECHNICIAN',
+      'RADIOLOGY_TECHNICIAN',
+      'NURSE',
+      'HEAD_NURSE',
+    ].includes(req.auth!.role);
     if (!isSelf && !isStaff) {
       throw new HttpError(403, 'Not authorized to view these records');
     }

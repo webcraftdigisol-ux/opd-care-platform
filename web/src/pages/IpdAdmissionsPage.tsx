@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listAdmissions } from '../api/ipd';
 import type { AdmissionStatus } from '@opd/shared';
+import { useAuth } from '../context/AuthContext';
 
 export function IpdAdmissionsPage() {
+  const { user } = useAuth();
+  const canAdmit = user?.role === 'ADMIN' || user?.role === 'DOCTOR';
   const [status, setStatus] = useState<AdmissionStatus>('ADMITTED');
   const { data: admissions, isLoading } = useQuery({
     queryKey: ['ipd-admissions', status],
@@ -15,9 +18,11 @@ export function IpdAdmissionsPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-teal">In-Patients</h1>
-        <Link to="/admin/ipd/admit" className="rounded-md bg-teal px-4 py-2 text-sm font-medium text-white hover:bg-teal-mid">
-          + Admit Patient
-        </Link>
+        {canAdmit && (
+          <Link to="/admin/ipd/admit" className="rounded-md bg-teal px-4 py-2 text-sm font-medium text-white hover:bg-teal-mid">
+            + Admit Patient
+          </Link>
+        )}
       </div>
 
       <div className="mb-4 flex gap-2">

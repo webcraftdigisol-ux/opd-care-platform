@@ -130,7 +130,7 @@ const statusSchema = z.object({
 
 appointmentsRouter.patch(
   '/:id/status',
-  requireRole('DOCTOR', 'ADMIN'),
+  requireRole('DOCTOR', 'ADMIN', 'RECEPTIONIST'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const { status } = statusSchema.parse(req.body);
     const appointment = await prisma.appointment.findFirst({
@@ -188,7 +188,7 @@ const walkInSchema = z.object({
 
 appointmentsRouter.post(
   '/walk-in',
-  requireRole('ADMIN'),
+  requireRole('ADMIN', 'RECEPTIONIST'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = walkInSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;

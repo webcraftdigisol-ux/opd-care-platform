@@ -15,8 +15,8 @@ data and its own subscription tier:
 | Radiology (priced catalog, results, receipts) | ❌ | ✅ | ✅ |
 | In-patient: wards/beds, admission, transfers, discharge billing | ❌ | ❌ | ✅ |
 
-Granular staff roles beyond Admin/Pharmacist/Lab-Technician/Radiology-Technician
-are a planned follow-up — see **What's not built yet** below.
+Front-desk and ward-nursing roles (Receptionist, Nurse, Head Nurse) layer on
+top of this tier table rather than gating it — see **Roles** below.
 
 ## Structure
 
@@ -33,10 +33,13 @@ mobile/   Expo (React Native) app — patient booking, queue status, records
 
 - **Patient** — register/login under their clinic, book appointments, see live queue position (token number), view visit history, prescriptions, pharmacy purchases & lab results. Web + mobile.
 - **Doctor** — see today's queue ordered by token, check patients in, record vitals/diagnosis/notes/prescriptions/lab test orders. Web.
-- **Admin / reception** — add doctors & pharmacy/lab staff, set weekly doctor availability, register walk-in patients, manage pharmacy inventory & lab catalog, view all appointments for a day. Web.
+- **Admin** — full staff/doctor management, all front-desk and in-patient actions, manages pharmacy inventory & lab/radiology catalogs, sees every report. Web.
+- **Receptionist** — the front-desk subset of Admin: register walk-in patients and view/check in the day's appointments (`/reception`). Cannot manage doctors, staff, catalogs, or see any clinical/financial data — deliberately excluded from patient records for privacy, since front desk only needs appointment/demographic info, not diagnoses or results.
 - **Pharmacist** (Tier 2+) — counter workflow: search patient → see prescriptions from their visits, auto-matched to inventory with quantity/price pre-filled → confirm or edit → receipt, with stock decremented automatically. Web.
 - **Lab Technician** (Tier 2+) — same pattern for doctor-ordered lab tests: auto-matched to the priced catalog, record results, receipt. Web.
 - **Radiology Technician** (Tier 2+) — same pattern again for doctor-ordered radiology/imaging tests (X-Ray, ultrasound, CT, MRI, etc.): auto-matched to the priced catalog, record results, receipt. Web.
+- **Nurse** (Tier 3+) — ward-floor clinical logging on an admission: vitals, medications given. Can view admissions/patient records for clinical continuity, but cannot admit, discharge, transfer beds, or see any billing figure — the admission detail page hides those sections and the server independently rejects the underlying requests.
+- **Head Nurse** (Tier 3+) — everything a Nurse can do, plus bed/ward management: transfer a patient between beds, mark a bed under maintenance, and view (read-only) the bill preview and final bill. Admission and discharge — the two actions with real financial/legal weight — stay Admin/Doctor only even for Head Nurse.
 
 Admins (and doctors, for the follow-ups view and in-patient management) also get:
 - A **Reports** page: a financial report covering Pharmacy, Lab, and
@@ -115,14 +118,17 @@ cd mobile && npm start   # Expo dev server
 The seed script creates a demo clinic (`demo-clinic`) with sample pharmacy
 inventory, a lab test catalog, and a radiology test catalog:
 
-| Role       | Email                     | Password         |
-|------------|----------------------------|------------------|
-| Admin      | admin@opdcare.test         | admin123         |
-| Doctor     | doctor@opdcare.test        | doctor123        |
-| Patient    | patient@opdcare.test       | patient123       |
-| Pharmacist | pharmacist@opdcare.test    | pharmacist123    |
-| Lab Tech   | labtech@opdcare.test       | labtech123       |
-| Radiology  | radiologytech@opdcare.test | radiologytech123 |
+| Role       | Email                       | Password         |
+|------------|------------------------------|------------------|
+| Admin      | admin@opdcare.test           | admin123         |
+| Doctor     | doctor@opdcare.test          | doctor123        |
+| Patient    | patient@opdcare.test         | patient123       |
+| Pharmacist | pharmacist@opdcare.test      | pharmacist123    |
+| Lab Tech   | labtech@opdcare.test         | labtech123       |
+| Radiology  | radiologytech@opdcare.test   | radiologytech123 |
+| Receptionist | receptionist@opdcare.test  | receptionist123  |
+| Nurse      | nurse@opdcare.test          | nurse123         |
+| Head Nurse | headnurse@opdcare.test      | headnurse123     |
 
 `demo-clinic` is seeded at **Tier 3**, with a General Ward (6 beds, ₹1200/day)
 and an ICU (3 beds, ₹4500/day). Sign in with clinic code **`demo-clinic`**.
@@ -173,15 +179,24 @@ the user's `clinicId` and every route scopes its queries by it).
   own daily rate — verified directly: a stay split between a ₹1200/day
   general ward bed and a ₹4500/day ICU bed billed as two one-day segments
   (₹5700 total), not the general ward's rate applied throughout.
+- **UI role-hiding is a convenience, never the access boundary.** Every
+  Nurse/Head-Nurse/Receptionist restriction (no admit/discharge, no billing
+  visibility for Nurse, no clinical records for Receptionist, etc.) is a
+  `requireRole(...)` check on the Express route itself, independent of
+  whichever buttons the web app happens to render for that role. Verified
+  directly with raw API calls bypassing the UI entirely: a Nurse's token
+  gets 403 on `POST /ipd/admissions/:id/transfer`, `POST .../discharge`, and
+  `GET .../bill-preview` even though nothing stops a browser from sending
+  those requests; a Head Nurse's token gets 200 on transfer/bill-preview but
+  still 403 on admission and discharge.
 
 ## What's not built yet
 
-Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD, and
+Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD,
 Reporting (financial Actual-vs-Total across all three revenue modules, daily
-activity, follow-ups due), on a multi-tenant hosted architecture. Deliberately
-deferred:
-- **Granular staff roles**: receptionist/nurse/head-nurse distinctions
-  beyond today's Admin/Pharmacist/Lab-Technician/Radiology-Technician split
+activity, follow-ups due), and granular front-desk/nursing staff roles
+(Receptionist, Nurse, Head Nurse), on a multi-tenant hosted architecture.
+Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)

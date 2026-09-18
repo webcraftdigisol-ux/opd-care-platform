@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { homeRouteForRole } from '../utils/roleHome';
 
 export function Navbar() {
   const { user, clinic, logout } = useAuth();
@@ -10,18 +11,7 @@ export function Navbar() {
     navigate('/login');
   }
 
-  const homeLink =
-    user?.role === 'DOCTOR'
-      ? '/doctor'
-      : user?.role === 'ADMIN'
-        ? '/admin'
-        : user?.role === 'PHARMACIST'
-          ? '/pharmacy'
-          : user?.role === 'LAB_TECHNICIAN'
-            ? '/lab'
-            : user?.role === 'RADIOLOGY_TECHNICIAN'
-              ? '/radiology'
-              : '/';
+  const homeLink = user ? homeRouteForRole(user.role) : '/';
 
   const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
   const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
@@ -45,11 +35,11 @@ export function Navbar() {
                 <Link to="/admin/radiology" className="hover:text-teal">
                   Radiology
                 </Link>
-                <Link to="/admin/staff" className="hover:text-teal">
-                  Staff
-                </Link>
               </>
             )}
+            <Link to="/admin/staff" className="hover:text-teal">
+              Staff
+            </Link>
             {tierAllowsIpd && (
               <>
                 <Link to="/admin/ipd/admissions" className="hover:text-teal">
@@ -75,6 +65,18 @@ export function Navbar() {
             <Link to="/admin/reports" className="hover:text-teal">
               Reports
             </Link>
+          </div>
+        )}
+        {(user?.role === 'NURSE' || user?.role === 'HEAD_NURSE') && (
+          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            <Link to="/admin/ipd/admissions" className="hover:text-teal">
+              In-Patients
+            </Link>
+            {user.role === 'HEAD_NURSE' && (
+              <Link to="/admin/ipd/wards" className="hover:text-teal">
+                Wards
+              </Link>
+            )}
           </div>
         )}
       </div>

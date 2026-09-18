@@ -19,7 +19,13 @@ import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../mi
 
 export const ipdRouter = Router();
 
-ipdRouter.use(requireAuth, requireTier(3), requireRole('ADMIN', 'DOCTOR'));
+// Router-wide: authenticated + Tier 3+ only. Per-route requireRole() below
+// scopes each action to who should actually be able to perform it --
+// Nurse/Head Nurse get ward-floor visibility and clinical logging
+// (vitals, medications), Head Nurse additionally gets bed/transfer
+// management, while admission, discharge, billing, and ward/bed setup
+// stay with Admin/Doctor.
+ipdRouter.use(requireAuth, requireTier(3));
 
 const admissionDetailInclude = {
   patient: true,
@@ -50,6 +56,7 @@ async function loadAdmissionOrThrow(clinicId: string, admissionId: string) {
 
 ipdRouter.get(
   '/wards',
+  requireRole('ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const wards = await prisma.ward.findMany({
       where: { clinicId: req.auth!.clinicId },
@@ -64,6 +71,7 @@ const createWardSchema = z.object({ name: z.string().min(1) });
 
 ipdRouter.post(
   '/wards',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createWardSchema.parse(req.body);
     const ward = await prisma.ward.create({
@@ -83,6 +91,7 @@ const bulkAddBedsSchema = z.object({
 
 ipdRouter.post(
   '/wards/:wardId/beds/bulk',
+  requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = bulkAddBedsSchema.parse(req.body);
     const ward = await prisma.ward.findFirst({ where: { id: req.params.wardId, clinicId: req.auth!.clinicId } });
@@ -108,6 +117,7 @@ const updateBedSchema = z.object({
 
 ipdRouter.put(
   '/beds/:bedId',
+  requireRole('ADMIN', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = updateBedSchema.parse(req.body);
     const bed = await prisma.bed.findFirst({
@@ -121,6 +131,7 @@ ipdRouter.put(
 
 ipdRouter.get(
   '/beds/vacant',
+  requireRole('ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const beds = await prisma.bed.findMany({
       where: { status: 'VACANT', ward: { clinicId: req.auth!.clinicId } },
@@ -143,6 +154,7 @@ const admitSchema = z.object({
 
 ipdRouter.post(
   '/admissions',
+  requireRole('ADMIN', 'DOCTOR'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = admitSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;
@@ -181,6 +193,7 @@ const listQuerySchema = z.object({ status: z.enum(['ADMITTED', 'DISCHARGED']).op
 
 ipdRouter.get(
   '/admissions',
+  requireRole('ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const query = listQuerySchema.parse(req.query);
     const admissions = await prisma.admission.findMany({
@@ -198,6 +211,7 @@ ipdRouter.get(
 
 ipdRouter.get(
   '/admissions/:id',
+  requireRole('ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const admission = await loadAdmissionOrThrow(req.auth!.clinicId, req.params.id);
     res.json(toAdmissionDetail(admission));
@@ -208,6 +222,7 @@ const transferSchema = z.object({ toBedId: z.string().min(1) });
 
 ipdRouter.post(
   '/admissions/:id/transfer',
+  requireRole('ADMIN', 'DOCTOR', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = transferSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;
@@ -248,6 +263,7 @@ const doctorVisitSchema = z.object({
 
 ipdRouter.post(
   '/admissions/:id/doctor-visits',
+  requireRole('ADMIN', 'DOCTOR'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = doctorVisitSchema.parse(req.body);
     const admission = await assertAdmitted(req.auth!.clinicId, req.params.id);
@@ -278,6 +294,7 @@ const procedureSchema = z.object({
 
 ipdRouter.post(
   '/admissions/:id/procedures',
+  requireRole('ADMIN', 'DOCTOR'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = procedureSchema.parse(req.body);
     const admission = await assertAdmitted(req.auth!.clinicId, req.params.id);
@@ -304,6 +321,7 @@ const medicationSchema = z.object({
 
 ipdRouter.post(
   '/admissions/:id/medications',
+  requireRole('ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = medicationSchema.parse(req.body);
     const admission = await assertAdmitted(req.auth!.clinicId, req.params.id);
@@ -331,6 +349,7 @@ const vitalsSchema = z.object({
 
 ipdRouter.post(
   '/admissions/:id/vitals',
+  requireRole('ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = vitalsSchema.parse(req.body);
     const admission = await assertAdmitted(req.auth!.clinicId, req.params.id);
@@ -349,6 +368,7 @@ const chargeSchema = z.object({
 
 ipdRouter.post(
   '/admissions/:id/charges',
+  requireRole('ADMIN', 'DOCTOR'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = chargeSchema.parse(req.body);
     const admission = await assertAdmitted(req.auth!.clinicId, req.params.id);
@@ -361,6 +381,7 @@ ipdRouter.post(
 
 ipdRouter.get(
   '/admissions/:id/bill-preview',
+  requireRole('ADMIN', 'DOCTOR', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const figures = await computeIpdBillFigures(req.auth!.clinicId, req.params.id, new Date());
     res.json(figures);
@@ -371,6 +392,7 @@ const dischargeSchema = z.object({ dischargeSummary: z.string().optional() });
 
 ipdRouter.post(
   '/admissions/:id/discharge',
+  requireRole('ADMIN', 'DOCTOR'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = dischargeSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;
@@ -395,6 +417,7 @@ ipdRouter.post(
 
 ipdRouter.get(
   '/admissions/:id/bill',
+  requireRole('ADMIN', 'DOCTOR', 'HEAD_NURSE'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const admission = await prisma.admission.findFirst({
       where: { id: req.params.id, clinicId: req.auth!.clinicId },

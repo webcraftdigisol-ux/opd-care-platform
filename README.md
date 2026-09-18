@@ -21,13 +21,16 @@ top of this tier table rather than gating it — see **Roles** below.
 
 ## Structure
 
-This is an npm-workspaces monorepo:
+This is an npm-workspaces monorepo (`shared/`, `server/`, `web/`, `mobile/`);
+`deploy/` and `e2e/` sit alongside it as plain (non-workspace) directories:
 
 ```
 shared/   TypeScript types shared by server, web, and mobile (the API contract)
 server/   Express + Prisma + PostgreSQL REST API
 web/      React (Vite) + Tailwind web app — patients, doctors, admin/reception, pharmacy, lab
 mobile/   Expo (React Native) app — patient booking, queue status, records
+e2e/      Playwright end-to-end tests, driving the real web app + API
+deploy/   PM2/Nginx config + the CD GitHub Actions workflow (see CI/CD below)
 ```
 
 ## Roles
@@ -212,17 +215,68 @@ Supertest, backed by the real Prisma client pointed at `opd_care_test`
 (`server/.env.test`). Each test creates its own clinic(s) with random
 slugs/emails, so test files are independent of each other and safe to run in
 parallel in CI even though this sandbox runs them serially (`--runInBand`)
-for reliability. There is currently no web/mobile UI test layer (Playwright
-e2e, component tests) — see **What's not built yet**.
+for reliability. 53 tests total.
+
+### Web/mobile UI tests
+
+**Playwright e2e (`e2e/`)** drives the real web app in a real (headless)
+Chromium against the real API — no mocking below the browser boundary — the
+same trust level as the server's Supertest suite, one layer up the stack. It
+targets a third dedicated database, `opd_care_e2e`, so it never collides with
+the Jest suite's `opd_care_test` or the dev database, and each spec creates
+its own clinic(s)/doctor(s)/staff via direct HTTP calls to the running API
+(`e2e/helpers/api.ts`) rather than driving every setup step through the UI —
+only the behavior actually under test happens in the browser. 10 tests
+across four specs: login/role-based routing, patient booking, admin
+walk-in registration + consultation-fee payment recording, and a Nurse-role
+UI-visibility spec that mirrors `server/tests/role-gating.test.ts` at the DOM
+level (a Nurse sees vitals/medication logging but not billing, discharge,
+transfer, or the other clinical-entry forms).
+
+```bash
+# One-time: create the e2e database (skip if it already exists)
+psql "postgresql://opd:opd@localhost:5432/postgres" -c "CREATE DATABASE opd_care_e2e OWNER opd"
+
+npm run test:e2e
+```
+
+`playwright.config.ts` starts both the backend (`ts-node-dev`, pointed at
+`opd_care_e2e` via `e2e/.env.e2e`) and the Vite web dev server itself as
+Playwright `webServer` entries, so `npm run test:e2e` is a single command
+from a clean checkout — nothing needs to be running beforehand except
+Postgres. `e2e/tests/nurse-role.spec.ts` and `e2e/helpers/session.ts` log a
+staff member in via a direct API call and inject the resulting token into
+`localStorage` rather than re-driving the login form for every spec (see the
+comment in `session.ts`); the login spec itself is the one place that does
+drive the actual form, so that flow still gets covered end-to-end.
+
+**Mobile (`mobile/`)** has no simulator available in this environment, so
+instead of Detox/native e2e it gets lightweight `jest-expo` +
+`@testing-library/react-native` component tests: pure rendering/logic
+coverage for a representative screen (`MyAppointmentsScreen` — empty state,
+a fetched appointment's doctor/date/token/status, and the
+future-and-still-booked-only "Cancel appointment" rule) plus a trivial unit
+test on `theme.ts`. 4 tests.
+
+```bash
+npm run test:mobile
+```
 
 ## CI/CD
 
-`.github/workflows/ci.yml` runs on every push and pull request to `main`: a
-Postgres 16 service container, `npm ci`, `prisma generate`, then the full
-build sweep (shared/server/web, mobile typecheck) and the server test suite
-against that service's `opd_care_test` database — the exact same commands
-and `server/.env.test` connection string used locally, so a green run
-locally and a green run in CI mean the same thing.
+`.github/workflows/ci.yml` runs on every push and pull request to `main`,
+as two parallel jobs. `build-and-test`: a Postgres 16 service container,
+`npm ci`, `prisma generate`, the full build sweep (shared/server/web, mobile
+typecheck), then the server and mobile test suites against that service's
+`opd_care_test` database — the exact same commands and `server/.env.test`
+connection string used locally, so a green run locally and a green run in CI
+mean the same thing. `e2e`: its own Postgres service seeded as
+`opd_care_e2e`, `npx playwright install --with-deps chromium` (this sandbox
+has Chromium pre-installed at a fixed path so `playwright.config.ts` skips
+straight to it when that path exists — see the design note below — but a
+stock GitHub Actions runner has no such path, so CI downloads it the normal
+way), then `npm test` inside `e2e/` runs the same four specs against real
+`ts-node-dev`/Vite dev servers that Playwright starts and tears down itself.
 
 `.github/workflows/deploy.yml` handles the CD half: it fires after CI
 succeeds on `main`, and (once configured) SSHes into the production EC2
@@ -323,6 +377,32 @@ the user's `clinicId` and every route scopes its queries by it).
   `try { sendMail() } catch { /* ignore */ }`) would have made "did the
   confirmation email actually get attempted" an unanswerable question from
   both angles.
+- **A pinned browser path is a sandbox convenience, not a CI assumption.**
+  `e2e/playwright.config.ts` checks `fs.existsSync('/opt/pw-browsers/chromium')`
+  before setting `executablePath` — this development sandbox pre-installs
+  Chromium there and skips Playwright's own download, but a stock GitHub
+  Actions runner has neither, so hardcoding that path would have passed
+  every local run and then failed the first real CI run with a missing-binary
+  error. `ci.yml`'s `e2e` job runs `playwright install --with-deps chromium`
+  instead, which fills Playwright's normal cache and lets the config fall
+  through to its default resolution.
+- **`getByText` breaks the moment a string appears twice, and `FlatList`'s
+  `ListEmptyComponent` guarantees it will.** React Native renders that prop
+  both as the element itself *and* as a plain string attribute visible to
+  the accessibility tree, so a `ListEmptyComponent={<Text>No appointments
+  yet.</Text>}` produces two matches for the same text, not one — a test
+  written with `getByText` (which throws on multiple matches) intermittently
+  times out inside `waitFor` rather than failing with a clear error. Caught
+  by rendering the empty-state case to a debug dump before trusting the
+  assertion; fixed by asserting `getAllByText(...).length > 0` for that one
+  case instead.
+- **`useFocusEffect` needs a `NavigationContainer` ancestor it won't have in
+  a bare component test.** Mocking `@react-navigation/native`'s
+  `useFocusEffect` down to a plain `useEffect(callback, [])` (see
+  `MyAppointmentsScreen.test.tsx`) sidesteps standing up real navigation
+  context just to test what a screen renders for a given API response —
+  correct for this kind of test, but worth the comment on the mock so a
+  future reader doesn't mistake it for testing focus/blur behavior itself.
 
 ## What's not built yet
 
@@ -330,9 +410,10 @@ Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD,
 Reporting (financial Actual-vs-Total across all three revenue modules, daily
 activity, follow-ups due), granular front-desk/nursing staff roles
 (Receptionist, Nurse, Head Nurse), consultation-fee billing and a
-cash/card/UPI payment ledger across every bill type, email notifications,
-a server integration test suite, and a CI workflow that runs it on every
-push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
+cash/card/UPI payment ledger across every bill type, email notifications, a
+server integration test suite, a Playwright web e2e suite, mobile component
+tests, and a CI workflow that runs all of it on every push/PR, on a
+multi-tenant hosted architecture. Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
@@ -342,8 +423,6 @@ push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
 - An SMS notification channel (only email is wired up) and scheduled/
   cron-driven reminders (e.g. an automatic day-before appointment reminder)
   — there's no background job runner in this deployment yet
-- Web/mobile UI test layer (Playwright e2e, component tests) — only the
-  server has automated tests so far
 - File uploads (lab/radiology report attachments, prescription scans)
 - CD is scaffolded (`deploy/` + `.github/workflows/deploy.yml`) but
   inactive — it needs real AWS infrastructure provisioned and GitHub

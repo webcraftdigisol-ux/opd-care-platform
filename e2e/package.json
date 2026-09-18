@@ -1,0 +1,13 @@
+{
+  "name": "@opd/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "pretest": "node scripts/test-db-setup.js",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "dotenv": "^16.4.5"
+  }
+}

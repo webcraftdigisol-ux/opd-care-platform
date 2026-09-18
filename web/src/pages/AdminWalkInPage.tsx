@@ -42,6 +42,7 @@ export function AdminWalkInPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">Doctor</label>
           <select
             required
+            data-testid="walkin-doctor"
             value={doctorId}
             onChange={(e) => setDoctorId(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2"
@@ -58,6 +59,7 @@ export function AdminWalkInPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">Patient name</label>
           <input
             required
+            data-testid="walkin-patient-name"
             value={patientName}
             onChange={(e) => setPatientName(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2"
@@ -67,6 +69,7 @@ export function AdminWalkInPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">Patient phone</label>
           <input
             required
+            data-testid="walkin-patient-phone"
             value={patientPhone}
             onChange={(e) => setPatientPhone(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2"
@@ -75,14 +78,15 @@ export function AdminWalkInPage() {
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Reason (optional)</label>
           <input
+            data-testid="walkin-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2"
           />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600" data-testid="walkin-error">{error}</p>}
         {success !== null && (
-          <p className="rounded-md bg-teal-light p-3 text-sm text-teal">
+          <p className="rounded-md bg-teal-light p-3 text-sm text-teal" data-testid="walkin-success">
             Registered! Token number <span className="font-bold">#{success}</span>
           </p>
         )}

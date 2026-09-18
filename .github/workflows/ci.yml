@@ -59,3 +59,57 @@ jobs:
 
       - name: Run server test suite
         run: npm run test:server
+
+      - name: Run mobile test suite
+        run: npm test -w mobile
+
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opd
+          POSTGRES_PASSWORD: opd
+          POSTGRES_DB: opd_care_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opd -d opd_care_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate -w server
+
+      - name: Install e2e dependencies
+        run: npm ci --prefix e2e
+
+      - name: Install Playwright's Chromium
+        run: npx --prefix e2e playwright install --with-deps chromium
+
+      - name: Build shared types package
+        run: npm run build:shared
+
+      - name: Apply migrations to the e2e database
+        run: node scripts/test-db-setup.js
+        working-directory: e2e
+
+      - name: Run the Playwright e2e suite
+        run: npm test
+        working-directory: e2e

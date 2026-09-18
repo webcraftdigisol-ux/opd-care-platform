@@ -1,7 +1,7 @@
 // Shared types used by the server, web app, and mobile app.
 // Keep this the single source of truth for the API contract.
 
-export type Role = 'PATIENT' | 'DOCTOR' | 'ADMIN' | 'PHARMACIST' | 'LAB_TECHNICIAN';
+export type Role = 'PATIENT' | 'DOCTOR' | 'ADMIN' | 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN';
 
 export type AppointmentStatus =
   | 'BOOKED'
@@ -92,6 +92,13 @@ export interface LabTestOrder {
   notes: string | null;
 }
 
+export interface RadiologyTestOrder {
+  id: string;
+  consultationId: string;
+  testName: string;
+  notes: string | null;
+}
+
 export interface Consultation {
   id: string;
   appointmentId: string;
@@ -103,6 +110,7 @@ export interface Consultation {
   createdAt: string;
   prescriptions: Prescription[];
   labTestsOrdered: LabTestOrder[];
+  radiologyOrdered: RadiologyTestOrder[];
 }
 
 // ---- Auth / Clinics ----
@@ -170,6 +178,11 @@ export interface LabTestOrderInput {
   notes?: string;
 }
 
+export interface RadiologyTestOrderInput {
+  testName: string;
+  notes?: string;
+}
+
 export interface SaveConsultationRequest {
   vitals?: Vitals;
   diagnosis?: string;
@@ -177,6 +190,7 @@ export interface SaveConsultationRequest {
   followUpDate?: string; // "YYYY-MM-DD"
   prescriptions?: PrescriptionInput[];
   labTestsOrdered?: LabTestOrderInput[];
+  radiologyOrdered?: RadiologyTestOrderInput[];
   complete?: boolean;
 }
 
@@ -197,7 +211,7 @@ export interface CreateStaffRequest {
   email: string;
   phone?: string;
   password: string;
-  role: Extract<Role, 'PHARMACIST' | 'LAB_TECHNICIAN'>;
+  role: Extract<Role, 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN'>;
 }
 
 export interface UpsertScheduleRequest {
@@ -345,11 +359,76 @@ export interface LabInvoice {
   items: LabResultItem[];
 }
 
+// ---- Radiology (Tier 2+) ----
+// Mirrors Lab's shapes exactly — same counter auto-match pattern.
+
+export interface RadiologyTestCatalogEntry {
+  id: string;
+  name: string;
+  price: number;
+}
+
+export interface UpsertRadiologyTestCatalogRequest {
+  name: string;
+  price: number;
+}
+
+export interface PendingRadiologyLine {
+  orderId: string;
+  appointmentId: string;
+  appointmentDate: string;
+  testName: string;
+  notes: string | null;
+  matchedTest: RadiologyTestCatalogEntry | null;
+  suggestedPrice: number;
+  alreadyResulted: boolean;
+}
+
+export interface RadiologyResultItemInput {
+  orderId?: string;
+  catalogItemId?: string;
+  testName: string;
+  resultText?: string;
+  price: number;
+}
+
+export interface CreateRadiologyInvoiceRequest {
+  patientId: string;
+  appointmentId?: string;
+  admissionId?: string;
+  items: RadiologyResultItemInput[];
+}
+
+export interface RadiologyResultItem {
+  id: string;
+  orderId: string | null;
+  catalogItemId: string | null;
+  testName: string;
+  resultText: string | null;
+  price: number;
+}
+
+export interface RadiologyInvoice {
+  id: string;
+  patientId: string;
+  patient?: PublicUser;
+  appointmentId: string | null;
+  admissionId: string | null;
+  recordedById: string;
+  taxPercent: number;
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  createdAt: string;
+  items: RadiologyResultItem[];
+}
+
 export interface PatientRecordsResponse {
   patient: PublicUser;
   appointments: Appointment[];
   pharmacySales: PharmacySale[];
   labInvoices: LabInvoice[];
+  radiologyInvoices: RadiologyInvoice[];
 }
 
 // ---- Reports ----
@@ -376,11 +455,12 @@ export interface RevenueSection {
   byItem: ReportItemBreakdown[];
 }
 
-export interface PharmacyLabReport {
+export interface FinancialReport {
   from: string;
   to: string;
   pharmacy: RevenueSection;
   lab: RevenueSection;
+  radiology: RevenueSection;
 }
 
 export interface DoctorActivitySummary {
@@ -539,6 +619,7 @@ export interface IpdBill {
   adHocCharges: number;
   pharmacyCharges: number;
   labCharges: number;
+  radiologyCharges: number;
   subtotal: number;
   taxPercent: number;
   taxAmount: number;
@@ -557,6 +638,7 @@ export interface AdmissionDetail extends Admission {
   charges: ChargeRecord[];
   pharmacySales: PharmacySale[];
   labInvoices: LabInvoice[];
+  radiologyInvoices: RadiologyInvoice[];
   bill: IpdBill | null;
 }
 

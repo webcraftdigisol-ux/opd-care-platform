@@ -115,7 +115,7 @@ const createStaffSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(6).optional(),
   password: z.string().min(6),
-  role: z.enum(['PHARMACIST', 'LAB_TECHNICIAN']),
+  role: z.enum(['PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN']),
 });
 
 adminRouter.post(
@@ -147,7 +147,10 @@ adminRouter.get(
   '/staff',
   asyncHandler(async (req: AuthedRequest, res) => {
     const staff = await prisma.user.findMany({
-      where: { clinicId: req.auth!.clinicId, role: { in: ['DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN'] } },
+      where: {
+        clinicId: req.auth!.clinicId,
+        role: { in: ['DOCTOR', 'ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN'] },
+      },
       orderBy: { name: 'asc' },
     });
     res.json(staff.map(toPublicUser));
@@ -164,7 +167,7 @@ adminRouter.get(
       include: {
         patient: true,
         doctor: { include: { user: true } },
-        consultation: { include: { prescriptions: true, labTestsOrdered: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
       orderBy: [{ doctorId: 'asc' }, { tokenNumber: 'asc' }],
     });

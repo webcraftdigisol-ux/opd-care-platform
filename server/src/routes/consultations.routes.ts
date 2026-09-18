@@ -22,6 +22,11 @@ const labOrderSchema = z.object({
   notes: z.string().optional(),
 });
 
+const radiologyOrderSchema = z.object({
+  testName: z.string().min(1),
+  notes: z.string().optional(),
+});
+
 const vitalsSchema = z
   .object({
     bpSystolic: z.number().optional(),
@@ -41,6 +46,7 @@ const saveSchema = z.object({
   followUpDate: z.string().optional(),
   prescriptions: z.array(prescriptionSchema).optional(),
   labTestsOrdered: z.array(labOrderSchema).optional(),
+  radiologyOrdered: z.array(radiologyOrderSchema).optional(),
   complete: z.boolean().optional(),
 });
 
@@ -107,6 +113,15 @@ consultationsRouter.put(
         }
       }
 
+      if (data.radiologyOrdered) {
+        await tx.radiologyTestOrder.deleteMany({ where: { consultationId: saved.id } });
+        if (data.radiologyOrdered.length > 0) {
+          await tx.radiologyTestOrder.createMany({
+            data: data.radiologyOrdered.map((o) => ({ ...o, consultationId: saved.id })),
+          });
+        }
+      }
+
       await tx.appointment.update({
         where: { id: appointment.id },
         data: { status: data.complete ? 'COMPLETED' : 'IN_CONSULTATION' },
@@ -114,7 +129,7 @@ consultationsRouter.put(
 
       return tx.consultation.findUniqueOrThrow({
         where: { id: saved.id },
-        include: { prescriptions: true, labTestsOrdered: true },
+        include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true },
       });
     });
 
@@ -142,7 +157,7 @@ consultationsRouter.get(
 
     const consultation = await prisma.consultation.findUnique({
       where: { appointmentId: appointment.id },
-      include: { prescriptions: true, labTestsOrdered: true },
+      include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true },
     });
     if (!consultation) throw new HttpError(404, 'No consultation recorded yet');
     res.json(toConsultation(consultation));

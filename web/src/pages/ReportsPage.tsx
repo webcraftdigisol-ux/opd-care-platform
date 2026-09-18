@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDailyActivityReport, getFollowUpsReport, getPharmacyLabReport, markFollowUpContacted } from '../api/reports';
+import { getDailyActivityReport, getFinancialReport, getFollowUpsReport, markFollowUpContacted } from '../api/reports';
 import type { FollowUpItem, RevenueSection } from '@opd/shared';
 
 type Tab = 'financial' | 'activity' | 'follow-ups';
@@ -72,8 +72,8 @@ function FinancialTab() {
   const [from, setFrom] = useState(daysAgoIso(29));
   const [to, setTo] = useState(todayIso());
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['report-pharmacy-lab', from, to],
-    queryFn: () => getPharmacyLabReport(from, to),
+    queryKey: ['report-financial', from, to],
+    queryFn: () => getFinancialReport(from, to),
     retry: false,
   });
 
@@ -109,6 +109,7 @@ function FinancialTab() {
         <div className="space-y-6">
           <RevenueSectionCard title="Pharmacy" section={data.pharmacy} />
           <RevenueSectionCard title="Lab" section={data.lab} />
+          <RevenueSectionCard title="Radiology" section={data.radiology} />
         </div>
       )}
     </div>

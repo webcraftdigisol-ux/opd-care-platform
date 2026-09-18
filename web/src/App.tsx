@@ -18,6 +18,8 @@ import { PharmacyCounterPage } from './pages/PharmacyCounterPage';
 import { PharmacyInventoryPage } from './pages/PharmacyInventoryPage';
 import { LabCounterPage } from './pages/LabCounterPage';
 import { LabCatalogPage } from './pages/LabCatalogPage';
+import { RadiologyCounterPage } from './pages/RadiologyCounterPage';
+import { RadiologyCatalogPage } from './pages/RadiologyCatalogPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { IpdWardsPage } from './pages/IpdWardsPage';
 import { IpdAdmissionsPage } from './pages/IpdAdmissionsPage';
@@ -31,6 +33,7 @@ function HomeRedirect() {
   if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
   if (user.role === 'PHARMACIST') return <Navigate to="/pharmacy" replace />;
   if (user.role === 'LAB_TECHNICIAN') return <Navigate to="/lab" replace />;
+  if (user.role === 'RADIOLOGY_TECHNICIAN') return <Navigate to="/radiology" replace />;
   return <PatientDashboard />;
 }
 
@@ -127,6 +130,14 @@ export default function App() {
           }
         />
         <Route
+          path="/admin/radiology"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <RadiologyCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/admin/reports"
           element={
             <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
@@ -180,6 +191,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['LAB_TECHNICIAN', 'ADMIN']}>
               <LabCounterPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/radiology"
+          element={
+            <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
+              <RadiologyCounterPage />
             </ProtectedRoute>
           }
         />

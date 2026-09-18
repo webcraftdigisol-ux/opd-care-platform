@@ -33,6 +33,7 @@ const admissionDetailInclude = {
   charges: { orderBy: { chargedAt: 'asc' as const } },
   pharmacySales: { include: { items: true, patient: true }, orderBy: { createdAt: 'asc' as const } },
   labInvoices: { include: { items: true, patient: true }, orderBy: { createdAt: 'asc' as const } },
+  radiologyInvoices: { include: { items: true, patient: true }, orderBy: { createdAt: 'asc' as const } },
   bill: true,
 };
 

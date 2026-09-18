@@ -83,7 +83,7 @@ appointmentsRouter.get(
       where: { clinicId: req.auth!.clinicId, patientId: req.auth!.userId },
       include: {
         doctor: { include: { user: true } },
-        consultation: { include: { prescriptions: true, labTestsOrdered: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
       orderBy: [{ date: 'desc' }, { tokenNumber: 'asc' }],
     });
@@ -116,7 +116,7 @@ appointmentsRouter.get(
       include: {
         patient: true,
         doctor: { include: { user: true } },
-        consultation: { include: { prescriptions: true, labTestsOrdered: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
       orderBy: { tokenNumber: 'asc' },
     });
@@ -151,7 +151,7 @@ appointmentsRouter.patch(
       include: {
         patient: true,
         doctor: { include: { user: true } },
-        consultation: { include: { prescriptions: true, labTestsOrdered: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
     });
     res.json(toAppointment(updated));

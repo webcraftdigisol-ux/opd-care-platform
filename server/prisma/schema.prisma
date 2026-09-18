@@ -13,6 +13,7 @@ enum Role {
   ADMIN
   PHARMACIST
   LAB_TECHNICIAN
+  RADIOLOGY_TECHNICIAN
 }
 
 enum AppointmentStatus {
@@ -30,20 +31,22 @@ model Clinic {
   id                        String   @id @default(uuid())
   name                      String
   slug                      String   @unique
-  tier                      Int      @default(1) // 1 = OPD, 2 = +Pharmacy/Lab, 3 = +IPD
+  tier                      Int      @default(1) // 1 = OPD, 2 = +Pharmacy/Lab/Radiology, 3 = +IPD
   logoUrl                   String?
   taxPercent                Float    @default(0)
   doctorRevenueSharePercent Float    @default(0)
   createdAt                 DateTime @default(now())
 
-  users         User[]
-  appointments  Appointment[]
-  pharmacyItems PharmacyItem[]
-  pharmacySales PharmacySale[]
-  labCatalog    LabTestCatalog[]
-  labInvoices   LabInvoice[]
-  wards         Ward[]
-  admissions    Admission[]
+  users             User[]
+  appointments      Appointment[]
+  pharmacyItems     PharmacyItem[]
+  pharmacySales     PharmacySale[]
+  labCatalog        LabTestCatalog[]
+  labInvoices       LabInvoice[]
+  radiologyCatalog  RadiologyCatalog[]
+  radiologyInvoices RadiologyInvoice[]
+  wards             Ward[]
+  admissions        Admission[]
 }
 
 model User {
@@ -58,14 +61,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  doctorProfile        DoctorProfile?
-  appointments         Appointment[]  @relation("PatientAppointments")
-  pharmacyPurchases    PharmacySale[] @relation("PharmacySalePatient")
-  pharmacySalesHandled PharmacySale[] @relation("PharmacySaleSeller")
-  labResultsOrdered    LabInvoice[]   @relation("LabInvoicePatient")
-  labResultsRecorded   LabInvoice[]   @relation("LabInvoiceRecorder")
-  admissions           Admission[]
-  vitalsRecorded       IpdVitals[]
+  doctorProfile            DoctorProfile?
+  appointments             Appointment[]      @relation("PatientAppointments")
+  pharmacyPurchases        PharmacySale[]     @relation("PharmacySalePatient")
+  pharmacySalesHandled     PharmacySale[]     @relation("PharmacySaleSeller")
+  labResultsOrdered        LabInvoice[]       @relation("LabInvoicePatient")
+  labResultsRecorded       LabInvoice[]       @relation("LabInvoiceRecorder")
+  radiologyResultsOrdered  RadiologyInvoice[] @relation("RadiologyInvoicePatient")
+  radiologyResultsRecorded RadiologyInvoice[] @relation("RadiologyInvoiceRecorder")
+  admissions               Admission[]
+  vitalsRecorded           IpdVitals[]
 
   @@unique([clinicId, email])
   @@unique([clinicId, phone])
@@ -112,9 +117,10 @@ model Appointment {
   reason      String?
   createdAt   DateTime          @default(now())
 
-  consultation  Consultation?
-  pharmacySales PharmacySale[]
-  labInvoices   LabInvoice[]
+  consultation      Consultation?
+  pharmacySales     PharmacySale[]
+  labInvoices       LabInvoice[]
+  radiologyInvoices RadiologyInvoice[]
 
   @@index([clinicId])
   @@index([doctorId, date])
@@ -132,8 +138,9 @@ model Consultation {
   followUpContacted Boolean     @default(false)
   createdAt         DateTime    @default(now())
 
-  prescriptions   Prescription[]
-  labTestsOrdered LabTestOrder[]
+  prescriptions    Prescription[]
+  labTestsOrdered  LabTestOrder[]
+  radiologyOrdered RadiologyTestOrder[]
 
   @@index([followUpDate])
 }
@@ -283,6 +290,74 @@ model LabResultItem {
   @@index([invoiceId])
 }
 
+// ---- Radiology (Tier 2+) ----
+// Mirrors the Lab module's pattern exactly: a doctor's free-text order at
+// consultation time, a priced catalog, and a counter workflow that
+// auto-matches the order to the catalog by name.
+
+model RadiologyTestOrder {
+  id             String       @id @default(uuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  testName       String
+  notes          String?
+
+  resultItems RadiologyResultItem[]
+
+  @@index([consultationId])
+}
+
+model RadiologyCatalog {
+  id          String                @id @default(uuid())
+  clinicId    String
+  clinic      Clinic                @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name        String
+  price       Float
+  resultItems RadiologyResultItem[]
+
+  @@index([clinicId])
+}
+
+model RadiologyInvoice {
+  id            String       @id @default(uuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       User         @relation("RadiologyInvoicePatient", fields: [patientId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  admissionId   String?
+  admission     Admission?   @relation(fields: [admissionId], references: [id])
+  recordedById  String
+  recordedBy    User         @relation("RadiologyInvoiceRecorder", fields: [recordedById], references: [id])
+  taxPercent    Float        @default(0)
+  subtotal      Float
+  taxAmount     Float
+  total         Float
+  createdAt     DateTime     @default(now())
+
+  items RadiologyResultItem[]
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([admissionId])
+}
+
+model RadiologyResultItem {
+  id            String              @id @default(uuid())
+  invoiceId     String
+  invoice       RadiologyInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderId       String?
+  order         RadiologyTestOrder? @relation(fields: [orderId], references: [id])
+  catalogItemId String?
+  catalogItem   RadiologyCatalog?   @relation(fields: [catalogItemId], references: [id])
+  testName      String
+  resultText    String?
+  price         Float
+
+  @@index([invoiceId])
+}
+
 // ---- In-Patient / IPD (Tier 3) ----
 
 enum BedStatus {
@@ -347,15 +422,16 @@ model Admission {
   dischargedAt      DateTime?
   dischargeSummary  String?
 
-  roomTransfers RoomTransfer[]
-  doctorVisits  IpdDoctorVisit[]
-  procedures    IpdProcedure[]
-  medications   IpdMedication[]
-  vitalsLogs    IpdVitals[]
-  charges       IpdCharge[]
-  pharmacySales PharmacySale[]
-  labInvoices   LabInvoice[]
-  bill          IpdBill?
+  roomTransfers     RoomTransfer[]
+  doctorVisits      IpdDoctorVisit[]
+  procedures        IpdProcedure[]
+  medications       IpdMedication[]
+  vitalsLogs        IpdVitals[]
+  charges           IpdCharge[]
+  pharmacySales     PharmacySale[]
+  labInvoices       LabInvoice[]
+  radiologyInvoices RadiologyInvoice[]
+  bill              IpdBill?
 
   @@index([clinicId])
   @@index([patientId])
@@ -458,6 +534,7 @@ model IpdBill {
   adHocCharges       Float
   pharmacyCharges    Float
   labCharges         Float
+  radiologyCharges   Float     @default(0)
   subtotal           Float
   taxPercent         Float
   taxAmount          Float

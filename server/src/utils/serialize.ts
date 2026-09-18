@@ -13,6 +13,10 @@ import type {
   LabTestCatalog as PrismaLabTestCatalog,
   LabInvoice as PrismaLabInvoice,
   LabResultItem as PrismaLabResultItem,
+  RadiologyTestOrder as PrismaRadiologyTestOrder,
+  RadiologyCatalog as PrismaRadiologyCatalog,
+  RadiologyInvoice as PrismaRadiologyInvoice,
+  RadiologyResultItem as PrismaRadiologyResultItem,
   Ward as PrismaWard,
   Bed as PrismaBed,
   Admission as PrismaAdmission,
@@ -39,6 +43,10 @@ import type {
   LabTestCatalogEntry,
   LabInvoice,
   LabResultItem,
+  RadiologyTestOrder,
+  RadiologyTestCatalogEntry,
+  RadiologyInvoice,
+  RadiologyResultItem,
   Ward,
   Bed,
   Admission,
@@ -117,8 +125,21 @@ export function toLabTestOrder(o: PrismaLabTestOrder): LabTestOrder {
   };
 }
 
+export function toRadiologyTestOrder(o: PrismaRadiologyTestOrder): RadiologyTestOrder {
+  return {
+    id: o.id,
+    consultationId: o.consultationId,
+    testName: o.testName,
+    notes: o.notes,
+  };
+}
+
 export function toConsultation(
-  c: PrismaConsultation & { prescriptions?: PrismaPrescription[]; labTestsOrdered?: PrismaLabTestOrder[] },
+  c: PrismaConsultation & {
+    prescriptions?: PrismaPrescription[];
+    labTestsOrdered?: PrismaLabTestOrder[];
+    radiologyOrdered?: PrismaRadiologyTestOrder[];
+  },
 ): Consultation {
   return {
     id: c.id,
@@ -131,6 +152,7 @@ export function toConsultation(
     createdAt: c.createdAt.toISOString(),
     prescriptions: (c.prescriptions ?? []).map(toPrescription),
     labTestsOrdered: (c.labTestsOrdered ?? []).map(toLabTestOrder),
+    radiologyOrdered: (c.radiologyOrdered ?? []).map(toRadiologyTestOrder),
   };
 }
 
@@ -138,7 +160,11 @@ type AppointmentWithRelations = PrismaAppointment & {
   patient?: User;
   doctor?: PrismaDoctorProfile & { user: User };
   consultation?:
-    | (PrismaConsultation & { prescriptions?: PrismaPrescription[]; labTestsOrdered?: PrismaLabTestOrder[] })
+    | (PrismaConsultation & {
+        prescriptions?: PrismaPrescription[];
+        labTestsOrdered?: PrismaLabTestOrder[];
+        radiologyOrdered?: PrismaRadiologyTestOrder[];
+      })
     | null;
 };
 
@@ -232,6 +258,40 @@ export function toLabInvoice(
     total: invoice.total,
     createdAt: invoice.createdAt.toISOString(),
     items: (invoice.items ?? []).map(toLabResultItem),
+  };
+}
+
+export function toRadiologyTestCatalogEntry(entry: PrismaRadiologyCatalog): RadiologyTestCatalogEntry {
+  return { id: entry.id, name: entry.name, price: entry.price };
+}
+
+export function toRadiologyResultItem(item: PrismaRadiologyResultItem): RadiologyResultItem {
+  return {
+    id: item.id,
+    orderId: item.orderId,
+    catalogItemId: item.catalogItemId,
+    testName: item.testName,
+    resultText: item.resultText,
+    price: item.price,
+  };
+}
+
+export function toRadiologyInvoice(
+  invoice: PrismaRadiologyInvoice & { items?: PrismaRadiologyResultItem[]; patient?: User },
+): RadiologyInvoice {
+  return {
+    id: invoice.id,
+    patientId: invoice.patientId,
+    patient: invoice.patient ? toPublicUser(invoice.patient) : undefined,
+    appointmentId: invoice.appointmentId,
+    admissionId: invoice.admissionId,
+    recordedById: invoice.recordedById,
+    taxPercent: invoice.taxPercent,
+    subtotal: invoice.subtotal,
+    taxAmount: invoice.taxAmount,
+    total: invoice.total,
+    createdAt: invoice.createdAt.toISOString(),
+    items: (invoice.items ?? []).map(toRadiologyResultItem),
   };
 }
 
@@ -342,6 +402,7 @@ export function toIpdBill(bill: PrismaIpdBill): IpdBill {
     adHocCharges: bill.adHocCharges,
     pharmacyCharges: bill.pharmacyCharges,
     labCharges: bill.labCharges,
+    radiologyCharges: bill.radiologyCharges,
     subtotal: bill.subtotal,
     taxPercent: bill.taxPercent,
     taxAmount: bill.taxAmount,
@@ -386,6 +447,7 @@ type AdmissionDetailSource = AdmissionWithRelations & {
   charges: PrismaIpdCharge[];
   pharmacySales: (PrismaPharmacySale & { items?: PrismaPharmacySaleItem[]; patient?: User })[];
   labInvoices: (PrismaLabInvoice & { items?: PrismaLabResultItem[]; patient?: User })[];
+  radiologyInvoices: (PrismaRadiologyInvoice & { items?: PrismaRadiologyResultItem[]; patient?: User })[];
   bill: PrismaIpdBill | null;
 };
 
@@ -400,6 +462,7 @@ export function toAdmissionDetail(a: AdmissionDetailSource): AdmissionDetail {
     charges: a.charges.map(toCharge),
     pharmacySales: a.pharmacySales.map(toPharmacySale),
     labInvoices: a.labInvoices.map(toLabInvoice),
+    radiologyInvoices: a.radiologyInvoices.map(toRadiologyInvoice),
     bill: a.bill ? toIpdBill(a.bill) : null,
   };
 }

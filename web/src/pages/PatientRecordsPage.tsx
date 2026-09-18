@@ -57,6 +57,16 @@ export function PatientRecordsPage() {
                   </ul>
                 </div>
               )}
+              {a.consultation && a.consultation.radiologyOrdered.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-sm font-medium">Radiology ordered</p>
+                  <ul className="ml-4 list-disc text-sm text-gray-600">
+                    {a.consultation.radiologyOrdered.map((o) => (
+                      <li key={o.id}>{o.testName}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ))}
         {data && data.appointments.filter((a) => a.consultation).length === 0 && (
@@ -92,6 +102,30 @@ export function PatientRecordsPage() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Lab Results</h2>
           <div className="space-y-3">
             {data.labInvoices.map((invoice) => (
+              <div key={invoice.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
+                  <span>{new Date(invoice.createdAt).toLocaleDateString()}</span>
+                  <span className="font-semibold text-gray-800">₹{invoice.total.toFixed(2)}</span>
+                </div>
+                <ul className="ml-4 list-disc text-sm text-gray-600">
+                  {invoice.items.map((item) => (
+                    <li key={item.id}>
+                      {item.testName}
+                      {item.resultText ? `: ${item.resultText}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data && data.radiologyInvoices.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Radiology Results</h2>
+          <div className="space-y-3">
+            {data.radiologyInvoices.map((invoice) => (
               <div key={invoice.id} className="rounded-lg border border-gray-200 bg-white p-4">
                 <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
                   <span>{new Date(invoice.createdAt).toLocaleDateString()}</span>

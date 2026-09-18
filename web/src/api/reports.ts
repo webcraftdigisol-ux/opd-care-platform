@@ -1,8 +1,8 @@
 import { apiClient } from './client';
-import type { DailyActivityReport, FollowUpsReport, PharmacyLabReport } from '@opd/shared';
+import type { DailyActivityReport, FinancialReport, FollowUpsReport } from '@opd/shared';
 
-export async function getPharmacyLabReport(from?: string, to?: string): Promise<PharmacyLabReport> {
-  const res = await apiClient.get<PharmacyLabReport>('/reports/pharmacy-lab', { params: { from, to } });
+export async function getFinancialReport(from?: string, to?: string): Promise<FinancialReport> {
+  const res = await apiClient.get<FinancialReport>('/reports/financial', { params: { from, to } });
   return res.data;
 }
 

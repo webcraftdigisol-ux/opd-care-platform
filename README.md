@@ -7,15 +7,16 @@ admin scheduling, walk-in registration, and patient medical records.
 One hosted deployment serves many clinics ("tenants"), each with isolated
 data and its own subscription tier:
 
-| | Tier 1 — OPD | Tier 2 — + Pharmacy + Lab | Tier 3 — + In-Patient (IPD) |
+| | Tier 1 — OPD | Tier 2 — + Pharmacy + Lab + Radiology | Tier 3 — + In-Patient (IPD) |
 |---|---|---|---|
-| Patients, consultations, prescriptions, lab orders | ✅ | ✅ | ✅ |
+| Patients, consultations, prescriptions, lab/radiology orders | ✅ | ✅ | ✅ |
 | Pharmacy (priced inventory, dispensing, receipts) | ❌ | ✅ | ✅ |
 | Lab (priced catalog, results, receipts) | ❌ | ✅ | ✅ |
+| Radiology (priced catalog, results, receipts) | ❌ | ✅ | ✅ |
 | In-patient: wards/beds, admission, transfers, discharge billing | ❌ | ❌ | ✅ |
 
-Radiology and granular staff roles beyond Pharmacist/Lab Technician are
-planned follow-ups — see **What's not built yet** below.
+Granular staff roles beyond Admin/Pharmacist/Lab-Technician/Radiology-Technician
+are a planned follow-up — see **What's not built yet** below.
 
 ## Structure
 
@@ -35,10 +36,11 @@ mobile/   Expo (React Native) app — patient booking, queue status, records
 - **Admin / reception** — add doctors & pharmacy/lab staff, set weekly doctor availability, register walk-in patients, manage pharmacy inventory & lab catalog, view all appointments for a day. Web.
 - **Pharmacist** (Tier 2+) — counter workflow: search patient → see prescriptions from their visits, auto-matched to inventory with quantity/price pre-filled → confirm or edit → receipt, with stock decremented automatically. Web.
 - **Lab Technician** (Tier 2+) — same pattern for doctor-ordered lab tests: auto-matched to the priced catalog, record results, receipt. Web.
+- **Radiology Technician** (Tier 2+) — same pattern again for doctor-ordered radiology/imaging tests (X-Ray, ultrasound, CT, MRI, etc.): auto-matched to the priced catalog, record results, receipt. Web.
 
 Admins (and doctors, for the follow-ups view and in-patient management) also get:
-- A **Reports** page: a Pharmacy/Lab financial report (Actual vs. Total
-  ordered — Tier 2+), a daily OPD activity report, and a follow-ups-due
+- A **Reports** page: a financial report covering Pharmacy, Lab, and
+  Radiology (Actual vs. Total ordered — Tier 2+), a daily OPD activity report, and a follow-ups-due
   dashboard (overdue / due today / due this week) with a "mark contacted"
   action, driven by an optional follow-up date doctors can set on a
   consultation.
@@ -47,10 +49,10 @@ Admins (and doctors, for the follow-ups view and in-patient management) also get
   procedures (with a consent-signed flag), medications given (clinic-supplied
   and billed, or the patient's own and not billed), periodic vitals with an
   inline trend chart, room transfers (billed per bed/day segment at each
-  bed's own rate), ad-hoc charges, and quick in-patient pharmacy/lab charges.
-  Discharge computes a final bill from every charge source and nets out the
-  deposit — the result can be a refund owed, not just an amount due, and the
-  UI presents that as a normal outcome rather than an error state.
+  bed's own rate), ad-hoc charges, and quick in-patient pharmacy/lab/radiology
+  charges. Discharge computes a final bill from every charge source and nets
+  out the deposit — the result can be a refund owed, not just an amount due,
+  and the UI presents that as a normal outcome rather than an error state.
 
 ## Multi-tenancy
 
@@ -62,9 +64,10 @@ clinic self-registers at `/register-clinic` in the web app, which creates
 the `Clinic` plus its first `ADMIN` user. Login and patient self-registration
 both require the clinic's `slug` alongside email/password.
 
-Tier-gated routes (`/api/pharmacy/*`, `/api/lab/*`) check the clinic's
-current tier fresh on every request, not at login — so upgrading a clinic's
-tier takes effect immediately without forcing a re-login.
+Tier-gated routes (`/api/pharmacy/*`, `/api/lab/*`, `/api/radiology/*`) check
+the clinic's current tier fresh on every request, not at login — so
+upgrading a clinic's tier takes effect immediately without forcing a
+re-login.
 
 ## Prerequisites
 
@@ -109,16 +112,17 @@ cd mobile && npm start   # Expo dev server
 
 ## Seed data
 
-The seed script creates one Tier 2 demo clinic (`demo-clinic`) with sample
-pharmacy inventory and a lab test catalog:
+The seed script creates a demo clinic (`demo-clinic`) with sample pharmacy
+inventory, a lab test catalog, and a radiology test catalog:
 
-| Role       | Email                     | Password      |
-|------------|----------------------------|---------------|
-| Admin      | admin@opdcare.test         | admin123      |
-| Doctor     | doctor@opdcare.test        | doctor123     |
-| Patient    | patient@opdcare.test       | patient123    |
-| Pharmacist | pharmacist@opdcare.test    | pharmacist123 |
-| Lab Tech   | labtech@opdcare.test       | labtech123    |
+| Role       | Email                     | Password         |
+|------------|----------------------------|------------------|
+| Admin      | admin@opdcare.test         | admin123         |
+| Doctor     | doctor@opdcare.test        | doctor123        |
+| Patient    | patient@opdcare.test       | patient123       |
+| Pharmacist | pharmacist@opdcare.test    | pharmacist123    |
+| Lab Tech   | labtech@opdcare.test       | labtech123       |
+| Radiology  | radiologytech@opdcare.test | radiologytech123 |
 
 `demo-clinic` is seeded at **Tier 3**, with a General Ward (6 beds, ₹1200/day)
 and an ICU (3 beds, ₹4500/day). Sign in with clinic code **`demo-clinic`**.
@@ -145,15 +149,20 @@ the user's `clinicId` and every route scopes its queries by it).
   calculation multiplies `quantityInUnits × pricePerUnit`, so there's no
   strip-vs-tablet ambiguity to get wrong.
 - **Dispensed/resulted lines record their own charge.** A `PharmacySaleItem`
-  / `LabResultItem` stores its own `medicineName`/`testName` and price at the
-  time of sale, rather than re-deriving it from the current catalog. The
-  Reports "Actual vs. Total ordered" numbers rely on exactly this: once a
-  prescription/lab order has a linked sale/result item, its contribution to
-  "Total ordered" is that item's own recorded charge, forever — even if the
-  catalog price changes afterward. Verified directly: dispensing an item at a
-  price different from its catalog price, then changing the catalog price
-  again, leaves both Actual and Total ordered unchanged at the original
-  billed amount.
+  / `LabResultItem` / `RadiologyResultItem` stores its own
+  `medicineName`/`testName` and price at the time of sale, rather than
+  re-deriving it from the current catalog. The Reports "Actual vs. Total
+  ordered" numbers rely on exactly this: once a prescription/lab/radiology
+  order has a linked sale/result item, its contribution to "Total ordered" is
+  that item's own recorded charge, forever — even if the catalog price
+  changes afterward. Verified directly for Radiology: billing an MRI at its
+  ₹6,000 catalog price, then bumping the catalog price to ₹7,000/₹8,000/₹9,000
+  across further bookings, left every already-billed item's contribution to
+  the financial report at its own originally recorded price — the report's
+  total was an exact sum of each item's own stored price, never the live
+  catalog price. The same invariant carries into IPD: an admission's
+  `radiologyCharges` is the linked invoice's own stored total, and does not
+  shift when the catalog price changes after that invoice was created.
 - **Deposits net against the final bill, and the result can be negative.**
   IPD discharge billing computes `total - depositAmount`; when the deposit
   was larger, `amountDue` is negative and the UI labels it "Refund Owed"
@@ -167,12 +176,12 @@ the user's `clinicId` and every route scopes its queries by it).
 
 ## What's not built yet
 
-Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab, Tier 3 IPD, and Reporting
-(financial Actual-vs-Total, daily activity, follow-ups due), on a
-multi-tenant hosted architecture. Deliberately deferred:
-- **Radiology**: a priced module mirroring Lab
+Built so far: Tier 1 OPD core, Tier 2 Pharmacy/Lab/Radiology, Tier 3 IPD, and
+Reporting (financial Actual-vs-Total across all three revenue modules, daily
+activity, follow-ups due), on a multi-tenant hosted architecture. Deliberately
+deferred:
 - **Granular staff roles**: receptionist/nurse/head-nurse distinctions
-  beyond today's Admin/Pharmacist/Lab-Technician split
+  beyond today's Admin/Pharmacist/Lab-Technician/Radiology-Technician split
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)

@@ -29,7 +29,9 @@ export function LoginPage() {
               ? '/pharmacy'
               : user.role === 'LAB_TECHNICIAN'
                 ? '/lab'
-                : '/',
+                : user.role === 'RADIOLOGY_TECHNICIAN'
+                  ? '/radiology'
+                  : '/',
       );
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Login failed');

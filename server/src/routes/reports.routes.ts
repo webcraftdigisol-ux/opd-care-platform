@@ -1,10 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
-import { computeDailyActivity, computeLabReport, computePharmacyReport, endOfDay } from '../utils/reports';
+import {
+  computeDailyActivity,
+  computeLabReport,
+  computePharmacyReport,
+  computeRadiologyReport,
+  endOfDay,
+} from '../utils/reports';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
-import type { FollowUpItem, FollowUpsReport, PharmacyLabReport } from '@opd/shared';
+import type { FinancialReport, FollowUpItem, FollowUpsReport } from '@opd/shared';
 
 export const reportsRouter = Router();
 
@@ -24,7 +30,7 @@ const rangeQuerySchema = z.object({
 });
 
 reportsRouter.get(
-  '/pharmacy-lab',
+  '/financial',
   requireTier(2),
   asyncHandler(async (req: AuthedRequest, res) => {
     const query = rangeQuerySchema.parse(req.query);
@@ -32,16 +38,18 @@ reportsRouter.get(
     to.setUTCHours(0, 0, 0, 0);
     const from = query.from ? parseDateOnly(query.from) : new Date(to.getTime() - 29 * 24 * 60 * 60 * 1000);
 
-    const [pharmacy, lab] = await Promise.all([
+    const [pharmacy, lab, radiology] = await Promise.all([
       computePharmacyReport(req.auth!.clinicId, from, to),
       computeLabReport(req.auth!.clinicId, from, to),
+      computeRadiologyReport(req.auth!.clinicId, from, to),
     ]);
 
-    const response: PharmacyLabReport = {
+    const response: FinancialReport = {
       from: from.toISOString().slice(0, 10),
       to: to.toISOString().slice(0, 10),
       pharmacy,
       lab,
+      radiology,
     };
     res.json(response);
   }),

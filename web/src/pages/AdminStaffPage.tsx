@@ -3,6 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createStaff, listStaff } from '../api/admin';
 import type { Role } from '@opd/shared';
 
+const ROLE_LABELS: Record<'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN', string> = {
+  PHARMACIST: 'Pharmacist',
+  LAB_TECHNICIAN: 'Lab Technician',
+  RADIOLOGY_TECHNICIAN: 'Radiology Technician',
+};
+
 export function AdminStaffPage() {
   const queryClient = useQueryClient();
   const { data: staff } = useQuery({ queryKey: ['staff'], queryFn: listStaff });
@@ -12,7 +18,7 @@ export function AdminStaffPage() {
     email: '',
     phone: '',
     password: '',
-    role: 'PHARMACIST' as Extract<Role, 'PHARMACIST' | 'LAB_TECHNICIAN'>,
+    role: 'PHARMACIST' as Extract<Role, 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN'>,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +39,7 @@ export function AdminStaffPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-semibold text-teal">Pharmacy / Lab Staff</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-teal">Pharmacy / Lab / Radiology Staff</h1>
 
       <form onSubmit={handleSubmit} className="mb-8 grid grid-cols-2 gap-3 rounded-xl bg-white p-6 shadow-sm">
         <input
@@ -73,6 +79,7 @@ export function AdminStaffPage() {
         >
           <option value="PHARMACIST">Pharmacist</option>
           <option value="LAB_TECHNICIAN">Lab Technician</option>
+          <option value="RADIOLOGY_TECHNICIAN">Radiology Technician</option>
         </select>
         {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
         <button
@@ -86,12 +93,15 @@ export function AdminStaffPage() {
 
       <div className="space-y-2">
         {staff
-          ?.filter((s) => s.role === 'PHARMACIST' || s.role === 'LAB_TECHNICIAN')
+          ?.filter(
+            (s): s is typeof s & { role: keyof typeof ROLE_LABELS } =>
+              s.role === 'PHARMACIST' || s.role === 'LAB_TECHNICIAN' || s.role === 'RADIOLOGY_TECHNICIAN',
+          )
           .map((s) => (
             <div key={s.id} className="rounded-lg border border-gray-200 bg-white p-3">
               <p className="font-medium">{s.name}</p>
               <p className="text-sm text-gray-500">
-                {s.role === 'PHARMACIST' ? 'Pharmacist' : 'Lab Technician'} · {s.email}
+                {ROLE_LABELS[s.role]} · {s.email}
               </p>
             </div>
           ))}

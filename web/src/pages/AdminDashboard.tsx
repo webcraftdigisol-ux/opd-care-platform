@@ -34,6 +34,9 @@ export function AdminDashboard() {
               <Link to="/admin/lab" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
                 Lab
               </Link>
+              <Link to="/admin/radiology" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+                Radiology
+              </Link>
               <Link to="/admin/staff" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
                 Staff
               </Link>

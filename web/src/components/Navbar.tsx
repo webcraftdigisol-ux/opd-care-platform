@@ -19,7 +19,9 @@ export function Navbar() {
           ? '/pharmacy'
           : user?.role === 'LAB_TECHNICIAN'
             ? '/lab'
-            : '/';
+            : user?.role === 'RADIOLOGY_TECHNICIAN'
+              ? '/radiology'
+              : '/';
 
   const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
   const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
@@ -39,6 +41,9 @@ export function Navbar() {
                 </Link>
                 <Link to="/admin/lab" className="hover:text-teal">
                   Lab
+                </Link>
+                <Link to="/admin/radiology" className="hover:text-teal">
+                  Radiology
                 </Link>
                 <Link to="/admin/staff" className="hover:text-teal">
                   Staff

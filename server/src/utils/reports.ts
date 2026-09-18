@@ -148,6 +148,57 @@ export async function computeLabReport(clinicId: string, from: Date, to: Date): 
   };
 }
 
+export async function computeRadiologyReport(clinicId: string, from: Date, to: Date): Promise<RevenueSection> {
+  const toEnd = endOfDay(to);
+
+  const resultItems = await prisma.radiologyResultItem.findMany({
+    where: { invoice: { clinicId, createdAt: { gte: from, lte: toEnd } } },
+  });
+
+  const actualByName = new Map<string, NameTotals>();
+  let actualTotal = 0;
+  for (const item of resultItems) {
+    actualTotal += item.price;
+    addTotals(actualByName, item.testName, 1, item.price);
+  }
+
+  const [orders, catalog] = await Promise.all([
+    prisma.radiologyTestOrder.findMany({
+      where: { consultation: { appointment: { clinicId, date: { gte: from, lte: toEnd } } } },
+      include: { resultItems: true },
+    }),
+    prisma.radiologyCatalog.findMany({ where: { clinicId } }),
+  ]);
+
+  const orderedByName = new Map<string, NameTotals>();
+  let orderedTotal = 0;
+  let unmatchedCount = 0;
+
+  for (const o of orders) {
+    if (o.resultItems.length > 0) {
+      const value = o.resultItems.reduce((s, i) => s + i.price, 0);
+      orderedTotal += value;
+      addTotals(orderedByName, o.testName, o.resultItems.length, value);
+      continue;
+    }
+
+    const match = findBestNameMatch(catalog, o.testName);
+    if (match) {
+      orderedTotal += match.price;
+      addTotals(orderedByName, o.testName, 1, match.price);
+    } else {
+      unmatchedCount += 1;
+      addTotals(orderedByName, o.testName, 1, 0, 1);
+    }
+  }
+
+  return {
+    actual: { count: resultItems.length, total: round2(actualTotal) },
+    totalOrdered: { count: orders.length, total: round2(orderedTotal), unmatchedCount },
+    byItem: mergeBreakdown(actualByName, orderedByName),
+  };
+}
+
 export async function computeDailyActivity(clinicId: string, date: Date): Promise<DailyActivityReport> {
   const appointments = await prisma.appointment.findMany({
     where: { clinicId, date },

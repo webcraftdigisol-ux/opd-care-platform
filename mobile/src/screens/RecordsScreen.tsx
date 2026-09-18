@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { Appointment, LabInvoice, PharmacySale } from '@opd/shared';
+import type { Appointment, LabInvoice, PharmacySale, RadiologyInvoice } from '@opd/shared';
 import { getPatientRecords } from '../api/patients';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
@@ -11,6 +11,7 @@ export function RecordsScreen() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [pharmacySales, setPharmacySales] = useState<PharmacySale[]>([]);
   const [labInvoices, setLabInvoices] = useState<LabInvoice[]>([]);
+  const [radiologyInvoices, setRadiologyInvoices] = useState<RadiologyInvoice[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -21,6 +22,7 @@ export function RecordsScreen() {
       setAppointments(data.appointments.filter((a) => a.consultation));
       setPharmacySales(data.pharmacySales);
       setLabInvoices(data.labInvoices);
+      setRadiologyInvoices(data.radiologyInvoices);
     } finally {
       setLoading(false);
     }
@@ -32,7 +34,11 @@ export function RecordsScreen() {
     }, [load]),
   );
 
-  const hasNothing = appointments.length === 0 && pharmacySales.length === 0 && labInvoices.length === 0;
+  const hasNothing =
+    appointments.length === 0 &&
+    pharmacySales.length === 0 &&
+    labInvoices.length === 0 &&
+    radiologyInvoices.length === 0;
 
   return (
     <ScrollView
@@ -57,6 +63,11 @@ export function RecordsScreen() {
           {item.consultation?.labTestsOrdered.map((o) => (
             <Text key={o.id} style={styles.prescription}>
               • Lab: {o.testName}
+            </Text>
+          ))}
+          {item.consultation?.radiologyOrdered.map((o) => (
+            <Text key={o.id} style={styles.prescription}>
+              • Radiology: {o.testName}
             </Text>
           ))}
         </View>
@@ -85,6 +96,26 @@ export function RecordsScreen() {
         <>
           <Text style={styles.sectionTitle}>Lab Results</Text>
           {labInvoices.map((invoice) => (
+            <View key={invoice.id} style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.meta}>{new Date(invoice.createdAt).toLocaleDateString()}</Text>
+                <Text style={styles.total}>₹{invoice.total.toFixed(2)}</Text>
+              </View>
+              {invoice.items.map((item) => (
+                <Text key={item.id} style={styles.prescription}>
+                  • {item.testName}
+                  {item.resultText ? `: ${item.resultText}` : ''}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </>
+      )}
+
+      {radiologyInvoices.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Radiology Results</Text>
+          {radiologyInvoices.map((invoice) => (
             <View key={invoice.id} style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.meta}>{new Date(invoice.createdAt).toLocaleDateString()}</Text>

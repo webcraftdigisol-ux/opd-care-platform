@@ -16,6 +16,7 @@ import {
 import { listDoctors } from '../api/doctors';
 import { createPharmacySale } from '../api/pharmacy';
 import { createLabInvoice } from '../api/lab';
+import { createRadiologyInvoice } from '../api/radiology';
 import { VitalsTrendChart } from '../components/VitalsTrendChart';
 import type { MedicationSource } from '@opd/shared';
 
@@ -167,6 +168,26 @@ export function IpdAdmissionDetailPage() {
     },
   });
 
+  const [radiologyForm, setRadiologyForm] = useState({ testName: '', resultText: '', price: '0' });
+  const radiologyMutation = useMutation({
+    mutationFn: () =>
+      createRadiologyInvoice({
+        patientId: admission!.patientId,
+        admissionId: id,
+        items: [
+          {
+            testName: radiologyForm.testName,
+            resultText: radiologyForm.resultText || undefined,
+            price: Number(radiologyForm.price) || 0,
+          },
+        ],
+      }),
+    onSuccess: () => {
+      invalidate();
+      setRadiologyForm({ testName: '', resultText: '', price: '0' });
+    },
+  });
+
   // --- Discharge ---
   const [showDischarge, setShowDischarge] = useState(false);
   const { data: billPreview } = useQuery({
@@ -258,6 +279,7 @@ export function IpdAdmissionDetailPage() {
               <AmountLine label="Other charges" value={billPreview.adHocCharges} />
               <AmountLine label="Pharmacy" value={billPreview.pharmacyCharges} />
               <AmountLine label="Lab" value={billPreview.labCharges} />
+              <AmountLine label="Radiology" value={billPreview.radiologyCharges} />
               <hr className="my-2" />
               <AmountLine label="Subtotal" value={billPreview.subtotal} />
               <AmountLine label={`Tax (${billPreview.taxPercent}%)`} value={billPreview.taxAmount} />
@@ -306,6 +328,7 @@ export function IpdAdmissionDetailPage() {
             <AmountLine label="Other charges" value={admission.bill.adHocCharges} />
             <AmountLine label="Pharmacy" value={admission.bill.pharmacyCharges} />
             <AmountLine label="Lab" value={admission.bill.labCharges} />
+            <AmountLine label="Radiology" value={admission.bill.radiologyCharges} />
             <hr className="my-2" />
             <AmountLine label="Subtotal" value={admission.bill.subtotal} />
             <AmountLine label={`Tax (${admission.bill.taxPercent}%)`} value={admission.bill.taxAmount} />
@@ -522,6 +545,30 @@ export function IpdAdmissionDetailPage() {
             <div className="flex gap-1">
               <input placeholder="Price" type="number" value={labForm.price} onChange={(e) => setLabForm((f) => ({ ...f, price: e.target.value }))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
               <button onClick={() => labMutation.mutate()} disabled={!labForm.testName} className="rounded-md bg-teal px-2 text-sm text-white disabled:opacity-60">
+                +
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">
+        <h2 className="mb-3 font-semibold text-gray-700">Radiology (In-Patient)</h2>
+        <div className="mb-3 space-y-1">
+          {admission.radiologyInvoices.map((inv) => (
+            <p key={inv.id} className="text-sm text-gray-600">
+              {new Date(inv.createdAt).toLocaleString()} — {inv.items.map((i) => i.testName).join(', ')} — ₹{inv.total.toFixed(2)}
+            </p>
+          ))}
+          {admission.radiologyInvoices.length === 0 && <p className="text-sm text-gray-400">None yet.</p>}
+        </div>
+        {isAdmitted && (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <input placeholder="Test name (e.g. Chest X-Ray)" value={radiologyForm.testName} onChange={(e) => setRadiologyForm((f) => ({ ...f, testName: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
+            <input placeholder="Result" value={radiologyForm.resultText} onChange={(e) => setRadiologyForm((f) => ({ ...f, resultText: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+            <div className="flex gap-1">
+              <input placeholder="Price" type="number" value={radiologyForm.price} onChange={(e) => setRadiologyForm((f) => ({ ...f, price: e.target.value }))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+              <button onClick={() => radiologyMutation.mutate()} disabled={!radiologyForm.testName} className="rounded-md bg-teal px-2 text-sm text-white disabled:opacity-60">
                 +
               </button>
             </div>

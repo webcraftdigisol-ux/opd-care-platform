@@ -57,6 +57,7 @@ export interface IpdBillFigures {
   adHocCharges: number;
   pharmacyCharges: number;
   labCharges: number;
+  radiologyCharges: number;
   subtotal: number;
   taxPercent: number;
   taxAmount: number;
@@ -88,6 +89,7 @@ export async function computeIpdBillFigures(
       charges: true,
       pharmacySales: true,
       labInvoices: true,
+      radiologyInvoices: true,
     },
   });
   if (!admission) throw new HttpError(404, 'Admission not found');
@@ -106,11 +108,12 @@ export async function computeIpdBillFigures(
   const adHocCharges = admission.charges.reduce((s, c) => s + c.amount, 0);
   const pharmacyCharges = admission.pharmacySales.reduce((s, sale) => s + sale.total, 0);
   const labCharges = admission.labInvoices.reduce((s, inv) => s + inv.total, 0);
+  const radiologyCharges = admission.radiologyInvoices.reduce((s, inv) => s + inv.total, 0);
 
   const subtotal = roomCharges + doctorVisitCharges + procedureCharges + medicationCharges + adHocCharges;
   const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId } });
   const taxAmount = round2(subtotal * (clinic.taxPercent / 100));
-  const total = round2(subtotal + taxAmount + pharmacyCharges + labCharges);
+  const total = round2(subtotal + taxAmount + pharmacyCharges + labCharges + radiologyCharges);
   const amountDue = round2(total - admission.depositAmount);
 
   return {
@@ -121,6 +124,7 @@ export async function computeIpdBillFigures(
     adHocCharges: round2(adHocCharges),
     pharmacyCharges: round2(pharmacyCharges),
     labCharges: round2(labCharges),
+    radiologyCharges: round2(radiologyCharges),
     subtotal: round2(subtotal),
     taxPercent: clinic.taxPercent,
     taxAmount,

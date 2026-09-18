@@ -105,6 +105,19 @@ async function main() {
     },
   });
 
+  const radiologyTechPassword = await bcrypt.hash('radiologytech123', 10);
+  await prisma.user.upsert({
+    where: { clinicId_email: { clinicId: clinic.id, email: 'radiologytech@opdcare.test' } },
+    update: {},
+    create: {
+      clinicId: clinic.id,
+      name: 'Priya Nair',
+      email: 'radiologytech@opdcare.test',
+      password: radiologyTechPassword,
+      role: 'RADIOLOGY_TECHNICIAN',
+    },
+  });
+
   const pharmacyItems: { name: string; unitsPerStrip: number | null; pricePerUnit: number; costPricePerUnit: number; stockUnits: number }[] = [
     { name: 'Paracetamol 500mg', unitsPerStrip: 10, pricePerUnit: 2, costPricePerUnit: 1, stockUnits: 500 },
     { name: 'Amoxicillin 250mg', unitsPerStrip: 10, pricePerUnit: 5, costPricePerUnit: 3, stockUnits: 300 },
@@ -128,6 +141,19 @@ async function main() {
     const existing = await prisma.labTestCatalog.findFirst({ where: { clinicId: clinic.id, name: test.name } });
     if (!existing) {
       await prisma.labTestCatalog.create({ data: { ...test, clinicId: clinic.id } });
+    }
+  }
+
+  const radiologyTests: { name: string; price: number }[] = [
+    { name: 'Chest X-Ray', price: 400 },
+    { name: 'Abdominal Ultrasound', price: 900 },
+    { name: 'CT Scan - Head', price: 3500 },
+    { name: 'MRI - Knee', price: 6000 },
+  ];
+  for (const test of radiologyTests) {
+    const existing = await prisma.radiologyCatalog.findFirst({ where: { clinicId: clinic.id, name: test.name } });
+    if (!existing) {
+      await prisma.radiologyCatalog.create({ data: { ...test, clinicId: clinic.id } });
     }
   }
 
@@ -164,6 +190,7 @@ async function main() {
   console.log('  Patient:    patient@opdcare.test / patient123');
   console.log('  Pharmacist: pharmacist@opdcare.test / pharmacist123');
   console.log('  Lab tech:   labtech@opdcare.test / labtech123');
+  console.log('  Radiology:  radiologytech@opdcare.test / radiologytech123');
 }
 
 main()

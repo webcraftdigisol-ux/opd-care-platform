@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getConsultation, saveConsultation } from '../api/consultations';
 import { useAuth } from '../context/AuthContext';
-import type { LabTestOrderInput, PrescriptionInput, Vitals } from '@opd/shared';
+import type { LabTestOrderInput, PrescriptionInput, RadiologyTestOrderInput, Vitals } from '@opd/shared';
 
 export function ConsultationPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
@@ -22,6 +22,7 @@ export function ConsultationPage() {
   const [followUpDate, setFollowUpDate] = useState('');
   const [prescriptions, setPrescriptions] = useState<PrescriptionInput[]>([]);
   const [labTestsOrdered, setLabTestsOrdered] = useState<LabTestOrderInput[]>([]);
+  const [radiologyOrdered, setRadiologyOrdered] = useState<RadiologyTestOrderInput[]>([]);
 
   useEffect(() => {
     if (existing) {
@@ -41,6 +42,9 @@ export function ConsultationPage() {
       setLabTestsOrdered(
         existing.labTestsOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? undefined })),
       );
+      setRadiologyOrdered(
+        existing.radiologyOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? undefined })),
+      );
     }
   }, [existing]);
 
@@ -53,6 +57,7 @@ export function ConsultationPage() {
         followUpDate: followUpDate || undefined,
         prescriptions,
         labTestsOrdered,
+        radiologyOrdered,
         complete,
       }),
     onSuccess: (_, complete) => {
@@ -70,6 +75,18 @@ export function ConsultationPage() {
 
   function removeLabTest(index: number) {
     setLabTestsOrdered((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addRadiologyTest() {
+    setRadiologyOrdered((prev) => [...prev, { testName: '' }]);
+  }
+
+  function updateRadiologyTest(index: number, field: keyof RadiologyTestOrderInput, value: string) {
+    setRadiologyOrdered((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
+  }
+
+  function removeRadiologyTest(index: number) {
+    setRadiologyOrdered((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addPrescription() {
@@ -218,6 +235,39 @@ export function ConsultationPage() {
               </div>
             ))}
             {labTestsOrdered.length === 0 && <p className="text-sm text-gray-400">No lab tests ordered.</p>}
+          </div>
+        </section>
+      )}
+
+      {clinic && clinic.tier >= 2 && (
+        <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700">Radiology Ordered</h2>
+            <button onClick={addRadiologyTest} className="text-sm text-teal hover:underline">
+              + Add test
+            </button>
+          </div>
+          <div className="space-y-3">
+            {radiologyOrdered.map((o, i) => (
+              <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-4">
+                <input
+                  placeholder="Test name (e.g. Chest X-Ray)"
+                  value={o.testName}
+                  onChange={(e) => updateRadiologyTest(i, 'testName', e.target.value)}
+                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
+                />
+                <input
+                  placeholder="Notes (optional)"
+                  value={o.notes ?? ''}
+                  onChange={(e) => updateRadiologyTest(i, 'notes', e.target.value)}
+                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                />
+                <button onClick={() => removeRadiologyTest(i)} className="text-red-400 hover:text-red-600">
+                  Remove
+                </button>
+              </div>
+            ))}
+            {radiologyOrdered.length === 0 && <p className="text-sm text-gray-400">No radiology ordered.</p>}
           </div>
         </section>
       )}

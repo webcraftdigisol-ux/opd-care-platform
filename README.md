@@ -155,10 +155,19 @@ patient themself for their own files. A `LabCounterPage`/
 a prescription scan attaches to a consultation once it's been saved at
 least once (a fresh, never-saved consultation has no id yet to attach to).
 Patients see everything attached to them in one place on their **My Medical
-Records** page. **Not built on mobile**: viewing/downloading an attachment
-there — only the file list (name, category, date) shows; opening a file
-needs `expo-file-system`/`expo-sharing`, which this environment has no
-simulator to verify against, so that's deliberately left for a later round.
+Records** page (web) or **Records** tab (mobile) — tapping one on mobile
+downloads it via `expo-file-system`'s `downloadAsync` (the one API that
+takes an `Authorization` header directly, unlike a bare `<Image>`/fetch)
+and hands it to the native share sheet via `expo-sharing`, the same
+"let the OS decide how to open it" approach as the web app opening the
+blob in a new tab — there's no in-app PDF/image viewer to maintain for
+every mime type this could be. This environment has no simulator or device
+to watch the actual share sheet open, so `mobile/src/api/attachments.ts`'s
+logic (the download URL and auth header it builds, filename sanitization,
+what it does when the download fails or sharing isn't available) is
+covered directly by `attachments.test.ts` with `expo-file-system`/
+`expo-sharing` mocked — real assertions on real logic, not a claim that
+the on-device share sheet itself was watched to open correctly.
 
 ## Multi-tenancy
 
@@ -327,8 +336,12 @@ instead of Detox/native e2e it gets lightweight `jest-expo` +
 coverage for a representative screen (`MyAppointmentsScreen` — empty state,
 a fetched appointment's doctor/date/token/status, and the
 future-and-still-booked-only "Cancel appointment" rule, and that a slotted
-appointment shows its time while a walk-in's meta line omits it) plus a
-trivial unit test on `theme.ts`. 5 tests.
+appointment shows its time while a walk-in's meta line omits it), a
+trivial unit test on `theme.ts`, and `api/attachments.ts`'s `openAttachment`
+with `expo-file-system`/`expo-sharing` mocked (the download URL and auth
+header, filename sanitization against an unsafe name, and the two failure
+paths — a non-200 download, sharing unavailable — each surfacing an error
+rather than failing silently). 10 tests.
 
 ```bash
 npm run test:mobile
@@ -565,9 +578,10 @@ front-desk/nursing staff roles (Receptionist, Nurse, Head Nurse),
 consultation-fee billing and a cash/card/UPI payment ledger across every
 bill type, email notifications including a scheduled day-before appointment
 reminder, file attachments (lab/radiology report scans, prescription
-scans), a server integration test suite, a Playwright web e2e suite,
-mobile component tests, and a CI workflow that runs all of it on every
-push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
+scans) with full view/download on both web and mobile, a server
+integration test suite, a Playwright web e2e suite, mobile component
+tests, and a CI workflow that runs all of it on every push/PR, on a
+multi-tenant hosted architecture. Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
@@ -577,9 +591,6 @@ push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
 - An SMS notification channel (only email is wired up) — the
   `NotificationChannel` enum already has `SMS` reserved, but there's no SMS
   provider account to send through
-- Viewing/downloading a file attachment on mobile (the list shows; opening
-  one needs `expo-file-system`/`expo-sharing`, untestable without a
-  simulator — see **File Attachments** above)
 - CD is scaffolded (`deploy/` + `.github/workflows/deploy.yml`) but
   inactive — it needs real AWS infrastructure provisioned and GitHub
   secrets configured by hand first (see `deploy/README.md`); nothing has

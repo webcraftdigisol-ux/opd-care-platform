@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Appointment, Attachment, LabInvoice, PharmacySale, RadiologyInvoice } from '@opd/shared';
 import { getPatientRecords } from '../api/patients';
+import { openAttachment } from '../api/attachments';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
 
@@ -20,6 +21,18 @@ export function RecordsScreen() {
   const [radiologyInvoices, setRadiologyInvoices] = useState<RadiologyInvoice[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
+  async function handleOpenAttachment(attachment: Attachment) {
+    setOpeningId(attachment.id);
+    try {
+      await openAttachment(attachment);
+    } catch (err: any) {
+      Alert.alert('Could not open file', err.message ?? 'Please try again');
+    } finally {
+      setOpeningId(null);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -144,17 +157,21 @@ export function RecordsScreen() {
       {attachments.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Attached Files</Text>
-          {/* Metadata only -- viewing/downloading a file needs expo-file-system
-              + expo-sharing, which this sandbox has no simulator to verify
-              against, so that's deliberately left for a later round (see the
-              web app's PatientRecordsPage for the full view/download flow). */}
           {attachments.map((a) => (
-            <View key={a.id} style={styles.card}>
-              <Text style={styles.doctorName}>{a.fileName}</Text>
+            <Pressable
+              key={a.id}
+              style={styles.card}
+              onPress={() => handleOpenAttachment(a)}
+              disabled={openingId === a.id}
+            >
+              <View style={styles.rowBetween}>
+                <Text style={[styles.doctorName, { flex: 1 }]}>{a.fileName}</Text>
+                {openingId === a.id && <ActivityIndicator color={colors.teal} />}
+              </View>
               <Text style={styles.meta}>
                 {ATTACHMENT_CATEGORY_LABEL[a.category] ?? a.category} · {new Date(a.createdAt).toLocaleDateString()}
               </Text>
-            </View>
+            </Pressable>
           ))}
         </>
       )}

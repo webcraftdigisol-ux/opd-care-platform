@@ -198,24 +198,26 @@ export function RadiologyCounterPage() {
         <div className="rounded-xl bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-teal">Receipt</h2>
           <p className="text-sm text-gray-500">{new Date(receipt.createdAt).toLocaleString()}</p>
-          <table className="mt-4 w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-left text-gray-500">
-                <th className="py-1">Test</th>
-                <th className="py-1">Result</th>
-                <th className="py-1 text-right">Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipt.items.map((item) => (
-                <tr key={item.id} className="border-b border-gray-100">
-                  <td className="py-1">{item.testName}</td>
-                  <td className="py-1">{item.resultText || '—'}</td>
-                  <td className="py-1 text-right">₹{item.price.toFixed(2)}</td>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-left text-gray-500">
+                  <th className="py-1">Test</th>
+                  <th className="py-1">Result</th>
+                  <th className="py-1 text-right">Price</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {receipt.items.map((item) => (
+                  <tr key={item.id} className="border-b border-gray-100">
+                    <td className="py-1">{item.testName}</td>
+                    <td className="py-1">{item.resultText || '—'}</td>
+                    <td className="py-1 text-right">₹{item.price.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="mt-4 space-y-1 text-right text-sm">
             <p>Subtotal: ₹{receipt.subtotal.toFixed(2)}</p>
             <p>

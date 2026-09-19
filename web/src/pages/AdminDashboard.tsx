@@ -4,12 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { listAllAppointments } from '../api/admin';
 import { StatusBadge } from '../components/StatusBadge';
 import { PaymentRecorder } from '../components/PaymentRecorder';
-import { useAuth } from '../context/AuthContext';
 
 export function AdminDashboard() {
-  const { clinic } = useAuth();
-  const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
-  const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [expandedFee, setExpandedFee] = useState<string | null>(null);
   const { data: appointments, isLoading } = useQuery({
@@ -28,38 +24,6 @@ export function AdminDashboard() {
           <Link to="/admin/walk-in" className="rounded-md bg-teal px-3 py-2 text-sm text-white hover:bg-teal-mid">
             Register Walk-in
           </Link>
-          {tierAllowsPharmacyLab && (
-            <>
-              <Link to="/admin/pharmacy" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Pharmacy
-              </Link>
-              <Link to="/admin/lab" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Lab
-              </Link>
-              <Link to="/admin/radiology" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Radiology
-              </Link>
-            </>
-          )}
-          <Link to="/admin/staff" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Staff
-          </Link>
-          {tierAllowsIpd && (
-            <>
-              <Link to="/admin/ipd/admissions" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                In-Patients
-              </Link>
-              <Link to="/admin/ipd/wards" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-                Wards
-              </Link>
-            </>
-          )}
-          <Link to="/admin/reports" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Reports
-          </Link>
-          <Link to="/admin/notifications" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Notifications
-          </Link>
         </div>
       </div>
 
@@ -75,7 +39,7 @@ export function AdminDashboard() {
       {isLoading && <p className="text-gray-500">Loading…</p>}
       {!isLoading && appointments?.length === 0 && <p className="text-gray-500">No appointments for this date.</p>}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-teal-light text-teal">
             <tr>

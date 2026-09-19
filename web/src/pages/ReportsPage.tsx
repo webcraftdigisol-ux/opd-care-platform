@@ -41,33 +41,35 @@ function RevenueSectionCard({ title, section }: { title: string; section: Revenu
         </div>
       </div>
       {section.byItem.length > 0 && (
-        <table className="w-full text-left text-sm">
-          <thead className="text-gray-500">
-            <tr className="border-b border-gray-200">
-              <th className="py-1">Item</th>
-              <th className="py-1 text-right">Actual Qty</th>
-              <th className="py-1 text-right">Actual ₹</th>
-              <th className="py-1 text-right">Ordered Qty</th>
-              <th className="py-1 text-right">Ordered ₹</th>
-            </tr>
-          </thead>
-          <tbody>
-            {section.byItem.map((item) => (
-              <tr key={item.name} className="border-b border-gray-100">
-                <td className="py-1">
-                  {item.name}
-                  {item.unmatchedOrderedCount > 0 && (
-                    <span className="ml-1 text-xs text-red-500">({item.unmatchedOrderedCount} unmatched)</span>
-                  )}
-                </td>
-                <td className="py-1 text-right">{item.actualQuantity}</td>
-                <td className="py-1 text-right">₹{item.actualTotal.toFixed(2)}</td>
-                <td className="py-1 text-right">{item.orderedQuantity}</td>
-                <td className="py-1 text-right">₹{item.orderedTotal.toFixed(2)}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-gray-500">
+              <tr className="border-b border-gray-200">
+                <th className="py-1">Item</th>
+                <th className="py-1 text-right">Actual Qty</th>
+                <th className="py-1 text-right">Actual ₹</th>
+                <th className="py-1 text-right">Ordered Qty</th>
+                <th className="py-1 text-right">Ordered ₹</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {section.byItem.map((item) => (
+                <tr key={item.name} className="border-b border-gray-100">
+                  <td className="py-1">
+                    {item.name}
+                    {item.unmatchedOrderedCount > 0 && (
+                      <span className="ml-1 text-xs text-red-500">({item.unmatchedOrderedCount} unmatched)</span>
+                    )}
+                  </td>
+                  <td className="py-1 text-right">{item.actualQuantity}</td>
+                  <td className="py-1 text-right">₹{item.actualTotal.toFixed(2)}</td>
+                  <td className="py-1 text-right">{item.orderedQuantity}</td>
+                  <td className="py-1 text-right">₹{item.orderedTotal.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {section.byItem.length === 0 && <p className="text-sm text-gray-400">No activity in this range.</p>}
     </div>
@@ -155,7 +157,7 @@ function ActivityTab() {
               </div>
             ))}
           </div>
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-teal-light text-teal">
                 <tr>

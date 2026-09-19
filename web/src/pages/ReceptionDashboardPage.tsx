@@ -34,7 +34,7 @@ export function ReceptionDashboardPage() {
       {isLoading && <p className="text-gray-500">Loading…</p>}
       {!isLoading && appointments?.length === 0 && <p className="text-gray-500">No appointments for this date.</p>}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-teal-light text-teal">
             <tr>

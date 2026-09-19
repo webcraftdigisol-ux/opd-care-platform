@@ -808,3 +808,74 @@ export interface Attachment {
 export interface ApiError {
   message: string;
 }
+
+// ---- Subscription billing ----
+//
+// Platform-admin-only concept: a clinic's own ADMIN never sees this, it's
+// managed entirely by the platform (you), not the clinic itself. See
+// server/prisma/schema.prisma's "Subscription billing" section for why this
+// is a separate PlatformAdmin identity rather than another Role.
+
+export type BillingCycle = 'MONTHLY' | 'ANNUAL';
+export type SubscriptionStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
+
+export interface Subscription {
+  id: string;
+  clinicId: string;
+  tier: ClinicTier;
+  billingCycle: BillingCycle;
+  status: SubscriptionStatus;
+  amount: number;
+  currentPeriodEnd: string;
+  createdAt: string;
+  updatedAt: string;
+  // Derived, not stored: status === 'ACTIVE' AND currentPeriodEnd hasn't
+  // passed yet. See isSubscriptionActive() in server/src/middleware/auth.ts
+  // -- included here so the platform dashboard doesn't need to re-derive
+  // the same date math the server already computed.
+  isActive: boolean;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  subscriptionId: string;
+  amount: number;
+  billingCycle: BillingCycle;
+  periodStart: string;
+  periodEnd: string;
+  recordedAt: string;
+  recordedByAdminName: string | null;
+  notes: string | null;
+}
+
+// The platform dashboard's list view: a clinic plus its (always-present,
+// since registration auto-creates one) subscription.
+export interface ClinicWithSubscription {
+  id: string;
+  slug: string;
+  name: string;
+  tier: ClinicTier;
+  createdAt: string;
+  subscription: Subscription;
+}
+
+export interface PlatformAdminAuthResponse {
+  token: string;
+  admin: { id: string; name: string; email: string };
+}
+
+export interface RenewSubscriptionRequest {
+  tier: ClinicTier;
+  billingCycle: BillingCycle;
+  amount?: number; // defaults to the tier/cycle's suggested price when omitted
+  notes?: string;
+}
+
+// Single source of truth for both sides: the server sets this exact string
+// as the message on every 403 it sends for an inactive subscription (login,
+// registration, and every requireAuth-gated route), and the web app string-
+// matches against it to show a dedicated lockout screen instead of a
+// generic error toast. Keep them in lockstep -- see
+// server/src/middleware/auth.ts and web/src/api/client.ts.
+export const SUBSCRIPTION_INACTIVE_MESSAGE =
+  "This clinic's subscription is not active. Contact your platform administrator to restore access.";

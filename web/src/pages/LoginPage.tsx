@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { SUBSCRIPTION_INACTIVE_MESSAGE } from '@opd/shared';
 import { login } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { homeRouteForRole } from '../utils/roleHome';
@@ -9,7 +10,9 @@ export function LoginPage() {
   const [clinicSlug, setClinicSlug] = useState(searchParams.get('clinic') ?? '');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    searchParams.get('locked') === '1' ? SUBSCRIPTION_INACTIVE_MESSAGE : null,
+  );
   const [submitting, setSubmitting] = useState(false);
   const { setSession } = useAuth();
   const navigate = useNavigate();
@@ -29,10 +32,17 @@ export function LoginPage() {
     }
   }
 
+  const isLockout = error === SUBSCRIPTION_INACTIVE_MESSAGE;
+
   return (
     <div className="mx-auto mt-20 max-w-sm rounded-xl bg-white p-8 shadow-md">
       <h1 className="mb-1 text-2xl font-semibold text-teal">Welcome back</h1>
       <p className="mb-6 text-sm text-gray-500">Sign in to OPD Care</p>
+      {isLockout && (
+        <div data-testid="subscription-lockout-banner" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          {SUBSCRIPTION_INACTIVE_MESSAGE}
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Clinic code</label>
@@ -64,7 +74,7 @@ export function LoginPage() {
             className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
           />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && !isLockout && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"
           disabled={submitting}

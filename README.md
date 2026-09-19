@@ -257,6 +257,91 @@ the clinic's current tier fresh on every request, not at login — so
 upgrading a clinic's tier takes effect immediately without forcing a
 re-login.
 
+## Subscription Billing
+
+Clinics use this software on a monthly or annual subscription, priced per
+tier (Tier 1 = OPD only, Tier 2 = +Pharmacy/Lab/Radiology, Tier 3 = +IPD —
+each tier costs more because it unlocks more). A `Subscription` row (1:1
+with `Clinic`) tracks `tier`/`billingCycle`/`status`/`amount`/
+`currentPeriodEnd`; a clinic's subscription *is* what grants it that tier's
+access, not a separate concern layered on top.
+
+**Auto-suspend on lapse, computed, not cron-driven.** A subscription is
+"active" iff `status === 'ACTIVE'` AND `currentPeriodEnd` hasn't passed —
+both conditions checked fresh on every request
+(`isSubscriptionActive()` in `server/src/middleware/auth.ts`), the same
+"fetch fresh, don't trust the JWT" precedent `requireTier` already
+established for tier-gating. The moment a renewal period elapses without a
+platform admin recording a new payment, `requireAuth` — which every
+router in the API goes through — starts 403ing every request for that
+clinic, login included, automatically. No background job flips a status;
+the date comparison **is** the enforcement, so there's nothing to miss a
+tick on. `POST /api/auth/login` and `POST /api/auth/register` (patient
+self-registration) check it too, before issuing a token, so the lockout
+reason is clear at the point of sign-in rather than surfacing as a
+mysterious 403 on the first click afterward. The web app treats this 403
+specially (string-matched against `SUBSCRIPTION_INACTIVE_MESSAGE`, a
+constant shared between server and client so the two can't drift apart):
+`LoginPage` shows a dedicated amber lockout banner instead of the generic
+error text, and `apiClient`'s response interceptor catches it mid-session
+too — a clinic that gets suspended while someone is actively using the
+app is redirected to that same banner on their very next request, not
+left showing stale data.
+
+**A brand-new clinic works immediately, on a 30-day grace period.**
+`POST /clinics/register` creates an `ACTIVE` `MONTHLY` subscription in the
+same transaction as the `Clinic` and its first `ADMIN` user, with
+`currentPeriodEnd` 30 days out and no `SubscriptionPayment` recorded yet
+(this is a self-serve signup flow — nobody's actually paid at this point).
+Nothing blocks the clinic from using the product during that window; it
+lapses and locks out automatically after 30 days unless a platform admin
+records a real payment before then.
+
+**Managed entirely outside the clinic's own Role/User system, by design.**
+Billing a clinic has to keep working even when that clinic is the one
+being locked out — so subscription management isn't another clinic
+`Role`, it's a wholly separate `PlatformAdmin` identity with its own
+login (`POST /api/platform/login`), its own JWT (structurally similar but
+carrying `typ: 'platform_admin'` instead of a `role`/`clinicId`, verified
+by a completely separate `requirePlatformAdmin` middleware — see
+`server/src/utils/jwt.ts` and `server/src/middleware/platformAuth.ts`), and
+its own web section (`/platform/login`, `/platform` — no clinic `Navbar`,
+a neutral gray palette instead of the clinic teal/gold, and its own
+`localStorage` key so a platform-admin browser tab and a clinic-admin
+browser tab can never collide). A clinic-scoped token is rejected outright
+by any `/api/platform/*` route and vice versa — verified directly in
+`subscription.test.ts`, not just assumed from the code shape. No clinic
+`ADMIN`, however senior, can see or touch another clinic's billing; only a
+`PlatformAdmin` (you) can.
+
+The platform dashboard (`/platform`) lists every clinic with its live
+subscription status — **Active** / **Lapsed** (still `ACTIVE` in the DB
+but past its date — a real, distinct state from a deliberate suspension,
+surfaced separately so it's obvious which clinics need a nudge to renew
+vs. which were suspended on purpose) / **Suspended** / **Cancelled** —
+and lets you record a renewal (extends `currentPeriodEnd` by one billing
+cycle from `max(now, currentPeriodEnd)`, so an early renewal keeps the
+time already paid for rather than shortening it, and a lapsed renewal
+doesn't get backdated credit for the days it was down), suspend a clinic
+outright, or reactivate one (refused with a 400 telling you to use renew
+instead, if it's also date-lapsed — reactivating alone wouldn't actually
+restore access). Every renewal also writes a permanent `SubscriptionPayment`
+row (who recorded it, when, for what period) independent of `Subscription`'s
+own single mutable row — same rationale as `Payment` vs. a bill's running
+total elsewhere in this schema: a payment record shouldn't change
+retroactively just because the subscription's current state moved on.
+Pricing (`server/src/utils/subscriptionPricing.ts`) is placeholder INR
+figures per tier/cycle, used only as the suggested default — the actual
+amount charged is freely editable per renewal, the same "own recorded
+charge, not always re-derived from a changed price" discipline used for
+`PharmacySaleItem`/`LabResultItem`/`RadiologyResultItem` elsewhere in this
+codebase. **Update the placeholder prices to real ones before charging
+anyone.**
+
+A seeded `PlatformAdmin` (`owner@opdcare.test` / `platformadmin123` — see
+`prisma/seed.ts`) is for local/demo use only; change or replace it before
+any real deployment.
+
 ## Prerequisites
 
 - Node.js 20+
@@ -363,12 +448,23 @@ upload that fails validation leaving no orphaned file on disk, and the
 accepted and its mimetype normalized to `application/dicom`, a non-`.dcm`
 file rejected for that category, a `.dcm` file rejected for the unrelated
 `RADIOLOGY_REPORT` category, role gating, and independent per-category
-listing on the same invoice), and `tests/reminders.test.ts` (calls
+listing on the same invoice), `tests/reminders.test.ts` (calls
 `sendDueAppointmentReminders()` directly rather than waiting on a real cron
 tick — a due appointment gets reminded, a second pass is idempotent,
 cancelled/walk-in/today/day-after-tomorrow appointments are all correctly
 excluded, and a due appointment in each of two different clinics both get
-reminded in the same pass). 87 tests total.
+reminded in the same pass), and `tests/subscription.test.ts` (registering a
+clinic auto-creates an active subscription and access works immediately; a
+lapsed subscription — `currentPeriodEnd` in the past, `status` still
+`ACTIVE` — blocks login, patient self-registration, and every
+already-issued token automatically, with no status flip needed;
+`SUSPENDED`/`CANCELLED` block regardless of date; a clinic-scoped JWT is
+rejected on every `/api/platform/*` route and a platform JWT is rejected
+on every clinic route; renew extends the later of now/`currentPeriodEnd`
+— never backdating credit for lapsed time, never shortening an early
+renewal — records a `SubscriptionPayment`, and syncs `Clinic.tier`;
+suspend/reactivate, including reactivate correctly refusing a
+still-date-lapsed subscription). 105 tests total.
 
 ### Web/mobile UI tests
 
@@ -688,19 +784,24 @@ bill type, email notifications including a scheduled day-before appointment
 reminder, file attachments (lab/radiology report scans, prescription
 scans) with full view/download on both web and mobile, a DICOM file
 upload + in-browser viewer for a single uncompressed radiology image (see
-"DICOM file support" above), a server integration test suite, a web unit
-test suite (Vitest), a Playwright web e2e suite, mobile component tests,
-and a CI workflow that runs all of it on every push/PR, on a multi-tenant
-hosted architecture. Deliberately deferred:
+"DICOM file support" above), per-tier monthly/annual subscription billing
+with platform-admin-managed renew/suspend/reactivate and automatic
+access lockout on lapse (see "Subscription Billing" above), a server
+integration test suite, a web unit test suite (Vitest), a Playwright web
+e2e suite, mobile component tests, and a CI workflow that runs all of it
+on every push/PR, on a multi-tenant hosted architecture. Deliberately
+deferred:
 - DICOM Modality Worklist (MWL) / C-STORE network integration — the
   protocols a real PACS uses to push a worklist to a scanner or receive
   images back directly, which need a LAN-attached device or DICOM
   conformance simulator that this hosted, no-on-prem-device architecture
   doesn't provide. (Viewing an already-exported `.dcm` file *is* built —
   see "DICOM file support" above.)
-- A live online payment gateway (Razorpay/Stripe patient checkout) — no real
-  merchant credentials available to test against; the `Payment` schema
-  reserves the fields for it
+- A live online payment gateway (Razorpay/Stripe) — no real merchant
+  credentials available to test against, for either patient-facing checkout
+  (the `Payment` schema reserves the fields for it) or subscription
+  renewals (a platform admin records a renewal manually today, the same
+  constraint)
 - An SMS notification channel (only email is wired up) — the
   `NotificationChannel` enum already has `SMS` reserved, but there's no SMS
   provider account to send through

@@ -16,6 +16,34 @@ async function main() {
     },
   });
 
+  // Seeded directly via upsert rather than through POST /clinics/register,
+  // so it needs its own subscription too -- a clinic with no Subscription
+  // row is locked out of everything (see isSubscriptionActive in
+  // middleware/auth.ts). Ten years out so local/demo use never lapses.
+  await prisma.subscription.upsert({
+    where: { clinicId: clinic.id },
+    update: {},
+    create: {
+      clinicId: clinic.id,
+      tier: clinic.tier,
+      billingCycle: 'ANNUAL',
+      status: 'ACTIVE',
+      amount: 49999,
+      currentPeriodEnd: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  const platformAdminPassword = await bcrypt.hash('platformadmin123', 10);
+  await prisma.platformAdmin.upsert({
+    where: { email: 'owner@opdcare.test' },
+    update: {},
+    create: {
+      name: 'Platform Owner',
+      email: 'owner@opdcare.test',
+      password: platformAdminPassword,
+    },
+  });
+
   const adminPassword = await bcrypt.hash('admin123', 10);
   await prisma.user.upsert({
     where: { clinicId_email: { clinicId: clinic.id, email: 'admin@opdcare.test' } },
@@ -234,6 +262,8 @@ async function main() {
   console.log('  Reception:  receptionist@opdcare.test / receptionist123');
   console.log('  Nurse:      nurse@opdcare.test / nurse123');
   console.log('  Head Nurse: headnurse@opdcare.test / headnurse123');
+  console.log('Platform admin (no clinic code needed, /platform/login):');
+  console.log('  owner@opdcare.test / platformadmin123');
 }
 
 main()

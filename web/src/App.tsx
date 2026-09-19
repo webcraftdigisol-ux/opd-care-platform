@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
@@ -27,6 +27,9 @@ import { IpdAdmitPatientPage } from './pages/IpdAdmitPatientPage';
 import { IpdAdmissionDetailPage } from './pages/IpdAdmissionDetailPage';
 import { ReceptionDashboardPage } from './pages/ReceptionDashboardPage';
 import { AdminNotificationsPage } from './pages/AdminNotificationsPage';
+import { PlatformLoginPage } from './pages/PlatformLoginPage';
+import { PlatformDashboardPage } from './pages/PlatformDashboardPage';
+import { PlatformProtectedRoute } from './components/PlatformProtectedRoute';
 import { homeRouteForRole } from './utils/roleHome';
 
 function HomeRedirect() {
@@ -37,13 +40,29 @@ function HomeRedirect() {
 }
 
 export default function App() {
+  const location = useLocation();
+  // The platform-admin section is a separate actor space from any clinic
+  // (see api/platformClient.ts) -- it never shows the clinic Navbar, which
+  // is meaningless outside a clinic session.
+  const isPlatformRoute = location.pathname.startsWith('/platform');
+
   return (
     <div className="min-h-screen">
-      <Navbar />
+      {!isPlatformRoute && <Navbar />}
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/register-clinic" element={<RegisterClinicPage />} />
+
+        <Route path="/platform/login" element={<PlatformLoginPage />} />
+        <Route
+          path="/platform"
+          element={
+            <PlatformProtectedRoute>
+              <PlatformDashboardPage />
+            </PlatformProtectedRoute>
+          }
+        />
 
         <Route path="/" element={<HomeRedirect />} />
         <Route

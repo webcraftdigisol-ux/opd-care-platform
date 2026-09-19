@@ -102,6 +102,7 @@ model Clinic {
   payments          Payment[]
   notifications     Notification[]
   attachments       Attachment[]
+  subscription      Subscription?
 }
 
 model User {
@@ -710,4 +711,79 @@ model Attachment {
   @@index([clinicId])
   @@index([patientId])
   @@index([category, entityId])
+}
+
+// ---- Subscription billing ----
+//
+// This is deliberately its own actor space, not folded into the clinic-scoped
+// User/Role system: every other model in this schema is reachable only
+// through a clinicId a JWT carries, but billing a clinic has to work even
+// when that clinic can't reach its own data (a lapsed subscription blocks
+// exactly that JWT). PlatformAdmin is a wholly separate identity + login +
+// token type (see server/src/middleware/platformAuth.ts) so a clinic-scoped
+// token can never manage billing and a platform token can never touch
+// clinic data.
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  SUSPENDED // manually suspended by a platform admin -- blocks access regardless of currentPeriodEnd
+  CANCELLED // subscription terminated -- same effect as SUSPENDED, kept distinct for reporting
+}
+
+// One row per clinic (not one row per billing period -- SubscriptionPayment
+// below is the period-by-period history). "Active" is never just this row's
+// status: it's status === ACTIVE AND currentPeriodEnd hasn't passed yet (see
+// isSubscriptionActive() in middleware/auth.ts) -- so a lapsed renewal
+// blocks access automatically, with no cron job needed to flip a status.
+model Subscription {
+  id               String             @id @default(uuid())
+  clinicId         String             @unique
+  clinic           Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  tier             Int // the tier this subscription pays for; kept in sync with Clinic.tier by platform.routes.ts, never set independently
+  billingCycle     BillingCycle
+  status           SubscriptionStatus @default(ACTIVE)
+  amount           Float // the fee for the current period, snapshotted at creation/renewal -- see PharmacySaleItem etc. for the same "own recorded charge" discipline
+  currentPeriodEnd DateTime
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  payments SubscriptionPayment[]
+
+  @@index([currentPeriodEnd])
+}
+
+// A renewal's own permanent record, independent of Subscription's single
+// mutable row -- same rationale as Payment vs. a bill's own running total
+// elsewhere in this schema: the row a payment was recorded against should
+// never change retroactively just because the subscription's current state
+// moved on.
+model SubscriptionPayment {
+  id                 String         @id @default(uuid())
+  subscriptionId     String
+  subscription       Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount             Float
+  billingCycle       BillingCycle
+  periodStart        DateTime
+  periodEnd          DateTime
+  recordedAt         DateTime       @default(now())
+  recordedByAdminId  String?
+  recordedByAdmin    PlatformAdmin? @relation(fields: [recordedByAdminId], references: [id])
+  notes              String?
+
+  @@index([subscriptionId])
+}
+
+model PlatformAdmin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+
+  subscriptionPayments SubscriptionPayment[]
 }

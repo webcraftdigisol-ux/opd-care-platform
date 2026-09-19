@@ -1,8 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { ClinicTier, Role } from '@opd/shared';
+import { SUBSCRIPTION_INACTIVE_MESSAGE, type ClinicTier, type Role } from '@opd/shared';
 import { verifyToken } from '../utils/jwt';
 import { prisma } from '../prisma';
 import { HttpError } from './errorHandler';
+
+export { SUBSCRIPTION_INACTIVE_MESSAGE };
 
 export interface AuthedRequest extends Request {
   auth?: {
@@ -12,19 +14,43 @@ export interface AuthedRequest extends Request {
   };
 }
 
-export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
+// A subscription is active iff its status is ACTIVE and its current period
+// hasn't passed -- a lapsed renewal blocks access automatically with no cron
+// job needed to flip a status; see prisma/schema.prisma's Subscription model.
+export function isSubscriptionActive(sub: { status: string; currentPeriodEnd: Date } | null): boolean {
+  if (!sub) return false;
+  if (sub.status !== 'ACTIVE') return false;
+  return sub.currentPeriodEnd.getTime() >= Date.now();
+}
+
+export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Missing or invalid Authorization header' });
   }
   const token = header.slice('Bearer '.length);
+  let payload;
   try {
-    const payload = verifyToken(token);
-    req.auth = { userId: payload.sub, role: payload.role, clinicId: payload.clinicId };
-    next();
+    payload = verifyToken(token);
   } catch {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
+  // Fetched fresh per request, same as requireTier below -- so a clinic
+  // suspended (or reactivated) by a platform admin takes effect on the very
+  // next request, not just after the token expires or a re-login. Unlike
+  // requireTier (opt-in per route), requireAuth gates every route in every
+  // router, so a DB error here must reach next(err) rather than hang the
+  // request as an unhandled rejection would.
+  try {
+    const subscription = await prisma.subscription.findUnique({ where: { clinicId: payload.clinicId } });
+    if (!isSubscriptionActive(subscription)) {
+      return res.status(403).json({ message: SUBSCRIPTION_INACTIVE_MESSAGE });
+    }
+  } catch (err) {
+    return next(err);
+  }
+  req.auth = { userId: payload.sub, role: payload.role, clinicId: payload.clinicId };
+  next();
 }
 
 export function requireRole(...roles: Role[]) {

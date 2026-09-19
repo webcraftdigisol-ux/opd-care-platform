@@ -34,14 +34,31 @@ export function tomorrowDateStr(): string {
 export async function createClinic(
   opts: { tier?: ClinicTier; taxPercent?: number; slug?: string; name?: string } = {},
 ) {
-  return prisma.clinic.create({
+  const tier = opts.tier ?? 1;
+  const clinic = await prisma.clinic.create({
     data: {
       name: opts.name ?? 'Test Clinic',
       slug: opts.slug ?? uniqueSlug(),
-      tier: opts.tier ?? 1,
+      tier,
       taxPercent: opts.taxPercent ?? 0,
     },
   });
+  // Created directly via Prisma rather than POST /clinics/register, so it
+  // needs its own subscription too -- requireAuth (middleware/auth.ts) 403s
+  // every route, login included, for a clinic with none. Far-future so
+  // ordinary tests never brush against the lapse boundary; subscription.test.ts
+  // covers the lapse/suspend/reactivate behavior itself directly.
+  await prisma.subscription.create({
+    data: {
+      clinicId: clinic.id,
+      tier,
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+      amount: 0,
+      currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    },
+  });
+  return clinic;
 }
 
 export async function createUser(
@@ -103,6 +120,27 @@ export async function setupClinicWithAdmin(opts: { tier?: ClinicTier; taxPercent
   const { password } = await createUser(clinic.id, 'ADMIN', { email });
   const session = await loginAs(clinic.slug, email, password);
   return { clinic, adminToken: session.token as string };
+}
+
+export async function createPlatformAdmin(opts: { email?: string; password?: string; name?: string } = {}) {
+  const password = opts.password ?? 'password123';
+  const hash = await bcrypt.hash(password, 10);
+  const admin = await prisma.platformAdmin.create({
+    data: {
+      name: opts.name ?? 'Platform Admin Test',
+      email: opts.email ?? uniqueEmail('platform-admin'),
+      password: hash,
+    },
+  });
+  return { admin, password };
+}
+
+export async function platformLoginAs(email: string, password: string) {
+  const res = await request(app).post('/api/platform/login').send({ email, password });
+  if (res.status !== 200) {
+    throw new Error(`Platform login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  return res.body as { token: string; admin: any };
 }
 
 export function auth(token: string) {

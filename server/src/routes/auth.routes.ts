@@ -5,7 +5,7 @@ import { prisma } from '../prisma';
 import { signToken } from '../utils/jwt';
 import { toClinicSummary, toPublicUser } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
-import { requireAuth, type AuthedRequest } from '../middleware/auth';
+import { isSubscriptionActive, requireAuth, SUBSCRIPTION_INACTIVE_MESSAGE, type AuthedRequest } from '../middleware/auth';
 import type { AuthResponse } from '@opd/shared';
 
 export const authRouter = Router();
@@ -29,6 +29,11 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const data = registerSchema.parse(req.body);
     const clinic = await findClinicBySlug(data.clinicSlug);
+
+    const subscription = await prisma.subscription.findUnique({ where: { clinicId: clinic.id } });
+    if (!isSubscriptionActive(subscription)) {
+      throw new HttpError(403, SUBSCRIPTION_INACTIVE_MESSAGE);
+    }
 
     const existing = await prisma.user.findUnique({
       where: { clinicId_email: { clinicId: clinic.id, email: data.email } },
@@ -74,6 +79,12 @@ authRouter.post(
     const valid = await bcrypt.compare(data.password, user.password);
     if (!valid) {
       throw new HttpError(401, 'Invalid email or password');
+    }
+    // Checked only after credentials are confirmed valid, so an
+    // unauthenticated login attempt never leaks a clinic's billing state.
+    const subscription = await prisma.subscription.findUnique({ where: { clinicId: clinic.id } });
+    if (!isSubscriptionActive(subscription)) {
+      throw new HttpError(403, SUBSCRIPTION_INACTIVE_MESSAGE);
     }
     const token = signToken({ sub: user.id, role: user.role, clinicId: clinic.id });
     const response: AuthResponse = { token, user: toPublicUser(user), clinic: toClinicSummary(clinic) };

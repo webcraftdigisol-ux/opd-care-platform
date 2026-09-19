@@ -30,6 +30,9 @@ import type {
   Payment as PrismaPayment,
   Notification as PrismaNotification,
   Attachment as PrismaAttachment,
+  Subscription as PrismaSubscription,
+  SubscriptionPayment as PrismaSubscriptionPayment,
+  PlatformAdmin,
 } from '@prisma/client';
 import type {
   PublicUser,
@@ -64,7 +67,12 @@ import type {
   Payment,
   Notification,
   Attachment,
+  Subscription,
+  SubscriptionPayment,
+  ClinicWithSubscription,
+  ClinicTier,
 } from '@opd/shared';
+import { isSubscriptionActive } from '../middleware/auth';
 
 export function toClinicSummary(clinic: Clinic): ClinicSummary {
   return {
@@ -522,5 +530,49 @@ export function toAttachment(attachment: PrismaAttachment & { uploadedBy?: User 
     uploadedById: attachment.uploadedById,
     uploadedByName: attachment.uploadedBy?.name,
     createdAt: attachment.createdAt.toISOString(),
+  };
+}
+
+// ---- Subscription billing ----
+
+export function toSubscription(sub: PrismaSubscription): Subscription {
+  return {
+    id: sub.id,
+    clinicId: sub.clinicId,
+    tier: sub.tier as ClinicTier,
+    billingCycle: sub.billingCycle,
+    status: sub.status,
+    amount: sub.amount,
+    currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
+    createdAt: sub.createdAt.toISOString(),
+    updatedAt: sub.updatedAt.toISOString(),
+    isActive: isSubscriptionActive(sub),
+  };
+}
+
+export function toSubscriptionPayment(
+  payment: PrismaSubscriptionPayment & { recordedByAdmin?: PlatformAdmin | null },
+): SubscriptionPayment {
+  return {
+    id: payment.id,
+    subscriptionId: payment.subscriptionId,
+    amount: payment.amount,
+    billingCycle: payment.billingCycle,
+    periodStart: payment.periodStart.toISOString(),
+    periodEnd: payment.periodEnd.toISOString(),
+    recordedAt: payment.recordedAt.toISOString(),
+    recordedByAdminName: payment.recordedByAdmin?.name ?? null,
+    notes: payment.notes,
+  };
+}
+
+export function toClinicWithSubscription(clinic: Clinic & { subscription: PrismaSubscription }): ClinicWithSubscription {
+  return {
+    id: clinic.id,
+    slug: clinic.slug,
+    name: clinic.name,
+    tier: clinic.tier as ClinicTier,
+    createdAt: clinic.createdAt.toISOString(),
+    subscription: toSubscription(clinic.subscription),
   };
 }

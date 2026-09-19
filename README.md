@@ -112,19 +112,33 @@ clinic has real credentials to test against.
 Email notifications (via `nodemailer`, SMTP configured through
 `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`) fire on:
 appointment booked/walk-in confirmation, payment received (with the
-remaining balance if partial), IPD discharge summary, and a
-manually-triggered follow-up reminder from the Reports → Follow-ups tab.
-Every attempt — sent, failed, or skipped — writes a `Notification` row
-(visible to Admins at **Notifications** in the nav), so the whole pipeline
-is auditable and fully testable even with no real email provider
-configured: `SKIPPED` (no SMTP configured, or no usable recipient — e.g. the
-synthetic `walkin-<phone>@opd.local` placeholder used for phone-only
-walk-ins) is a normal, expected outcome, not a swallowed error. **Not
-built**: an SMS channel (the `NotificationChannel` enum already has `SMS`
-reserved) and scheduled/cron-driven reminders (e.g. an automatic day-before
-appointment reminder) — this deployment has no background job runner yet,
-so every notification here is triggered synchronously by the action that
-causes it, not by a clock.
+remaining balance if partial), IPD discharge summary, a
+manually-triggered follow-up reminder from the Reports → Follow-ups tab,
+and an automatic day-before appointment reminder (see below). Every
+attempt — sent, failed, or skipped — writes a `Notification` row (visible
+to Admins at **Notifications** in the nav), so the whole pipeline is
+auditable and fully testable even with no real email provider configured:
+`SKIPPED` (no SMTP configured, or no usable recipient — e.g. the synthetic
+`walkin-<phone>@opd.local` placeholder used for phone-only walk-ins) is a
+normal, expected outcome, not a swallowed error. **Not built**: an SMS
+channel — the `NotificationChannel` enum already has `SMS` reserved, but
+there's no SMS provider account to send through.
+
+### Scheduled reminders
+
+The first background job in this app that isn't triggered by a user action:
+`server/src/utils/scheduler.ts` runs an hourly `node-cron` tick that calls
+`sendDueAppointmentReminders()` (`server/src/utils/reminders.ts`) — a
+system-wide sweep (not scoped to one clinic, unlike every route handler)
+that finds every `BOOKED`, non-walk-in appointment dated tomorrow with no
+reminder sent yet, fires the same `notifyPatientEmail` pipeline as every
+other notification, and marks `Appointment.reminderSentAt` so the next
+hourly tick doesn't re-send it. The scheduler is started only from
+`index.ts`, never from `app.ts` — `app.ts` is what the test suite imports
+directly to drive the Express app through Supertest without binding a
+port (see **Automated tests**), and a background timer firing against the
+test database on every test run would be pure noise at best and a source
+of flaky cross-test interference at worst.
 
 ## File Attachments
 
@@ -255,14 +269,19 @@ Supertest, backed by the real Prisma client pointed at `opd_care_test`
 (`server/.env.test`). Each test creates its own clinic(s) with random
 slugs/emails, so test files are independent of each other and safe to run in
 parallel in CI even though this sandbox runs them serially (`--runInBand`)
-for reliability. 75 tests total, including `tests/unit/slots.test.ts` (the
+for reliability. 82 tests total, including `tests/unit/slots.test.ts` (the
 fixed-time-slot grid math), `tests/booking-slots.test.ts` (booking against
 a real schedule, double-booking rejected, a genuine concurrent-request race
 settling to exactly one winner, cancelling freeing a slot, walk-ins staying
-unaffected), and `tests/attachments.test.ts` (per-category upload role
+unaffected), `tests/attachments.test.ts` (per-category upload role
 gating, clinic-scoped tenancy, a patient downloading their own file but not
 another patient's, any staff role reading regardless of who can write, and
-an upload that fails validation leaving no orphaned file on disk).
+an upload that fails validation leaving no orphaned file on disk), and
+`tests/reminders.test.ts` (calls `sendDueAppointmentReminders()` directly
+rather than waiting on a real cron tick — a due appointment gets reminded,
+a second pass is idempotent, cancelled/walk-in/today/day-after-tomorrow
+appointments are all correctly excluded, and a due appointment in each of
+two different clinics both get reminded in the same pass).
 
 ### Web/mobile UI tests
 
@@ -515,6 +534,27 @@ the user's `clinicId` and every route scopes its queries by it).
   without needing lab-technician permissions themself. Tightening reads to
   match writes would have been the easy default and the wrong one; the two
   needed separate rules, not one gate reused for both directions.
+- **A background job needs its own "already handled this" guard — a route
+  handler doesn't, because the request only happens once.** Every other
+  notification trigger in this app fires from a single HTTP request that
+  runs exactly once, so nothing has ever needed idempotency protection
+  before. An hourly cron tick is different: it runs repeatedly by design,
+  so without `Appointment.reminderSentAt` the same reminder would resend
+  every single hour until the appointment's date arrived. This is the first
+  place in the codebase where "how many times will this code path run"
+  stopped being "once" by default — worth naming so the next background
+  job doesn't rediscover it the hard way.
+- **Don't import a route module and expect its side effects to stay
+  contained.** `startReminderScheduler()` is called only from `index.ts`,
+  never from `app.ts`, specifically because `app.ts` is what the test
+  suite imports to run the whole app through Supertest (see
+  `server/tests/helpers.ts`) — every test file that imports it would have
+  quietly started a real hourly timer against the test database otherwise.
+  Testing `sendDueAppointmentReminders()` directly (`reminders.test.ts`
+  calls it as a plain function, not by waiting on a cron tick) sidesteps
+  needing fake timers entirely, and keeps the scheduler itself as the one
+  piece of this feature that's exercised only by inspection and the live
+  verification run, not by the automated suite.
 
 ## What's not built yet
 
@@ -523,20 +563,20 @@ Pharmacy/Lab/Radiology, Tier 3 IPD, Reporting (financial Actual-vs-Total
 across all three revenue modules, daily activity, follow-ups due), granular
 front-desk/nursing staff roles (Receptionist, Nurse, Head Nurse),
 consultation-fee billing and a cash/card/UPI payment ledger across every
-bill type, email notifications, file attachments (lab/radiology report
-scans, prescription scans), a server integration test suite, a Playwright
-web e2e suite, mobile component tests, and a CI workflow that runs all of
-it on every push/PR, on a multi-tenant hosted architecture. Deliberately
-deferred:
+bill type, email notifications including a scheduled day-before appointment
+reminder, file attachments (lab/radiology report scans, prescription
+scans), a server integration test suite, a Playwright web e2e suite,
+mobile component tests, and a CI workflow that runs all of it on every
+push/PR, on a multi-tenant hosted architecture. Deliberately deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
 - A live online payment gateway (Razorpay/Stripe patient checkout) — no real
   merchant credentials available to test against; the `Payment` schema
   reserves the fields for it
-- An SMS notification channel (only email is wired up) and scheduled/
-  cron-driven reminders (e.g. an automatic day-before appointment reminder)
-  — there's no background job runner in this deployment yet
+- An SMS notification channel (only email is wired up) — the
+  `NotificationChannel` enum already has `SMS` reserved, but there's no SMS
+  provider account to send through
 - Viewing/downloading a file attachment on mobile (the list shows; opening
   one needs `expo-file-system`/`expo-sharing`, untestable without a
   simulator — see **File Attachments** above)

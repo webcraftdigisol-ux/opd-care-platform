@@ -761,7 +761,12 @@ export interface BillPaymentsResponse {
 // ---- Notifications ----
 
 export type NotificationChannel = 'EMAIL' | 'SMS';
-export type NotificationType = 'APPOINTMENT_CONFIRMED' | 'PAYMENT_RECEIVED' | 'FOLLOWUP_REMINDER' | 'DISCHARGE_SUMMARY';
+export type NotificationType =
+  | 'APPOINTMENT_CONFIRMED'
+  | 'PAYMENT_RECEIVED'
+  | 'FOLLOWUP_REMINDER'
+  | 'DISCHARGE_SUMMARY'
+  | 'APPOINTMENT_REMINDER';
 export type NotificationStatus = 'SENT' | 'FAILED' | 'SKIPPED';
 
 export interface Notification {

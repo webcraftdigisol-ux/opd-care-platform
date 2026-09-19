@@ -55,6 +55,7 @@ enum NotificationType {
   PAYMENT_RECEIVED
   FOLLOWUP_REMINDER
   DISCHARGE_SUMMARY
+  APPOINTMENT_REMINDER
 }
 
 enum NotificationStatus {
@@ -182,6 +183,14 @@ model Appointment {
   // later change to the doctor's fee never rewrites an already-booked visit.
   consultationFee Float             @default(0)
   createdAt       DateTime          @default(now())
+  // Set the first time the day-before reminder job attempts this
+  // appointment (see server/src/utils/reminders.ts), whatever the actual
+  // send outcome (SENT/FAILED/SKIPPED -- see the Notification row it
+  // writes). This is an attempted-once guard, not a delivery guarantee,
+  // the same "one attempt, always logged" discipline as every other
+  // notification in this app; it just needs to stop the hourly job from
+  // re-sending the same reminder every time it runs.
+  reminderSentAt  DateTime?
 
   consultation      Consultation?
   pharmacySales     PharmacySale[]

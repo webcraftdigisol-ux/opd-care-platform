@@ -461,6 +461,7 @@ export interface PatientRecordsResponse {
   pharmacySales: PharmacySale[];
   labInvoices: LabInvoice[];
   radiologyInvoices: RadiologyInvoice[];
+  attachments: Attachment[];
 }
 
 // ---- Reports ----
@@ -774,6 +775,26 @@ export interface Notification {
   body: string;
   status: NotificationStatus;
   error: string | null;
+  createdAt: string;
+}
+
+// ---- Attachments ----
+
+// entityId is polymorphic on category -- a LabInvoice id for LAB_REPORT, a
+// RadiologyInvoice id for RADIOLOGY_REPORT, a Consultation id for
+// PRESCRIPTION_SCAN. See server/src/routes/attachments.routes.ts.
+export type AttachmentCategory = 'LAB_REPORT' | 'RADIOLOGY_REPORT' | 'PRESCRIPTION_SCAN';
+
+export interface Attachment {
+  id: string;
+  patientId: string;
+  category: AttachmentCategory;
+  entityId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedById: string;
+  uploadedByName?: string;
   createdAt: string;
 }
 

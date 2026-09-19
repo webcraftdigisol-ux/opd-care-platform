@@ -29,6 +29,7 @@ import type {
   IpdBill as PrismaIpdBill,
   Payment as PrismaPayment,
   Notification as PrismaNotification,
+  Attachment as PrismaAttachment,
 } from '@prisma/client';
 import type {
   PublicUser,
@@ -62,6 +63,7 @@ import type {
   IpdBill,
   Payment,
   Notification,
+  Attachment,
 } from '@opd/shared';
 
 export function toClinicSummary(clinic: Clinic): ClinicSummary {
@@ -503,5 +505,22 @@ export function toNotification(notification: PrismaNotification & { patient?: Us
     status: notification.status,
     error: notification.error,
     createdAt: notification.createdAt.toISOString(),
+  };
+}
+
+// ---- Attachments ----
+
+export function toAttachment(attachment: PrismaAttachment & { uploadedBy?: User }): Attachment {
+  return {
+    id: attachment.id,
+    patientId: attachment.patientId,
+    category: attachment.category,
+    entityId: attachment.entityId,
+    fileName: attachment.fileName,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    uploadedById: attachment.uploadedById,
+    uploadedByName: attachment.uploadedBy?.name,
+    createdAt: attachment.createdAt.toISOString(),
   };
 }

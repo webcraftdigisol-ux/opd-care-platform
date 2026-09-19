@@ -1,7 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { getPatientRecords } from '../api/patients';
+import { openAttachment } from '../api/attachments';
 import { StatusBadge } from '../components/StatusBadge';
+
+const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
+  LAB_REPORT: 'Lab report',
+  RADIOLOGY_REPORT: 'Radiology report',
+  PRESCRIPTION_SCAN: 'Prescription scan',
+};
 
 export function PatientRecordsPage() {
   const { user } = useAuth();
@@ -140,6 +147,30 @@ export function PatientRecordsPage() {
                   ))}
                 </ul>
               </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data && data.attachments.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Attached Files</h2>
+          <div className="space-y-2">
+            {data.attachments.map((a) => (
+              <button
+                key={a.id}
+                data-testid="patient-attachment-item"
+                onClick={() => openAttachment(a)}
+                className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white p-4 text-left hover:border-teal"
+              >
+                <div>
+                  <p className="font-medium text-teal">{a.fileName}</p>
+                  <p className="text-xs text-gray-500">
+                    {ATTACHMENT_CATEGORY_LABEL[a.category] ?? a.category} · {new Date(a.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <span className="text-xs text-gray-400">{(a.sizeBytes / 1024).toFixed(0)} KB</span>
+              </button>
             ))}
           </div>
         </section>

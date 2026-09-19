@@ -63,6 +63,12 @@ enum NotificationStatus {
   SKIPPED
 }
 
+enum AttachmentCategory {
+  LAB_REPORT
+  RADIOLOGY_REPORT
+  PRESCRIPTION_SCAN
+}
+
 // A clinic is a tenant. Every clinic-owned record is scoped by clinicId so
 // one deployment can serve many clinics with isolated data.
 model Clinic {
@@ -87,6 +93,7 @@ model Clinic {
   admissions        Admission[]
   payments          Payment[]
   notifications     Notification[]
+  attachments       Attachment[]
 }
 
 model User {
@@ -114,6 +121,8 @@ model User {
   paymentsMade             Payment[]      @relation("PatientPayments")
   paymentsRecorded         Payment[]      @relation("PaymentsRecorded")
   notificationsReceived    Notification[] @relation("PatientNotifications")
+  attachmentsOwned         Attachment[]   @relation("PatientAttachments")
+  attachmentsUploaded      Attachment[]   @relation("AttachmentsUploaded")
 
   @@unique([clinicId, email])
   @@unique([clinicId, phone])
@@ -655,4 +664,34 @@ model Notification {
 
   @@index([clinicId])
   @@index([patientId])
+}
+
+// ---- Attachments ----
+
+// Files (lab/radiology report scans, prescription scans) stored on local
+// disk (see server/src/utils/uploads.ts) -- fine for this deployment's
+// single-EC2-instance architecture (see deploy/README.md), would need S3 if
+// it ever scaled beyond one box. entityId is polymorphic on category, same
+// pattern as Payment.billId: a LabInvoice id for LAB_REPORT, a
+// RadiologyInvoice id for RADIOLOGY_REPORT, a Consultation id for
+// PRESCRIPTION_SCAN.
+model Attachment {
+  id           String             @id @default(uuid())
+  clinicId     String
+  clinic       Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      User               @relation("PatientAttachments", fields: [patientId], references: [id])
+  category     AttachmentCategory
+  entityId     String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  uploadedById String
+  uploadedBy   User               @relation("AttachmentsUploaded", fields: [uploadedById], references: [id])
+  createdAt    DateTime           @default(now())
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([category, entityId])
 }

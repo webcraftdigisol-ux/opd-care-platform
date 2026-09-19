@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getConsultation, saveConsultation } from '../api/consultations';
+import { AttachmentPanel } from '../components/AttachmentPanel';
 import { useAuth } from '../context/AuthContext';
 import type { LabTestOrderInput, PrescriptionInput, RadiologyTestOrderInput, Vitals } from '@opd/shared';
 
@@ -9,6 +10,7 @@ export function ConsultationPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
   const { clinic } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: existing } = useQuery({
     queryKey: ['consultation', appointmentId],
@@ -61,6 +63,7 @@ export function ConsultationPage() {
         complete,
       }),
     onSuccess: (_, complete) => {
+      queryClient.invalidateQueries({ queryKey: ['consultation', appointmentId] });
       if (complete) navigate('/doctor');
     },
   });
@@ -204,6 +207,15 @@ export function ConsultationPage() {
           ))}
           {prescriptions.length === 0 && <p className="text-sm text-gray-400">No prescriptions added.</p>}
         </div>
+      </section>
+
+      <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
+        <h2 className="font-semibold text-gray-700">Prescription Scan</h2>
+        {existing?.id ? (
+          <AttachmentPanel category="PRESCRIPTION_SCAN" entityId={existing.id} label="Attached scans (e.g. a prescription the patient brought in)" />
+        ) : (
+          <p className="mt-2 text-sm text-gray-400">Save a draft first to attach a file.</p>
+        )}
       </section>
 
       {clinic && clinic.tier >= 2 && (

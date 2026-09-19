@@ -1,0 +1,72 @@
+import { test, expect } from '@playwright/test';
+import { createStaff, login, registerPatient, setupClinicWithDoctor } from '../helpers/api';
+import { applySession } from '../helpers/session';
+import { inputAfterLabel } from '../helpers/dom';
+
+test.describe('lab report file attachment', () => {
+  test('a lab technician uploads a report file to a freshly created invoice, and it shows in the list', async ({
+    page,
+  }) => {
+    const { clinicSlug, admin } = await setupClinicWithDoctor({ tier: 2 });
+    const labTech = await createStaff(admin.token, { role: 'LAB_TECHNICIAN', name: 'Lab Tech Attach Test' });
+    const labSession = await login({ clinicSlug, email: labTech.email });
+    const patientSession = await registerPatient({ clinicSlug, name: 'Attachment Test Patient' });
+    void patientSession;
+
+    await applySession(page, labSession);
+    await page.goto('/lab');
+
+    await inputAfterLabel(page, 'Search patient by name or phone').fill('Attachment Test Patient');
+    await page.getByText('Attachment Test Patient').click();
+
+    await expect(page.getByText('No pending lab orders for this patient.')).toBeVisible();
+    await page.getByRole('button', { name: '+ Add test' }).click();
+    await page.getByPlaceholder('Test name').fill('Complete Blood Count');
+    await page.getByPlaceholder('Price').fill('300');
+    await page.getByRole('button', { name: 'Confirm & Print Receipt' }).click();
+
+    await expect(page.getByText('Receipt')).toBeVisible();
+
+    // Playwright can hand a file's bytes straight to the input, no on-disk
+    // fixture needed.
+    const fileInput = page.getByTestId('attachment-file-input');
+    await fileInput.setInputFiles({
+      name: 'cbc-report.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%e2e test report'),
+    });
+
+    const item = page.getByTestId('attachment-item');
+    await expect(item).toBeVisible();
+    await expect(item).toContainText('cbc-report.pdf');
+  });
+
+  test('a patient sees their own attachment on their records page', async ({ page }) => {
+    const { clinicSlug, admin } = await setupClinicWithDoctor({ tier: 2 });
+    const labTech = await createStaff(admin.token, { role: 'LAB_TECHNICIAN', name: 'Lab Tech Attach Test 2' });
+    const labSession = await login({ clinicSlug, email: labTech.email });
+    const patientSession = await registerPatient({ clinicSlug, name: 'Records Attachment Patient' });
+
+    await applySession(page, labSession);
+    await page.goto('/lab');
+    await inputAfterLabel(page, 'Search patient by name or phone').fill('Records Attachment Patient');
+    await page.getByText('Records Attachment Patient').click();
+    await page.getByRole('button', { name: '+ Add test' }).click();
+    await page.getByPlaceholder('Test name').fill('Lipid Profile');
+    await page.getByPlaceholder('Price').fill('500');
+    await page.getByRole('button', { name: 'Confirm & Print Receipt' }).click();
+    await expect(page.getByText('Receipt')).toBeVisible();
+
+    await page.getByTestId('attachment-file-input').setInputFiles({
+      name: 'lipid-report.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%e2e test report'),
+    });
+    await expect(page.getByTestId('attachment-item')).toContainText('lipid-report.pdf');
+
+    await applySession(page, patientSession);
+    await page.goto('/records');
+    await expect(page.getByTestId('patient-attachment-item')).toContainText('lipid-report.pdf');
+    await expect(page.getByTestId('patient-attachment-item')).toContainText('Lab report');
+  });
+});

@@ -1,10 +1,16 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { Appointment, LabInvoice, PharmacySale, RadiologyInvoice } from '@opd/shared';
+import type { Appointment, Attachment, LabInvoice, PharmacySale, RadiologyInvoice } from '@opd/shared';
 import { getPatientRecords } from '../api/patients';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
+
+const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
+  LAB_REPORT: 'Lab report',
+  RADIOLOGY_REPORT: 'Radiology report',
+  PRESCRIPTION_SCAN: 'Prescription scan',
+};
 
 export function RecordsScreen() {
   const { user } = useAuth();
@@ -12,6 +18,7 @@ export function RecordsScreen() {
   const [pharmacySales, setPharmacySales] = useState<PharmacySale[]>([]);
   const [labInvoices, setLabInvoices] = useState<LabInvoice[]>([]);
   const [radiologyInvoices, setRadiologyInvoices] = useState<RadiologyInvoice[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -23,6 +30,7 @@ export function RecordsScreen() {
       setPharmacySales(data.pharmacySales);
       setLabInvoices(data.labInvoices);
       setRadiologyInvoices(data.radiologyInvoices);
+      setAttachments(data.attachments);
     } finally {
       setLoading(false);
     }
@@ -38,7 +46,8 @@ export function RecordsScreen() {
     appointments.length === 0 &&
     pharmacySales.length === 0 &&
     labInvoices.length === 0 &&
-    radiologyInvoices.length === 0;
+    radiologyInvoices.length === 0 &&
+    attachments.length === 0;
 
   return (
     <ScrollView
@@ -127,6 +136,24 @@ export function RecordsScreen() {
                   {item.resultText ? `: ${item.resultText}` : ''}
                 </Text>
               ))}
+            </View>
+          ))}
+        </>
+      )}
+
+      {attachments.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Attached Files</Text>
+          {/* Metadata only -- viewing/downloading a file needs expo-file-system
+              + expo-sharing, which this sandbox has no simulator to verify
+              against, so that's deliberately left for a later round (see the
+              web app's PatientRecordsPage for the full view/download flow). */}
+          {attachments.map((a) => (
+            <View key={a.id} style={styles.card}>
+              <Text style={styles.doctorName}>{a.fileName}</Text>
+              <Text style={styles.meta}>
+                {ATTACHMENT_CATEGORY_LABEL[a.category] ?? a.category} · {new Date(a.createdAt).toLocaleDateString()}
+              </Text>
             </View>
           ))}
         </>

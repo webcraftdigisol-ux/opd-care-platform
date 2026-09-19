@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
-import { toAppointment, toPharmacySale, toLabInvoice, toRadiologyInvoice, toPublicUser } from '../utils/serialize';
+import { toAppointment, toPharmacySale, toLabInvoice, toRadiologyInvoice, toPublicUser, toAttachment } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
@@ -65,7 +65,7 @@ patientsRouter.get(
       orderBy: { date: 'desc' },
     });
 
-    const [pharmacySales, labInvoices, radiologyInvoices] = await Promise.all([
+    const [pharmacySales, labInvoices, radiologyInvoices, attachments] = await Promise.all([
       prisma.pharmacySale.findMany({
         where: { patientId: req.params.id, clinicId: req.auth!.clinicId },
         include: { items: true },
@@ -81,6 +81,11 @@ patientsRouter.get(
         include: { items: true },
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.attachment.findMany({
+        where: { patientId: req.params.id, clinicId: req.auth!.clinicId },
+        include: { uploadedBy: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
 
     res.json({
@@ -89,6 +94,7 @@ patientsRouter.get(
       pharmacySales: pharmacySales.map(toPharmacySale),
       labInvoices: labInvoices.map(toLabInvoice),
       radiologyInvoices: radiologyInvoices.map(toRadiologyInvoice),
+      attachments: attachments.map(toAttachment),
     });
   }),
 );

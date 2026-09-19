@@ -126,6 +126,26 @@ appointment reminder) — this deployment has no background job runner yet,
 so every notification here is triggered synchronously by the action that
 causes it, not by a clock.
 
+## File Attachments
+
+Lab/radiology report scans and prescription scans attach as real files (PDF,
+JPEG, PNG, or WebP; 10MB limit), stored on local disk under `server/uploads/`
+(not committed — see `UPLOADS_ROOT` in `.env.example`) and served only
+through an authenticated download route, never as static files. Who can
+upload which category mirrors exactly who already produces that content
+elsewhere (Lab Technician for lab reports, Radiology Technician for
+radiology reports, a doctor for a prescription scan attached to their own
+consultation); reading is broader — any clinic staff member, plus the
+patient themself for their own files. A `LabCounterPage`/
+`RadiologyCounterPage` upload happens right after confirming that receipt;
+a prescription scan attaches to a consultation once it's been saved at
+least once (a fresh, never-saved consultation has no id yet to attach to).
+Patients see everything attached to them in one place on their **My Medical
+Records** page. **Not built on mobile**: viewing/downloading an attachment
+there — only the file list (name, category, date) shows; opening a file
+needs `expo-file-system`/`expo-sharing`, which this environment has no
+simulator to verify against, so that's deliberately left for a later round.
+
 ## Multi-tenancy
 
 Every clinic ("tenant") is a `Clinic` row with its own `slug` (used to sign
@@ -235,11 +255,14 @@ Supertest, backed by the real Prisma client pointed at `opd_care_test`
 (`server/.env.test`). Each test creates its own clinic(s) with random
 slugs/emails, so test files are independent of each other and safe to run in
 parallel in CI even though this sandbox runs them serially (`--runInBand`)
-for reliability. 67 tests total, including `tests/unit/slots.test.ts` (the
-fixed-time-slot grid math) and `tests/booking-slots.test.ts` (booking against
+for reliability. 75 tests total, including `tests/unit/slots.test.ts` (the
+fixed-time-slot grid math), `tests/booking-slots.test.ts` (booking against
 a real schedule, double-booking rejected, a genuine concurrent-request race
 settling to exactly one winner, cancelling freeing a slot, walk-ins staying
-unaffected).
+unaffected), and `tests/attachments.test.ts` (per-category upload role
+gating, clinic-scoped tenancy, a patient downloading their own file but not
+another patient's, any staff role reading regardless of who can write, and
+an upload that fails validation leaving no orphaned file on disk).
 
 ### Web/mobile UI tests
 
@@ -250,14 +273,17 @@ targets a third dedicated database, `opd_care_e2e`, so it never collides with
 the Jest suite's `opd_care_test` or the dev database, and each spec creates
 its own clinic(s)/doctor(s)/staff via direct HTTP calls to the running API
 (`e2e/helpers/api.ts`) rather than driving every setup step through the UI —
-only the behavior actually under test happens in the browser. 11 tests
-across four specs: login/role-based routing, patient booking (now against
-the fixed-time-slot picker — the spec clicks a real, live-fetched slot
-button rather than just picking a date), admin walk-in registration +
-consultation-fee payment recording, and a Nurse-role UI-visibility spec that
+only the behavior actually under test happens in the browser. 13 tests
+across five specs: login/role-based routing, patient booking (against the
+fixed-time-slot picker — the spec clicks a real, live-fetched slot button
+rather than just picking a date), admin walk-in registration +
+consultation-fee payment recording, a Nurse-role UI-visibility spec that
 mirrors `server/tests/role-gating.test.ts` at the DOM level (a Nurse sees
 vitals/medication logging but not billing, discharge, transfer, or the
-other clinical-entry forms).
+other clinical-entry forms), and a lab-report attachment spec that hands a
+file's bytes straight to the file input (no on-disk fixture needed) and
+checks it shows up both in the counter's own list and on the patient's
+records page.
 
 ```bash
 # One-time: create the e2e database (skip if it already exists)
@@ -460,6 +486,35 @@ the user's `clinicId` and every route scopes its queries by it).
   existing token-queue behavior for same-day walk-ins is otherwise
   untouched — this was a scope boundary, not an oversight (see
   `booking-slots.test.ts`'s "a walk-in is not slotted" case).
+- **Never trust a client-supplied filename for where a file lands on disk.**
+  `uploads.ts`'s multer `filename` callback ignores the browser's original
+  filename entirely and generates `crypto.randomUUID() + extension` instead,
+  with the extension itself coming from a lookup table keyed on the
+  server-validated mime type, not from the client's filename either. The
+  original name is kept only as `Attachment.fileName` — display metadata,
+  never touched when building a path. This closes off path traversal
+  (`../../etc/passwd`) and same-name collisions as a category of bug rather
+  than trying to sanitize a string that shouldn't be trusted in that role
+  to begin with; `clinicId` in the storage path comes from the verified JWT,
+  never from request input, for the same reason.
+- **An upload route's own middleware runs before your route handler gets a
+  say — clean up after it when you reject.** multer's `upload.single('file')`
+  has already written the file to disk by the time `attachments.routes.ts`'s
+  handler can check the category/role/entityId are valid; every failure
+  path after that point calls `deleteUploadedFile()` before re-throwing, or
+  a rejected upload would leave an orphaned file with no DB row pointing at
+  it. Verified directly (`attachments.test.ts`'s "leaves no orphaned file on
+  disk") rather than assumed, the same "don't just trust it, check it"
+  discipline as the IPD deposit-netting and CI-Prisma bugs caught earlier in
+  this README.
+- **A category's write gate and its read gate don't have to be the same
+  gate.** Uploading a lab report stays Lab-Technician/Admin-only (mirrors
+  who already records lab results everywhere else in this API), but reading
+  one is deliberately wider — any clinic staff member, since a doctor
+  reviewing a patient needs to see a lab report a technician uploaded
+  without needing lab-technician permissions themself. Tightening reads to
+  match writes would have been the easy default and the wrong one; the two
+  needed separate rules, not one gate reused for both directions.
 
 ## What's not built yet
 
@@ -468,10 +523,11 @@ Pharmacy/Lab/Radiology, Tier 3 IPD, Reporting (financial Actual-vs-Total
 across all three revenue modules, daily activity, follow-ups due), granular
 front-desk/nursing staff roles (Receptionist, Nurse, Head Nurse),
 consultation-fee billing and a cash/card/UPI payment ledger across every
-bill type, email notifications, a server integration test suite, a
-Playwright web e2e suite, mobile component tests, and a CI workflow that
-runs all of it on every push/PR, on a multi-tenant hosted architecture.
-Deliberately deferred:
+bill type, email notifications, file attachments (lab/radiology report
+scans, prescription scans), a server integration test suite, a Playwright
+web e2e suite, mobile component tests, and a CI workflow that runs all of
+it on every push/PR, on a multi-tenant hosted architecture. Deliberately
+deferred:
 - DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
   device and an offline/on-prem deployment model, which this hosted
   architecture doesn't provide)
@@ -481,7 +537,9 @@ Deliberately deferred:
 - An SMS notification channel (only email is wired up) and scheduled/
   cron-driven reminders (e.g. an automatic day-before appointment reminder)
   — there's no background job runner in this deployment yet
-- File uploads (lab/radiology report attachments, prescription scans)
+- Viewing/downloading a file attachment on mobile (the list shows; opening
+  one needs `expo-file-system`/`expo-sharing`, untestable without a
+  simulator — see **File Attachments** above)
 - CD is scaffolded (`deploy/` + `.github/workflows/deploy.yml`) but
   inactive — it needs real AWS infrastructure provisioned and GitHub
   secrets configured by hand first (see `deploy/README.md`); nothing has

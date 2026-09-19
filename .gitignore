@@ -10,6 +10,9 @@ build/
 # Prisma
 server/prisma/dev.db
 
+# Uploaded file attachments (local disk storage, see server/src/utils/uploads.ts)
+server/uploads/
+
 # Expo
 mobile/.expo/
 mobile/dist/

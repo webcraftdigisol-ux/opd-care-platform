@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { searchPatients } from '../api/patients';
 import { createRadiologyInvoice, getPendingRadiologyLines } from '../api/radiology';
 import { PaymentRecorder } from '../components/PaymentRecorder';
+import { AttachmentPanel } from '../components/AttachmentPanel';
 import type { RadiologyInvoice, RadiologyResultItemInput, PendingRadiologyLine, PublicUser } from '@opd/shared';
 
 interface LineState extends RadiologyResultItemInput {
@@ -223,6 +224,7 @@ export function RadiologyCounterPage() {
             <p className="text-lg font-semibold">Total: ₹{receipt.total.toFixed(2)}</p>
           </div>
           <PaymentRecorder billType="RADIOLOGY" billId={receipt.id} />
+          <AttachmentPanel category="RADIOLOGY_REPORT" entityId={receipt.id} label="Report file" />
           <div className="mt-6 flex gap-3">
             <button
               onClick={() => window.print()}

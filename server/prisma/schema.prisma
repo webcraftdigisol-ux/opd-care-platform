@@ -68,6 +68,13 @@ enum AttachmentCategory {
   LAB_REPORT
   RADIOLOGY_REPORT
   PRESCRIPTION_SCAN
+  // A raw DICOM export from an imaging modality (the common workaround at a
+  // clinic without a full PACS: a USB stick or CD handed over at the scan),
+  // distinct from RADIOLOGY_REPORT (a written report as PDF/image) so the
+  // same radiology invoice can carry both. See the in-browser viewer note
+  // in README.md's File Attachments section for what this does and doesn't
+  // cover (single uncompressed frame only -- no DICOM network protocols).
+  RADIOLOGY_DICOM
 }
 
 // A clinic is a tenant. Every clinic-owned record is scoped by clinicId so

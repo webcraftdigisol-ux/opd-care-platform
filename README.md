@@ -143,14 +143,17 @@ of flaky cross-test interference at worst.
 ## File Attachments
 
 Lab/radiology report scans and prescription scans attach as real files (PDF,
-JPEG, PNG, or WebP; 10MB limit), stored on local disk under `server/uploads/`
+JPEG, PNG, or WebP), plus a raw DICOM export (`.dcm`) for radiology imaging
+(see "DICOM file support" below) — all sharing one 25MB upload ceiling,
+stored on local disk under `server/uploads/`
 (not committed — see `UPLOADS_ROOT` in `.env.example`) and served only
 through an authenticated download route, never as static files. Who can
 upload which category mirrors exactly who already produces that content
 elsewhere (Lab Technician for lab reports, Radiology Technician for
-radiology reports, a doctor for a prescription scan attached to their own
-consultation); reading is broader — any clinic staff member, plus the
-patient themself for their own files. A `LabCounterPage`/
+radiology reports and DICOM images, a doctor for a prescription scan
+attached to their own consultation); reading is broader — any clinic
+staff member, plus the patient themself for their own files. A
+`LabCounterPage`/
 `RadiologyCounterPage` upload happens right after confirming that receipt;
 a prescription scan attaches to a consultation once it's been saved at
 least once (a fresh, never-saved consultation has no id yet to attach to).
@@ -168,6 +171,76 @@ what it does when the download fails or sharing isn't available) is
 covered directly by `attachments.test.ts` with `expo-file-system`/
 `expo-sharing` mocked — real assertions on real logic, not a claim that
 the on-device share sheet itself was watched to open correctly.
+
+### DICOM file support
+
+A `RADIOLOGY_DICOM` attachment category lets a Radiology Technician upload
+a raw `.dcm` export (distinct from `RADIOLOGY_REPORT`, a written report
+scan) and view it in-browser — no PACS, no DICOM viewer software, and no
+network integration with the scanning device required. This is
+deliberately scoped to the common small-clinic case: a single uncompressed
+frame exported straight off a modality, viewed client-side. What it does
+**not** cover, and why:
+- **DICOM Modality Worklist (MWL) / C-STORE** — the network protocols a
+  real PACS uses to push a worklist to a scanner or receive images back —
+  need a LAN-attached device or a DICOM conformance simulator, neither of
+  which exists in this hosted, no-on-prem-device sandbox. This remains
+  fully deferred (see "What's not built yet").
+- **Compressed transfer syntaxes, multi-frame series, and 3D volumes** —
+  these need a real decoder stack (`cornerstone.js` + its codec bundle),
+  a much heavier dependency than a scoped single-image viewer justifies.
+  `web/src/utils/dicom.ts`'s `parseDicomFile` explicitly rejects anything
+  other than uncompressed Implicit/Explicit VR Little Endian, single-frame,
+  single-channel (grayscale) pixel data, with a clear error message rather
+  than a silent misrender.
+- **A mobile DICOM viewer** — the web viewer's canvas-based rendering
+  doesn't port directly to React Native; mobile keeps its existing
+  "download and hand off to the OS" pattern for every attachment category,
+  DICOM included, rather than gaining a second in-app viewer to maintain.
+
+Parsing (via `dicom-parser`) and rendering (a manual `<canvas>`
+pixel-by-pixel loop, not `cornerstone.js`) both happen entirely client-side
+in `DicomViewer.tsx` — the server only stores and serves the raw bytes back
+through the same authenticated download route every other attachment
+category uses; it never looks inside a DICOM file. Windowing (mapping a
+raw pixel value to a displayed gray level) uses the file's own
+WindowCenter/WindowWidth when present, falling back to a window derived
+from the image's actual min/max pixel values when they're absent (both are
+optional in the DICOM standard).
+
+Design notes:
+- **Extension, not mimetype, decides what's a DICOM file.** Browsers have
+  no standard, reliably-reported MIME type for a `.dcm` upload — it
+  commonly comes through as `application/octet-stream` or empty, never
+  `application/dicom`. `server/src/utils/uploads.ts`'s `isDicomFile` checks
+  the `.dcm` extension instead, and the route normalizes the *stored*
+  mimetype to `application/dicom` on save so every downstream consumer (the
+  download route's `Content-Type` header, the web viewer) can trust one
+  consistent value instead of re-deriving it from the filename every time.
+- **Category-aware upload validation depends on multer's field order.**
+  Both `isDicomFile`'s fileFilter branch and the `.dcm`-forcing filename
+  callback read `req.body.category` — populated only because the upload
+  clients always send the `category` field before the `file` field in the
+  multipart stream (multer parses fields in stream order). If a future
+  client ever sent the file first, category-aware validation would
+  silently stop applying.
+- **One shared 25MB upload ceiling, not a per-category one.** A DICOM
+  export commonly runs several MB even for a single uncompressed frame, well
+  past the 10MB limit every other attachment category needs. Multer's
+  `fileSize` limit is one value per multer instance, not per field, so
+  raising it applies to every category sharing this upload route — a second
+  multer instance for one route wasn't worth the duplication for a single
+  shared ceiling.
+- **Tested against real bytes, not a mock of the parser.** Both
+  `web/src/utils/dicom.test.ts` and `e2e/helpers/dicom.ts` hand-build an
+  actual, minimal, valid DICOM Part 10 file byte-for-byte (128-byte
+  preamble, `DICM` magic, an Explicit-VR-LE File Meta group, a real
+  dataset) rather than mocking `dicom-parser`'s internals — the parser and
+  windowing math run against real DICOM bytes in both the unit suite and
+  the browser-level e2e spec, which also reads back actual rendered canvas
+  pixel data to confirm real rendering, not just "a canvas exists". The two
+  builders are deliberately small and duplicated rather than shared across
+  packages, matching this repo's existing test-fixture convention.
 
 ## Multi-tenancy
 
@@ -278,19 +351,24 @@ Supertest, backed by the real Prisma client pointed at `opd_care_test`
 (`server/.env.test`). Each test creates its own clinic(s) with random
 slugs/emails, so test files are independent of each other and safe to run in
 parallel in CI even though this sandbox runs them serially (`--runInBand`)
-for reliability. 82 tests total, including `tests/unit/slots.test.ts` (the
+for reliability, including `tests/unit/slots.test.ts` (the
 fixed-time-slot grid math), `tests/booking-slots.test.ts` (booking against
 a real schedule, double-booking rejected, a genuine concurrent-request race
 settling to exactly one winner, cancelling freeing a slot, walk-ins staying
 unaffected), `tests/attachments.test.ts` (per-category upload role
 gating, clinic-scoped tenancy, a patient downloading their own file but not
-another patient's, any staff role reading regardless of who can write, and
-an upload that fails validation leaving no orphaned file on disk), and
-`tests/reminders.test.ts` (calls `sendDueAppointmentReminders()` directly
-rather than waiting on a real cron tick — a due appointment gets reminded,
-a second pass is idempotent, cancelled/walk-in/today/day-after-tomorrow
-appointments are all correctly excluded, and a due appointment in each of
-two different clinics both get reminded in the same pass).
+another patient's, any staff role reading regardless of who can write, an
+upload that fails validation leaving no orphaned file on disk, and the
+`RADIOLOGY_DICOM` category's extension-based validation: a `.dcm` file
+accepted and its mimetype normalized to `application/dicom`, a non-`.dcm`
+file rejected for that category, a `.dcm` file rejected for the unrelated
+`RADIOLOGY_REPORT` category, role gating, and independent per-category
+listing on the same invoice), and `tests/reminders.test.ts` (calls
+`sendDueAppointmentReminders()` directly rather than waiting on a real cron
+tick — a due appointment gets reminded, a second pass is idempotent,
+cancelled/walk-in/today/day-after-tomorrow appointments are all correctly
+excluded, and a due appointment in each of two different clinics both get
+reminded in the same pass). 87 tests total.
 
 ### Web/mobile UI tests
 
@@ -301,17 +379,27 @@ targets a third dedicated database, `opd_care_e2e`, so it never collides with
 the Jest suite's `opd_care_test` or the dev database, and each spec creates
 its own clinic(s)/doctor(s)/staff via direct HTTP calls to the running API
 (`e2e/helpers/api.ts`) rather than driving every setup step through the UI —
-only the behavior actually under test happens in the browser. 13 tests
-across five specs: login/role-based routing, patient booking (against the
+only the behavior actually under test happens in the browser. 15 tests
+across six specs: login/role-based routing, patient booking (against the
 fixed-time-slot picker — the spec clicks a real, live-fetched slot button
 rather than just picking a date), admin walk-in registration +
 consultation-fee payment recording, a Nurse-role UI-visibility spec that
 mirrors `server/tests/role-gating.test.ts` at the DOM level (a Nurse sees
 vitals/medication logging but not billing, discharge, transfer, or the
-other clinical-entry forms), and a lab-report attachment spec that hands a
+other clinical-entry forms), a lab-report attachment spec that hands a
 file's bytes straight to the file input (no on-disk fixture needed) and
 checks it shows up both in the counter's own list and on the patient's
-records page.
+records page, and a DICOM attachment spec (`e2e/tests/dicom.spec.ts`) that
+hand-builds a real, minimal, valid DICOM Part 10 file byte-for-byte in
+`e2e/helpers/dicom.ts` (128-byte preamble, `DICM` magic, an Explicit-VR
+File Meta group, an 8×8 8-bit grayscale dataset with a strict
+0→252-value gradient), uploads it through the real UI, opens the viewer,
+and reads back actual rendered canvas pixel data via `page.evaluate` —
+asserting the top-left pixel renders pure black and the bottom-right pure
+white under the viewer's default windowing, real parsing-and-rendering
+proof rather than just "a canvas exists" — plus a second case asserting a
+non-`.dcm` file dropped into the DICOM upload slot is rejected with a
+clear on-page error.
 
 ```bash
 # One-time: create the e2e database (skip if it already exists)
@@ -329,6 +417,26 @@ staff member in via a direct API call and inject the resulting token into
 `localStorage` rather than re-driving the login form for every spec (see the
 comment in `session.ts`); the login spec itself is the one place that does
 drive the actual form, so that flow still gets covered end-to-end.
+
+**Web unit tests (`web/`, Vitest)** cover pure logic that doesn't need a
+browser DOM: `src/utils/dicom.ts`'s DICOM parsing and windowing math.
+`dicom.test.ts` hand-builds several real DICOM Part 10 byte buffers (the
+same technique as the e2e fixture, kept as its own small duplicated helper
+rather than a shared package — see "Design notes" below) to exercise
+`parseDicomFile` against actual bytes rather than a mock: a successful
+parse reading back Rows/Columns/BitsAllocated/patient metadata/pixel data,
+explicit WindowCenter/WindowWidth when present, rejecting a compressed
+transfer syntax, rejecting a multi-frame file, rejecting a non-grayscale
+file, rejecting bytes that aren't DICOM at all, and a 16-bit signed
+(Int16) pixel data path. Plus `applyWindowing` (window-center/width
+clipping to 0–255, rescale slope/intercept applied first, a zero-width
+window not dividing by zero) and `computeDefaultWindow` (deriving a window
+from actual pixel min/max, including the flat-image edge case) against
+known input/output values. 15 tests.
+
+```bash
+npm run test:web
+```
 
 **Mobile (`mobile/`)** has no simulator available in this environment, so
 instead of Detox/native e2e it gets lightweight `jest-expo` +
@@ -578,13 +686,18 @@ front-desk/nursing staff roles (Receptionist, Nurse, Head Nurse),
 consultation-fee billing and a cash/card/UPI payment ledger across every
 bill type, email notifications including a scheduled day-before appointment
 reminder, file attachments (lab/radiology report scans, prescription
-scans) with full view/download on both web and mobile, a server
-integration test suite, a Playwright web e2e suite, mobile component
-tests, and a CI workflow that runs all of it on every push/PR, on a
-multi-tenant hosted architecture. Deliberately deferred:
-- DICOM worklist / ultrasound integration (deferred — assumes a LAN-attached
-  device and an offline/on-prem deployment model, which this hosted
-  architecture doesn't provide)
+scans) with full view/download on both web and mobile, a DICOM file
+upload + in-browser viewer for a single uncompressed radiology image (see
+"DICOM file support" above), a server integration test suite, a web unit
+test suite (Vitest), a Playwright web e2e suite, mobile component tests,
+and a CI workflow that runs all of it on every push/PR, on a multi-tenant
+hosted architecture. Deliberately deferred:
+- DICOM Modality Worklist (MWL) / C-STORE network integration — the
+  protocols a real PACS uses to push a worklist to a scanner or receive
+  images back directly, which need a LAN-attached device or DICOM
+  conformance simulator that this hosted, no-on-prem-device architecture
+  doesn't provide. (Viewing an already-exported `.dcm` file *is* built —
+  see "DICOM file support" above.)
 - A live online payment gateway (Razorpay/Stripe patient checkout) — no real
   merchant credentials available to test against; the `Payment` schema
   reserves the fields for it

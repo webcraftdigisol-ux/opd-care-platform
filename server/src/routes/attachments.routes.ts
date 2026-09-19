@@ -23,6 +23,7 @@ const WRITE_ROLES_BY_CATEGORY: Record<AttachmentCategory, string[]> = {
   LAB_REPORT: ['ADMIN', 'LAB_TECHNICIAN'],
   RADIOLOGY_REPORT: ['ADMIN', 'RADIOLOGY_TECHNICIAN'],
   PRESCRIPTION_SCAN: ['ADMIN', 'DOCTOR'],
+  RADIOLOGY_DICOM: ['ADMIN', 'RADIOLOGY_TECHNICIAN'],
 };
 
 // entityId is polymorphic on category, same pattern as Payment.billId in
@@ -35,7 +36,8 @@ async function loadOwnerPatientId(clinicId: string, category: AttachmentCategory
       if (!invoice) throw new HttpError(404, 'Lab invoice not found');
       return invoice.patientId;
     }
-    case 'RADIOLOGY_REPORT': {
+    case 'RADIOLOGY_REPORT':
+    case 'RADIOLOGY_DICOM': {
       const invoice = await prisma.radiologyInvoice.findFirst({ where: { id: entityId, clinicId } });
       if (!invoice) throw new HttpError(404, 'Radiology invoice not found');
       return invoice.patientId;
@@ -51,8 +53,10 @@ async function loadOwnerPatientId(clinicId: string, category: AttachmentCategory
   }
 }
 
+const ATTACHMENT_CATEGORIES = ['LAB_REPORT', 'RADIOLOGY_REPORT', 'PRESCRIPTION_SCAN', 'RADIOLOGY_DICOM'] as const;
+
 const uploadBodySchema = z.object({
-  category: z.enum(['LAB_REPORT', 'RADIOLOGY_REPORT', 'PRESCRIPTION_SCAN']),
+  category: z.enum(ATTACHMENT_CATEGORIES),
   entityId: z.string().min(1),
 });
 
@@ -73,6 +77,14 @@ attachmentsRouter.post(
       const clinicId = req.auth!.clinicId;
       const patientId = await loadOwnerPatientId(clinicId, data.category, data.entityId);
 
+      // The browser's reported mimetype for a DICOM upload is unreliable
+      // (see uploads.ts's isDicomFile) -- normalize what gets stored so
+      // every downstream consumer (the download route's Content-Type
+      // header, the web viewer's "is this a DICOM attachment" check) can
+      // trust a consistent value instead of re-deriving it from the
+      // filename every time.
+      const mimeType = data.category === 'RADIOLOGY_DICOM' ? 'application/dicom' : req.file.mimetype;
+
       const attachment = await prisma.attachment.create({
         data: {
           clinicId,
@@ -80,7 +92,7 @@ attachmentsRouter.post(
           category: data.category,
           entityId: data.entityId,
           fileName: req.file.originalname,
-          mimeType: req.file.mimetype,
+          mimeType,
           sizeBytes: req.file.size,
           storageKey,
           uploadedById: req.auth!.userId,
@@ -96,7 +108,7 @@ attachmentsRouter.post(
 );
 
 const listQuerySchema = z.object({
-  category: z.enum(['LAB_REPORT', 'RADIOLOGY_REPORT', 'PRESCRIPTION_SCAN']),
+  category: z.enum(ATTACHMENT_CATEGORIES),
   entityId: z.string().min(1),
 });
 

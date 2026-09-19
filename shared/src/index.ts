@@ -786,9 +786,11 @@ export interface Notification {
 // ---- Attachments ----
 
 // entityId is polymorphic on category -- a LabInvoice id for LAB_REPORT, a
-// RadiologyInvoice id for RADIOLOGY_REPORT, a Consultation id for
-// PRESCRIPTION_SCAN. See server/src/routes/attachments.routes.ts.
-export type AttachmentCategory = 'LAB_REPORT' | 'RADIOLOGY_REPORT' | 'PRESCRIPTION_SCAN';
+// RadiologyInvoice id for RADIOLOGY_REPORT and RADIOLOGY_DICOM (a raw
+// DICOM export attaches to the same invoice a written report does), a
+// Consultation id for PRESCRIPTION_SCAN. See
+// server/src/routes/attachments.routes.ts.
+export type AttachmentCategory = 'LAB_REPORT' | 'RADIOLOGY_REPORT' | 'PRESCRIPTION_SCAN' | 'RADIOLOGY_DICOM';
 
 export interface Attachment {
   id: string;

@@ -60,6 +60,9 @@ jobs:
       - name: Run server test suite
         run: npm run test:server
 
+      - name: Run web unit test suite
+        run: npm run test:web
+
       - name: Run mobile test suite
         run: npm test -w mobile
 

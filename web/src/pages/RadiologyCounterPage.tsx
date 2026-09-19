@@ -225,6 +225,7 @@ export function RadiologyCounterPage() {
           </div>
           <PaymentRecorder billType="RADIOLOGY" billId={receipt.id} />
           <AttachmentPanel category="RADIOLOGY_REPORT" entityId={receipt.id} label="Report file" />
+          <AttachmentPanel category="RADIOLOGY_DICOM" entityId={receipt.id} label="DICOM image (optional)" />
           <div className="mt-6 flex gap-3">
             <button
               onClick={() => window.print()}

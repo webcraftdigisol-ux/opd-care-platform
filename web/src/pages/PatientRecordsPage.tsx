@@ -1,13 +1,17 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { getPatientRecords } from '../api/patients';
 import { openAttachment } from '../api/attachments';
 import { StatusBadge } from '../components/StatusBadge';
+import { DicomViewer } from '../components/DicomViewer';
+import type { Attachment } from '@opd/shared';
 
 const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
   LAB_REPORT: 'Lab report',
   RADIOLOGY_REPORT: 'Radiology report',
   PRESCRIPTION_SCAN: 'Prescription scan',
+  RADIOLOGY_DICOM: 'DICOM image',
 };
 
 export function PatientRecordsPage() {
@@ -17,6 +21,7 @@ export function PatientRecordsPage() {
     queryFn: () => getPatientRecords(user!.id),
     enabled: !!user,
   });
+  const [viewingDicom, setViewingDicom] = useState<Attachment | null>(null);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -160,7 +165,7 @@ export function PatientRecordsPage() {
               <button
                 key={a.id}
                 data-testid="patient-attachment-item"
-                onClick={() => openAttachment(a)}
+                onClick={() => (a.category === 'RADIOLOGY_DICOM' ? setViewingDicom(a) : openAttachment(a))}
                 className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white p-4 text-left hover:border-teal"
               >
                 <div>
@@ -175,6 +180,7 @@ export function PatientRecordsPage() {
           </div>
         </section>
       )}
+      {viewingDicom && <DicomViewer attachment={viewingDicom} onClose={() => setViewingDicom(null)} />}
     </div>
   );
 }

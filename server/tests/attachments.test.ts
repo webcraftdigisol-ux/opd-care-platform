@@ -15,6 +15,7 @@ afterAll(async () => {
 });
 
 const PDF_BYTES = Buffer.from('%PDF-1.4\n%fake test pdf');
+const DICOM_BYTES = Buffer.from('fake dicom bytes for upload testing, not a real parseable file');
 
 async function createLabTech(clinicId: string) {
   const { password } = await createUser(clinicId, 'LAB_TECHNICIAN');
@@ -30,6 +31,17 @@ async function setupLabInvoice(clinicId: string, clinicSlug: string) {
     .set(auth(labSession.token))
     .send({ patientId: patient.id, items: [{ testName: 'CBC', resultText: 'Normal', price: 100 }] });
   return { labSession, patient, invoiceId: invoiceRes.body.id as string };
+}
+
+async function setupRadiologyInvoice(clinicId: string, clinicSlug: string) {
+  const { password: radPassword } = await createUser(clinicId, 'RADIOLOGY_TECHNICIAN', { email: 'radtech-attach@test.local' });
+  const radSession = await loginAs(clinicSlug, 'radtech-attach@test.local', radPassword);
+  const { user: patient } = await createUser(clinicId, 'PATIENT');
+  const invoiceRes = await request(app)
+    .post('/api/radiology/invoices')
+    .set(auth(radSession.token))
+    .send({ patientId: patient.id, items: [{ testName: 'Chest X-Ray', price: 400 }] });
+  return { radSession, patient, invoiceId: invoiceRes.body.id as string };
 }
 
 describe('Attachments: upload, list, download, delete', () => {
@@ -229,5 +241,107 @@ describe('Attachments: upload, list, download, delete', () => {
 
     const after = fs.existsSync(clinicDir) ? fs.readdirSync(clinicDir).length : 0;
     expect(after).toBe(before);
+  });
+
+  it('a Radiology Technician can upload a RADIOLOGY_DICOM .dcm file; the stored mimeType is normalized to application/dicom', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 3 });
+    const { radSession, invoiceId } = await setupRadiologyInvoice(clinic.id, clinic.slug);
+
+    const res = await request(app)
+      .post('/api/attachments')
+      .set(auth(radSession.token))
+      // Browsers commonly report application/octet-stream (or nothing) for
+      // DICOM, not application/dicom -- send that here to prove acceptance
+      // relies on the .dcm extension, not the client-supplied mimetype.
+      .field('category', 'RADIOLOGY_DICOM')
+      .field('entityId', invoiceId)
+      .attach('file', DICOM_BYTES, { filename: 'scan.dcm', contentType: 'application/octet-stream' });
+    expect(res.status).toBe(201);
+    expect(res.body.category).toBe('RADIOLOGY_DICOM');
+    expect(res.body.fileName).toBe('scan.dcm');
+    expect(res.body.mimeType).toBe('application/dicom');
+
+    const record = await prisma.attachment.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(record.mimeType).toBe('application/dicom');
+    expect(record.storageKey.endsWith('.dcm')).toBe(true);
+  });
+
+  it('rejects a non-.dcm file uploaded against RADIOLOGY_DICOM', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 3 });
+    const { radSession, invoiceId } = await setupRadiologyInvoice(clinic.id, clinic.slug);
+
+    const res = await request(app)
+      .post('/api/attachments')
+      .set(auth(radSession.token))
+      .field('category', 'RADIOLOGY_DICOM')
+      .field('entityId', invoiceId)
+      .attach('file', PDF_BYTES, { filename: 'report.pdf', contentType: 'application/pdf' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/only a \.dcm dicom file/i);
+  });
+
+  it('rejects a .dcm file uploaded against RADIOLOGY_REPORT (DICOM special-casing is category-specific)', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 3 });
+    const { radSession, invoiceId } = await setupRadiologyInvoice(clinic.id, clinic.slug);
+
+    const res = await request(app)
+      .post('/api/attachments')
+      .set(auth(radSession.token))
+      .field('category', 'RADIOLOGY_REPORT')
+      .field('entityId', invoiceId)
+      .attach('file', DICOM_BYTES, { filename: 'scan.dcm', contentType: 'application/octet-stream' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/unsupported file type/i);
+  });
+
+  it('a Lab Technician cannot upload a RADIOLOGY_DICOM attachment', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 3 });
+    const { invoiceId } = await setupRadiologyInvoice(clinic.id, clinic.slug);
+    const { password: labPassword } = await createLabTech(clinic.id);
+    const labSession = await loginAs(
+      clinic.slug,
+      (await prisma.user.findFirst({ where: { clinicId: clinic.id, role: 'LAB_TECHNICIAN' } }))!.email,
+      labPassword,
+    );
+
+    const res = await request(app)
+      .post('/api/attachments')
+      .set(auth(labSession.token))
+      .field('category', 'RADIOLOGY_DICOM')
+      .field('entityId', invoiceId)
+      .attach('file', DICOM_BYTES, { filename: 'scan.dcm', contentType: 'application/octet-stream' });
+    expect(res.status).toBe(403);
+  });
+
+  it('lists RADIOLOGY_DICOM attachments separately from RADIOLOGY_REPORT ones on the same invoice', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 3 });
+    const { radSession, invoiceId } = await setupRadiologyInvoice(clinic.id, clinic.slug);
+
+    await request(app)
+      .post('/api/attachments')
+      .set(auth(radSession.token))
+      .field('category', 'RADIOLOGY_DICOM')
+      .field('entityId', invoiceId)
+      .attach('file', DICOM_BYTES, { filename: 'scan.dcm', contentType: 'application/octet-stream' });
+    await request(app)
+      .post('/api/attachments')
+      .set(auth(radSession.token))
+      .field('category', 'RADIOLOGY_REPORT')
+      .field('entityId', invoiceId)
+      .attach('file', PDF_BYTES, { filename: 'report.pdf', contentType: 'application/pdf' });
+
+    const dicomList = await request(app)
+      .get('/api/attachments')
+      .query({ category: 'RADIOLOGY_DICOM', entityId: invoiceId })
+      .set(auth(radSession.token));
+    expect(dicomList.body).toHaveLength(1);
+    expect(dicomList.body[0].fileName).toBe('scan.dcm');
+
+    const reportList = await request(app)
+      .get('/api/attachments')
+      .query({ category: 'RADIOLOGY_REPORT', entityId: invoiceId })
+      .set(auth(radSession.token));
+    expect(reportList.body).toHaveLength(1);
+    expect(reportList.body[0].fileName).toBe('report.pdf');
   });
 });

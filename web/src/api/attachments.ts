@@ -36,3 +36,11 @@ export async function openAttachment(attachment: Attachment): Promise<void> {
 export async function deleteAttachment(id: string): Promise<void> {
   await apiClient.delete(`/attachments/${id}`);
 }
+
+// Same authenticated blob-fetch as openAttachment, but returns the raw bytes
+// instead of opening a new tab -- used by DicomViewer, which needs to parse
+// the file client-side rather than just display it.
+export async function fetchAttachmentArrayBuffer(attachment: Attachment): Promise<ArrayBuffer> {
+  const res = await apiClient.get(`/attachments/${attachment.id}/download`, { responseType: 'arraybuffer' });
+  return res.data as ArrayBuffer;
+}

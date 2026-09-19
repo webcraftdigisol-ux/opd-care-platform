@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { deleteAttachment, listAttachments, openAttachment, uploadAttachment } from '../api/attachments';
 import { useAuth } from '../context/AuthContext';
-import type { AttachmentCategory } from '@opd/shared';
+import { DicomViewer } from './DicomViewer';
+import type { Attachment, AttachmentCategory } from '@opd/shared';
 
 // Self-contained, like PaymentRecorder: fetches its own list and owns its
 // own upload/delete mutations, so a page just drops it in with a category +
@@ -21,7 +22,9 @@ export function AttachmentPanel({
   const queryKey = ['attachments', category, entityId];
   const { data } = useQuery({ queryKey, queryFn: () => listAttachments(category, entityId) });
   const [error, setError] = useState<string | null>(null);
+  const [viewingDicom, setViewingDicom] = useState<Attachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDicomCategory = category === 'RADIOLOGY_DICOM';
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadAttachment(category, entityId, file),
@@ -46,7 +49,7 @@ export function AttachmentPanel({
   const canDelete = user?.role === 'ADMIN';
 
   return (
-    <div className="mt-3 rounded-md bg-gray-50 p-3 text-sm">
+    <div className="mt-3 rounded-md bg-gray-50 p-3 text-sm" data-testid={`attachment-panel-${category}`}>
       <p className="mb-2 font-medium text-gray-700">{label}</p>
       {data && data.length === 0 && <p className="text-gray-400">No files attached yet.</p>}
       <ul className="space-y-1">
@@ -54,7 +57,7 @@ export function AttachmentPanel({
           <li key={a.id} data-testid="attachment-item" className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => openAttachment(a)}
+              onClick={() => (isDicomCategory ? setViewingDicom(a) : openAttachment(a))}
               className="truncate text-teal hover:underline"
             >
               {a.fileName}
@@ -78,7 +81,7 @@ export function AttachmentPanel({
           ref={fileInputRef}
           data-testid="attachment-file-input"
           type="file"
-          accept="application/pdf,image/jpeg,image/png,image/webp"
+          accept={isDicomCategory ? '.dcm,application/dicom' : 'application/pdf,image/jpeg,image/png,image/webp'}
           onChange={handleFileChange}
           disabled={uploadMutation.isPending}
           className="text-xs"
@@ -86,6 +89,7 @@ export function AttachmentPanel({
         {uploadMutation.isPending && <p className="mt-1 text-xs text-gray-400">Uploading…</p>}
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       </div>
+      {viewingDicom && <DicomViewer attachment={viewingDicom} onClose={() => setViewingDicom(null)} />}
     </div>
   );
 }

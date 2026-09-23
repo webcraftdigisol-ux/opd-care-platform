@@ -14,6 +14,13 @@ const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
   RADIOLOGY_DICOM: 'DICOM image',
 };
 
+const DIETARY_PREFERENCE_LABEL: Record<string, string> = {
+  VEG: 'Vegetarian',
+  NON_VEG: 'Non-vegetarian',
+  EGGETARIAN: 'Eggetarian',
+  VEGAN: 'Vegan',
+};
+
 export function PatientRecordsPage() {
   const { user } = useAuth();
   const { data, isLoading } = useQuery({
@@ -151,6 +158,26 @@ export function PatientRecordsPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data && data.dietPlans.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Diet Plans</h2>
+          <div className="space-y-3">
+            {data.dietPlans.map((plan) => (
+              <div key={plan.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
+                  <span>{DIETARY_PREFERENCE_LABEL[plan.dietaryPreference] ?? plan.dietaryPreference}</span>
+                  <span>{new Date(plan.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p className="text-sm text-gray-700">{plan.planText}</p>
+                {plan.allergies && <p className="mt-1 text-xs text-gray-500">Allergies: {plan.allergies}</p>}
+                {plan.localFoodNotes && <p className="text-xs text-gray-500">Local food notes: {plan.localFoodNotes}</p>}
+                {plan.createdByName && <p className="mt-1 text-xs text-gray-400">From {plan.createdByName}</p>}
               </div>
             ))}
           </div>

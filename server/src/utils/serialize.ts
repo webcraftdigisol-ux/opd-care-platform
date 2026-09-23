@@ -33,6 +33,7 @@ import type {
   Subscription as PrismaSubscription,
   SubscriptionPayment as PrismaSubscriptionPayment,
   PlatformAdmin,
+  DietPlan as PrismaDietPlan,
 } from '@prisma/client';
 import type {
   PublicUser,
@@ -71,6 +72,7 @@ import type {
   SubscriptionPayment,
   ClinicWithSubscription,
   ClinicTier,
+  DietPlan,
 } from '@opd/shared';
 import { isSubscriptionActive } from '../middleware/auth';
 
@@ -94,6 +96,7 @@ export function toPublicUser(user: User): PublicUser {
     name: user.name,
     role: user.role,
     createdAt: user.createdAt.toISOString(),
+    whatsappOptIn: user.whatsappOptIn,
   };
 }
 
@@ -128,6 +131,22 @@ export function toPrescription(p: PrismaPrescription): Prescription {
     frequency: p.frequency,
     durationDays: p.durationDays,
     notes: p.notes,
+  };
+}
+
+export function toDietPlan(plan: PrismaDietPlan & { createdBy?: User }): DietPlan {
+  return {
+    id: plan.id,
+    clinicId: plan.clinicId,
+    patientId: plan.patientId,
+    consultationId: plan.consultationId,
+    createdById: plan.createdById,
+    createdByName: plan.createdBy?.name,
+    dietaryPreference: plan.dietaryPreference,
+    allergies: plan.allergies,
+    localFoodNotes: plan.localFoodNotes,
+    planText: plan.planText,
+    createdAt: plan.createdAt.toISOString(),
   };
 }
 
@@ -512,6 +531,7 @@ export function toNotification(notification: PrismaNotification & { patient?: Us
     body: notification.body,
     status: notification.status,
     error: notification.error,
+    providerMessageId: notification.providerMessageId,
     createdAt: notification.createdAt.toISOString(),
   };
 }

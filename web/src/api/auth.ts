@@ -15,3 +15,8 @@ export async function fetchMe(): Promise<PublicUser> {
   const res = await apiClient.get<PublicUser>('/auth/me');
   return res.data;
 }
+
+export async function updateWhatsAppOptIn(whatsappOptIn: boolean): Promise<PublicUser> {
+  const res = await apiClient.put<PublicUser>('/auth/me/whatsapp-optin', { whatsappOptIn });
+  return res.data;
+}

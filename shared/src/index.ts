@@ -40,6 +40,7 @@ export interface PublicUser {
   name: string;
   role: Role;
   createdAt: string;
+  whatsappOptIn: boolean;
 }
 
 export interface DoctorProfile {
@@ -103,6 +104,22 @@ export interface Prescription {
   frequency: string;
   durationDays: number;
   notes: string | null;
+}
+
+export type DietaryPreference = 'VEG' | 'NON_VEG' | 'EGGETARIAN' | 'VEGAN';
+
+export interface DietPlan {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  consultationId: string | null;
+  createdById: string;
+  createdByName?: string;
+  dietaryPreference: DietaryPreference;
+  allergies: string | null;
+  localFoodNotes: string | null;
+  planText: string;
+  createdAt: string;
 }
 
 export interface LabTestOrder {
@@ -192,6 +209,15 @@ export interface PrescriptionInput {
   frequency: string;
   durationDays: number;
   notes?: string;
+}
+
+export interface DietPlanInput {
+  patientId: string;
+  consultationId?: string;
+  dietaryPreference: DietaryPreference;
+  allergies?: string;
+  localFoodNotes?: string;
+  planText: string;
 }
 
 export interface LabTestOrderInput {
@@ -462,6 +488,7 @@ export interface PatientRecordsResponse {
   labInvoices: LabInvoice[];
   radiologyInvoices: RadiologyInvoice[];
   attachments: Attachment[];
+  dietPlans: DietPlan[];
 }
 
 // ---- Reports ----
@@ -760,13 +787,15 @@ export interface BillPaymentsResponse {
 
 // ---- Notifications ----
 
-export type NotificationChannel = 'EMAIL' | 'SMS';
+export type NotificationChannel = 'EMAIL' | 'SMS' | 'WHATSAPP';
 export type NotificationType =
   | 'APPOINTMENT_CONFIRMED'
   | 'PAYMENT_RECEIVED'
   | 'FOLLOWUP_REMINDER'
   | 'DISCHARGE_SUMMARY'
-  | 'APPOINTMENT_REMINDER';
+  | 'APPOINTMENT_REMINDER'
+  | 'PRESCRIPTION_SHARED'
+  | 'DIET_PLAN_SHARED';
 export type NotificationStatus = 'SENT' | 'FAILED' | 'SKIPPED';
 
 export interface Notification {
@@ -780,6 +809,7 @@ export interface Notification {
   body: string;
   status: NotificationStatus;
   error: string | null;
+  providerMessageId: string | null;
   createdAt: string;
 }
 

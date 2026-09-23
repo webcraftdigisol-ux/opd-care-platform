@@ -16,6 +16,11 @@ export async function listMyAppointments(): Promise<Appointment[]> {
   return res.data;
 }
 
+export async function getAppointment(id: string): Promise<Appointment> {
+  const res = await apiClient.get<Appointment>(`/appointments/${id}`);
+  return res.data;
+}
+
 export async function cancelAppointment(id: string): Promise<Appointment> {
   const res = await apiClient.post<Appointment>(`/appointments/${id}/cancel`);
   return res.data;

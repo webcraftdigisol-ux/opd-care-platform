@@ -122,7 +122,77 @@ auditable and fully testable even with no real email provider configured:
 `walkin-<phone>@opd.local` placeholder used for phone-only walk-ins) is a
 normal, expected outcome, not a swallowed error. **Not built**: an SMS
 channel — the `NotificationChannel` enum already has `SMS` reserved, but
-there's no SMS provider account to send through.
+there's no SMS provider account to send through. A WhatsApp channel
+*is* built (scaffolded end-to-end, pending real credentials — see below).
+
+### WhatsApp messaging
+
+Alongside email, the automated day-before appointment reminder also
+attempts a WhatsApp send, and a doctor can send a saved prescription or a
+diet plan to the patient's WhatsApp on demand
+(`POST /consultations/:appointmentId/send-prescription-whatsapp`,
+`POST /diet-plans/:id/send-whatsapp`). All three funnel through
+`notifyPatientWhatsApp()` (`server/src/utils/whatsapp.ts`), which mirrors
+`notifyPatientEmail()`'s exact discipline: it never throws, always writes a
+`Notification` row (`channel: 'WHATSAPP'`) recording `SENT`/`FAILED`/
+`SKIPPED` plus (on success) the provider's message id in the new
+`providerMessageId` column, so a route handler always returns 200 with the
+real outcome in the response body rather than surfacing a 500 for what is,
+from the caller's point of view, an expected possible non-delivery.
+
+**One platform-level WhatsApp number, not one per clinic.** Every clinic's
+messages send from the same WhatsApp Business number, with the clinic's
+name embedded in the message text (e.g. "Sunrise Clinic: Reminder — ...")
+rather than each clinic having its own verified number. This was a
+deliberate simplicity/cost tradeoff: Meta Business verification is a
+days-to-weeks process per WhatsApp Business number, which would mean a
+newly self-registered clinic (see "A brand-new clinic works immediately"
+under Subscription Billing) couldn't send a single WhatsApp message until
+that finished — breaking the "works immediately" onboarding this platform
+otherwise guarantees. Isolation between clinics is enforced entirely at
+the application layer (every send, list, and notification row is scoped by
+`clinicId`, same as everything else in this schema), not by sender
+identity — the standard pattern for multi-tenant notification platforms,
+and the same reason a patient who's visited two clinics on this platform
+sees both clinics' messages arrive from the same WhatsApp contact,
+distinguished only by the clinic name in the text. The one real tradeoff
+worth naming: shared number reputation — one clinic's spam complaints
+could in principle affect deliverability for every clinic sharing the
+number — which isn't mitigated today (no per-clinic send-rate limiting or
+template-quality monitoring) but is a v2 concern, not a launch blocker; if
+a large clinic later wants its own branded sender, Meta's "Tech Provider"
+program is the documented path to that without restructuring this design.
+
+**Consent is enforced inside the send function, not at each call site.**
+Meta's WhatsApp Business policy requires a recipient's opt-in before any
+business-initiated template message (a reminder, a prescription, or a diet
+plan all qualify — none happen inside a patient-initiated 24-hour session
+window). `User.whatsappOptIn` (`Boolean`, default `false`) tracks this,
+reusing the existing `phone` field as the WhatsApp number rather than
+adding a second, driftable phone field. `notifyPatientWhatsApp()` checks
+`optedIn` itself before attempting a send — a caller cannot accidentally
+bypass consent by forgetting to check first, because there's nothing to
+forget; a non-opted-in patient always resolves to a logged `SKIPPED`
+Notification (`error: 'Patient has not opted in to WhatsApp messages'`),
+never a silent no-op and never a send. A patient opts in themself from a
+toggle on their dashboard (`PUT /api/auth/me/whatsapp-optin`,
+self-service only — no staff-facing route sets this on someone else's
+behalf, since the opt-in has to be the recipient's own).
+
+**Provider-agnostic adapter, stub by default.** `WhatsAppClient`
+(`server/src/utils/whatsapp.ts`) is a one-method interface
+(`sendTemplatedMessage`); `getWhatsAppClient()` picks a real
+`TwilioWhatsAppClient` (built against Twilio's WhatsApp API via Node's
+native `fetch`, no new dependency) when `TWILIO_ACCOUNT_SID`/
+`TWILIO_AUTH_TOKEN`/`TWILIO_WHATSAPP_FROM` are set, and otherwise falls
+back to `StubWhatsAppClient`, which logs the attempt and returns a fake
+`stub-<timestamp>-<random>` message id. **No real WhatsApp Business
+account exists in this environment** — every send in this codebase today,
+tests included, goes through the stub. Configure the three `TWILIO_*`
+env vars (and complete Meta's WhatsApp Business + template-approval
+process, since a business-initiated send requires an approved message
+template, not free-form text) to go live; nothing else in the send path
+needs to change.
 
 ### Scheduled reminders
 
@@ -139,6 +209,28 @@ directly to drive the Express app through Supertest without binding a
 port (see **Automated tests**), and a background timer firing against the
 test database on every test run would be pure noise at best and a source
 of flaky cross-test interference at worst.
+
+## Diet Plans
+
+A doctor can record a dietary recommendation for a patient
+(`DietPlan`: `dietaryPreference` — Vegetarian/Non-vegetarian/Eggetarian/
+Vegan — plus free-text `allergies`, `localFoodNotes`, and the actual
+`planText`), authored from the same consultation screen as prescriptions,
+and optionally (not necessarily) linked to the consultation it came out of
+via an optional `consultationId` (`onDelete: SetNull` — deleting the
+consultation later doesn't take the diet plan with it). It's linked
+directly to `patientId` rather than only reachable through a consultation,
+matching how a patient can have diet plans spanning multiple visits.
+Authoring is doctor/admin-only (`POST /api/diet-plans`, same write-role
+split as a prescription); reading is broader — any clinic staff, plus the
+patient themself for their own (`GET /api/diet-plans?patientId=`, visible
+on **My Medical Records** on web and the **Records** tab on mobile). This
+is deliberately structured-fields-plus-free-text, not AI-generated: the
+brief was specific inputs (medical history and complaints via the optional
+consultation link, allergies, dietary preference, local food availability)
+and a doctor-authored recommendation from them, not an LLM integration —
+adding one would have introduced a third unrequested external-credentials
+dependency alongside WhatsApp and the payment gateway.
 
 ## File Attachments
 
@@ -786,11 +878,14 @@ scans) with full view/download on both web and mobile, a DICOM file
 upload + in-browser viewer for a single uncompressed radiology image (see
 "DICOM file support" above), per-tier monthly/annual subscription billing
 with platform-admin-managed renew/suspend/reactivate and automatic
-access lockout on lapse (see "Subscription Billing" above), a server
-integration test suite, a web unit test suite (Vitest), a Playwright web
-e2e suite, mobile component tests, and a CI workflow that runs all of it
-on every push/PR, on a multi-tenant hosted architecture. Deliberately
-deferred:
+access lockout on lapse (see "Subscription Billing" above), WhatsApp
+messaging for reminders/prescriptions/diet plans with opt-in consent and a
+provider-agnostic adapter (scaffolded end-to-end, pending real Twilio/Meta
+credentials — see "WhatsApp messaging" above), doctor-authored diet plans
+(see "Diet Plans" above), a server integration test suite, a web unit test
+suite (Vitest), a Playwright web e2e suite, mobile component tests, and a
+CI workflow that runs all of it on every push/PR, on a multi-tenant hosted
+architecture. Deliberately deferred:
 - DICOM Modality Worklist (MWL) / C-STORE network integration — the
   protocols a real PACS uses to push a worklist to a scanner or receive
   images back directly, which need a LAN-attached device or DICOM
@@ -802,9 +897,13 @@ deferred:
   (the `Payment` schema reserves the fields for it) or subscription
   renewals (a platform admin records a renewal manually today, the same
   constraint)
-- An SMS notification channel (only email is wired up) — the
+- An SMS notification channel (only email and WhatsApp are wired up) — the
   `NotificationChannel` enum already has `SMS` reserved, but there's no SMS
   provider account to send through
+- A live WhatsApp Business account — no real Meta Business verification or
+  Twilio credentials available to send through; every WhatsApp send in this
+  codebase today, tests included, goes through the stub adapter (see
+  "WhatsApp messaging" above)
 - CD is scaffolded (`deploy/` + `.github/workflows/deploy.yml`) but
   inactive — it needs real AWS infrastructure provisioned and GitHub
   secrets configured by hand first (see `deploy/README.md`); nothing has

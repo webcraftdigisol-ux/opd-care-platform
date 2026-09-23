@@ -101,3 +101,21 @@ authRouter.get(
     res.json(toPublicUser(user));
   }),
 );
+
+const whatsappOptInSchema = z.object({ whatsappOptIn: z.boolean() });
+
+// Self-service only -- a patient (or any user) consents for themself; no
+// staff-facing route sets this on someone else's behalf, since WhatsApp
+// Business messaging requires the recipient's own opt-in, not a clinic's.
+authRouter.put(
+  '/me/whatsapp-optin',
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = whatsappOptInSchema.parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: req.auth!.userId },
+      data: { whatsappOptIn: data.whatsappOptIn },
+    });
+    res.json(toPublicUser(user));
+  }),
+);

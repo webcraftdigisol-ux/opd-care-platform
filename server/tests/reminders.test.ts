@@ -32,14 +32,14 @@ async function createAppointment(
   });
 }
 
-async function reminderNotificationFor(clinicId: string, patientId: string) {
+async function reminderNotificationFor(clinicId: string, patientId: string, channel?: 'EMAIL' | 'WHATSAPP') {
   return prisma.notification.findFirst({
-    where: { clinicId, patientId, type: 'APPOINTMENT_REMINDER' },
+    where: { clinicId, patientId, type: 'APPOINTMENT_REMINDER', ...(channel ? { channel } : {}) },
   });
 }
 
 describe('Scheduled appointment reminders (sendDueAppointmentReminders)', () => {
-  it('sends a reminder for a BOOKED, non-walk-in appointment dated tomorrow', async () => {
+  it('sends an email reminder for a BOOKED, non-walk-in appointment dated tomorrow', async () => {
     const { clinic } = await setupClinicWithAdmin({ tier: 1 });
     const { doctorProfile } = await createDoctor(clinic.id);
     const { user: patient } = await createUser(clinic.id, 'PATIENT');
@@ -47,7 +47,7 @@ describe('Scheduled appointment reminders (sendDueAppointmentReminders)', () => 
 
     await sendDueAppointmentReminders();
 
-    const notification = await reminderNotificationFor(clinic.id, patient.id);
+    const notification = await reminderNotificationFor(clinic.id, patient.id, 'EMAIL');
     expect(notification).not.toBeNull();
     expect(notification!.recipient).toBe(patient.email);
     // server/.env.test has no SMTP_* configured, so the send itself is
@@ -59,19 +59,57 @@ describe('Scheduled appointment reminders (sendDueAppointmentReminders)', () => 
     expect(refetched.reminderSentAt).not.toBeNull();
   });
 
-  it('is idempotent: a second pass does not send a duplicate reminder', async () => {
+  it('also attempts a WhatsApp reminder alongside email -- SKIPPED (not a failure) when the patient has not opted in', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const { user: patient } = await createUser(clinic.id, 'PATIENT', { phone: '+919876500001' });
+    await createAppointment(clinic.id, patient.id, doctorProfile.id, { date: dateOnlyOffsetFromToday(1) });
+
+    await sendDueAppointmentReminders();
+
+    const notification = await reminderNotificationFor(clinic.id, patient.id, 'WHATSAPP');
+    expect(notification).not.toBeNull();
+    expect(notification!.status).toBe('SKIPPED');
+    expect(notification!.error).toMatch(/not opted in/i);
+  });
+
+  it('sends a WhatsApp reminder (via the stub adapter) once the patient has opted in and has a phone number', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const { user: patient } = await createUser(clinic.id, 'PATIENT', { phone: '+919876500002' });
+    await prisma.user.update({ where: { id: patient.id }, data: { whatsappOptIn: true } });
+    await createAppointment(clinic.id, patient.id, doctorProfile.id, { date: dateOnlyOffsetFromToday(1) });
+
+    await sendDueAppointmentReminders();
+
+    const notification = await reminderNotificationFor(clinic.id, patient.id, 'WHATSAPP');
+    expect(notification).not.toBeNull();
+    expect(notification!.recipient).toBe('+919876500002');
+    // No real Twilio/Meta credentials in this environment -- the stub
+    // adapter is what's in effect, which still counts as a real SENT
+    // outcome with a (fake) providerMessageId, same as the design intends
+    // once real credentials are configured.
+    expect(notification!.status).toBe('SENT');
+    expect(notification!.providerMessageId).toMatch(/^stub-/);
+  });
+
+  it('is idempotent: a second pass does not send a duplicate reminder on either channel', async () => {
     const { clinic } = await setupClinicWithAdmin({ tier: 1 });
     const { doctorProfile } = await createDoctor(clinic.id);
     const { user: patient } = await createUser(clinic.id, 'PATIENT');
     await createAppointment(clinic.id, patient.id, doctorProfile.id, { date: dateOnlyOffsetFromToday(1) });
 
     await sendDueAppointmentReminders();
+    // One attempt per channel (EMAIL + WHATSAPP), even though the WhatsApp
+    // one is SKIPPED for a non-opted-in patient -- an attempted-and-logged
+    // SKIP still counts as "handled", the same as every other notification
+    // trigger in this app.
     const afterFirst = await prisma.notification.count({ where: { clinicId: clinic.id, patientId: patient.id, type: 'APPOINTMENT_REMINDER' } });
-    expect(afterFirst).toBe(1);
+    expect(afterFirst).toBe(2);
 
     await sendDueAppointmentReminders();
     const afterSecond = await prisma.notification.count({ where: { clinicId: clinic.id, patientId: patient.id, type: 'APPOINTMENT_REMINDER' } });
-    expect(afterSecond).toBe(1);
+    expect(afterSecond).toBe(2);
   });
 
   it('skips an appointment that has already been reminded (reminderSentAt already set)', async () => {

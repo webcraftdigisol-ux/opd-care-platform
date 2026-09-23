@@ -15,6 +15,7 @@ import { ipdRouter } from './routes/ipd.routes';
 import { paymentsRouter } from './routes/payments.routes';
 import { attachmentsRouter } from './routes/attachments.routes';
 import { platformRouter } from './routes/platform.routes';
+import { dietPlansRouter } from './routes/dietplans.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 export const app = express();
@@ -39,5 +40,6 @@ app.use('/api/ipd', ipdRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/attachments', attachmentsRouter);
 app.use('/api/platform', platformRouter);
+app.use('/api/diet-plans', dietPlansRouter);
 
 app.use(errorHandler);

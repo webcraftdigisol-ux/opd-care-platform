@@ -48,6 +48,7 @@ enum PaymentMethod {
 enum NotificationChannel {
   EMAIL
   SMS
+  WHATSAPP
 }
 
 enum NotificationType {
@@ -56,6 +57,8 @@ enum NotificationType {
   FOLLOWUP_REMINDER
   DISCHARGE_SUMMARY
   APPOINTMENT_REMINDER
+  PRESCRIPTION_SHARED
+  DIET_PLAN_SHARED
 }
 
 enum NotificationStatus {
@@ -103,6 +106,7 @@ model Clinic {
   notifications     Notification[]
   attachments       Attachment[]
   subscription      Subscription?
+  dietPlans         DietPlan[]
 }
 
 model User {
@@ -116,6 +120,12 @@ model User {
   role      Role
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // WhatsApp Business messaging requires the recipient's own opt-in consent
+  // before a business can send them template messages (Meta policy, not
+  // just good practice) -- unset by default, a patient turns it on
+  // themself. `phone` doubles as the WhatsApp number; no separate field,
+  // to avoid the two silently drifting apart.
+  whatsappOptIn Boolean @default(false)
 
   doctorProfile            DoctorProfile?
   appointments             Appointment[]      @relation("PatientAppointments")
@@ -132,6 +142,8 @@ model User {
   notificationsReceived    Notification[] @relation("PatientNotifications")
   attachmentsOwned         Attachment[]   @relation("PatientAttachments")
   attachmentsUploaded      Attachment[]   @relation("AttachmentsUploaded")
+  dietPlansOwned           DietPlan[]     @relation("PatientDietPlans")
+  dietPlansCreated         DietPlan[]     @relation("DietPlansAuthored")
 
   @@unique([clinicId, email])
   @@unique([clinicId, phone])
@@ -224,6 +236,7 @@ model Consultation {
   prescriptions    Prescription[]
   labTestsOrdered  LabTestOrder[]
   radiologyOrdered RadiologyTestOrder[]
+  dietPlans        DietPlan[]
 
   @@index([followUpDate])
 }
@@ -241,6 +254,41 @@ model Prescription {
   saleItems PharmacySaleItem[]
 
   @@index([consultationId])
+}
+
+enum DietaryPreference {
+  VEG
+  NON_VEG
+  EGGETARIAN
+  VEGAN
+}
+
+// A doctor-authored diet recommendation, informed by (but not mechanically
+// derived from) the patient's medical history/current complaints -- both
+// already available via the optional consultation link -- plus allergies,
+// dietary preference, and what's realistically available where the patient
+// lives, so the plan is something they can actually follow. consultationId
+// is optional (SetNull on delete) rather than required like Prescription's,
+// since a plan can also be authored/updated outside a single visit (e.g. a
+// follow-up adjustment) and still needs to stay attached to the patient.
+model DietPlan {
+  id                String            @id @default(uuid())
+  clinicId          String
+  clinic            Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           User              @relation("PatientDietPlans", fields: [patientId], references: [id])
+  consultationId    String?
+  consultation      Consultation?     @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  createdById       String
+  createdBy         User              @relation("DietPlansAuthored", fields: [createdById], references: [id])
+  dietaryPreference DietaryPreference
+  allergies         String?
+  localFoodNotes    String?
+  planText          String
+  createdAt         DateTime          @default(now())
+
+  @@index([clinicId])
+  @@index([patientId])
 }
 
 // ---- Pharmacy (Tier 2+) ----
@@ -677,6 +725,11 @@ model Notification {
   body      String
   status    NotificationStatus
   error     String?
+  // Set only for channel WHATSAPP (or a future channel with its own
+  // provider-assigned id) -- the id the provider's API returned for this
+  // send, kept for correlating a future delivery-status webhook back to
+  // this row. Null for EMAIL/SMS today.
+  providerMessageId String?
   createdAt DateTime             @default(now())
 
   @@index([clinicId])

@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
-import { toConsultation } from '../utils/serialize';
+import { toConsultation, toNotification } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
+import { notifyPatientWhatsApp } from '../utils/whatsapp';
 
 export const consultationsRouter = Router();
 
@@ -161,5 +162,39 @@ consultationsRouter.get(
     });
     if (!consultation) throw new HttpError(404, 'No consultation recorded yet');
     res.json(toConsultation(consultation));
+  }),
+);
+
+consultationsRouter.post(
+  '/:appointmentId/send-prescription-whatsapp',
+  requireRole('DOCTOR', 'ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const owned = await assertOwnsAppointment(req, req.params.appointmentId);
+    const appointment = await prisma.appointment.findUniqueOrThrow({
+      where: { id: owned.id },
+      include: { patient: true, doctor: { include: { user: true } } },
+    });
+    const consultation = await prisma.consultation.findUnique({
+      where: { appointmentId: appointment.id },
+      include: { prescriptions: true },
+    });
+    if (!consultation) throw new HttpError(404, 'No consultation recorded yet');
+    if (consultation.prescriptions.length === 0) throw new HttpError(400, 'This consultation has no prescriptions to send');
+
+    const medicineList = consultation.prescriptions
+      .map((p) => `${p.medicine} — ${p.dosage}, ${p.frequency}, ${p.durationDays} day(s)${p.notes ? ` (${p.notes})` : ''}`)
+      .join('\n');
+
+    const notification = await notifyPatientWhatsApp({
+      clinicId: req.auth!.clinicId,
+      patientId: appointment.patientId,
+      type: 'PRESCRIPTION_SHARED',
+      to: appointment.patient.phone,
+      optedIn: appointment.patient.whatsappOptIn,
+      templateName: 'prescription_shared',
+      params: [appointment.patient.name, appointment.doctor.user.name, medicineList],
+      renderedBody: `Hi ${appointment.patient.name}, here is your prescription from Dr. ${appointment.doctor.user.name}:\n\n${medicineList}`,
+    });
+    res.json(toNotification(notification));
   }),
 );

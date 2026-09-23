@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { Appointment, Attachment, LabInvoice, PharmacySale, RadiologyInvoice } from '@opd/shared';
+import type { Appointment, Attachment, DietPlan, LabInvoice, PharmacySale, RadiologyInvoice } from '@opd/shared';
 import { getPatientRecords } from '../api/patients';
 import { openAttachment } from '../api/attachments';
 import { useAuth } from '../context/AuthContext';
@@ -13,12 +13,20 @@ const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
   PRESCRIPTION_SCAN: 'Prescription scan',
 };
 
+const DIETARY_PREFERENCE_LABEL: Record<string, string> = {
+  VEG: 'Vegetarian',
+  NON_VEG: 'Non-vegetarian',
+  EGGETARIAN: 'Eggetarian',
+  VEGAN: 'Vegan',
+};
+
 export function RecordsScreen() {
   const { user } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [pharmacySales, setPharmacySales] = useState<PharmacySale[]>([]);
   const [labInvoices, setLabInvoices] = useState<LabInvoice[]>([]);
   const [radiologyInvoices, setRadiologyInvoices] = useState<RadiologyInvoice[]>([]);
+  const [dietPlans, setDietPlans] = useState<DietPlan[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -43,6 +51,7 @@ export function RecordsScreen() {
       setPharmacySales(data.pharmacySales);
       setLabInvoices(data.labInvoices);
       setRadiologyInvoices(data.radiologyInvoices);
+      setDietPlans(data.dietPlans);
       setAttachments(data.attachments);
     } finally {
       setLoading(false);
@@ -60,6 +69,7 @@ export function RecordsScreen() {
     pharmacySales.length === 0 &&
     labInvoices.length === 0 &&
     radiologyInvoices.length === 0 &&
+    dietPlans.length === 0 &&
     attachments.length === 0;
 
   return (
@@ -149,6 +159,24 @@ export function RecordsScreen() {
                   {item.resultText ? `: ${item.resultText}` : ''}
                 </Text>
               ))}
+            </View>
+          ))}
+        </>
+      )}
+
+      {dietPlans.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Diet Plans</Text>
+          {dietPlans.map((plan) => (
+            <View key={plan.id} style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.meta}>{DIETARY_PREFERENCE_LABEL[plan.dietaryPreference] ?? plan.dietaryPreference}</Text>
+                <Text style={styles.meta}>{new Date(plan.createdAt).toLocaleDateString()}</Text>
+              </View>
+              <Text style={styles.notes}>{plan.planText}</Text>
+              {plan.allergies && <Text style={styles.prescription}>Allergies: {plan.allergies}</Text>}
+              {plan.localFoodNotes && <Text style={styles.prescription}>Local food notes: {plan.localFoodNotes}</Text>}
+              {plan.createdByName && <Text style={styles.meta}>From {plan.createdByName}</Text>}
             </View>
           ))}
         </>

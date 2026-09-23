@@ -8,6 +8,7 @@ interface AuthContextValue {
   clinic: ClinicSummary | null;
   loading: boolean;
   setSession: (token: string, user: PublicUser, clinic: ClinicSummary) => void;
+  updateUser: (user: PublicUser) => void;
   logout: () => void;
 }
 
@@ -55,6 +56,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setClinic(nextClinic);
   }
 
+  function updateUser(nextUser: PublicUser) {
+    localStorage.setItem('opd_user', JSON.stringify(nextUser));
+    setUser(nextUser);
+  }
+
   function logout() {
     localStorage.removeItem('opd_token');
     localStorage.removeItem('opd_user');
@@ -64,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, clinic, loading, setSession, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, clinic, loading, setSession, updateUser, logout }}>{children}</AuthContext.Provider>
   );
 }
 

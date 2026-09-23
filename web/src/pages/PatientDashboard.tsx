@@ -1,10 +1,13 @@
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cancelAppointment, listMyAppointments } from '../api/appointments';
+import { updateWhatsAppOptIn } from '../api/auth';
 import { StatusBadge } from '../components/StatusBadge';
+import { useAuth } from '../context/AuthContext';
 
 export function PatientDashboard() {
   const queryClient = useQueryClient();
+  const { user, updateUser } = useAuth();
   const { data: appointments, isLoading } = useQuery({
     queryKey: ['my-appointments'],
     queryFn: listMyAppointments,
@@ -13,6 +16,11 @@ export function PatientDashboard() {
   const cancelMutation = useMutation({
     mutationFn: cancelAppointment,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-appointments'] }),
+  });
+
+  const optInMutation = useMutation({
+    mutationFn: (whatsappOptIn: boolean) => updateWhatsAppOptIn(whatsappOptIn),
+    onSuccess: (updated) => updateUser(updated),
   });
 
   const today = new Date().toISOString().slice(0, 10);
@@ -32,6 +40,24 @@ export function PatientDashboard() {
       </div>
 
       {isLoading && <p className="text-gray-500">Loading…</p>}
+
+      <section className="mb-8 flex items-center justify-between rounded-lg border border-teal-light bg-white p-4 shadow-sm">
+        <div>
+          <p className="font-medium text-gray-700">WhatsApp reminders</p>
+          <p className="text-sm text-gray-500">
+            Receive appointment reminders, prescriptions and diet plans on WhatsApp.
+          </p>
+        </div>
+        <button
+          onClick={() => optInMutation.mutate(!user?.whatsappOptIn)}
+          disabled={optInMutation.isPending}
+          className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-60 ${
+            user?.whatsappOptIn ? 'bg-teal text-white hover:bg-teal-mid' : 'border border-teal text-teal hover:bg-teal-light'
+          }`}
+        >
+          {user?.whatsappOptIn ? 'Opted in' : 'Opt in'}
+        </button>
+      </section>
 
       <section className="mb-8">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Upcoming</h2>

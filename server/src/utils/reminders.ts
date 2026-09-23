@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import { notifyPatientEmail } from './notify';
+import { notifyPatientWhatsApp } from './whatsapp';
 
 // The one background job in this app that isn't triggered by a user
 // action or an HTTP request -- see scheduler.ts for what calls this on a
@@ -28,13 +29,35 @@ export async function sendDueAppointmentReminders(): Promise<{ sent: number }> {
   });
 
   for (const appointment of due) {
+    const reminderBody = `Hi ${appointment.patient.name}, this is a reminder that you have an appointment with Dr. ${appointment.doctor.user.name} tomorrow (${appointment.date.toISOString().slice(0, 10)})${appointment.startTime ? ` at ${appointment.startTime}` : ''}. Your token number is #${appointment.tokenNumber}.`;
+
     await notifyPatientEmail({
       clinicId: appointment.clinicId,
       patientId: appointment.patientId,
       type: 'APPOINTMENT_REMINDER',
       to: appointment.patient.email,
       subject: `Reminder: your appointment tomorrow — Token #${appointment.tokenNumber}`,
-      body: `Hi ${appointment.patient.name}, this is a reminder that you have an appointment with Dr. ${appointment.doctor.user.name} tomorrow (${appointment.date.toISOString().slice(0, 10)})${appointment.startTime ? ` at ${appointment.startTime}` : ''}. Your token number is #${appointment.tokenNumber}.`,
+      body: reminderBody,
+    });
+    // WhatsApp as an additional channel for the same reminder -- gated on
+    // the patient's own opt-in (see notifyPatientWhatsApp), not a
+    // replacement for email, so a patient who hasn't opted in still gets
+    // the email reminder as before.
+    await notifyPatientWhatsApp({
+      clinicId: appointment.clinicId,
+      patientId: appointment.patientId,
+      type: 'APPOINTMENT_REMINDER',
+      to: appointment.patient.phone,
+      optedIn: appointment.patient.whatsappOptIn,
+      templateName: 'appointment_reminder',
+      params: [
+        appointment.patient.name,
+        appointment.doctor.user.name,
+        appointment.date.toISOString().slice(0, 10),
+        appointment.startTime ?? '—',
+        `#${appointment.tokenNumber}`,
+      ],
+      renderedBody: reminderBody,
     });
     // Marked as attempted regardless of SENT/FAILED/SKIPPED -- see the
     // schema comment on reminderSentAt. One attempt per appointment, never

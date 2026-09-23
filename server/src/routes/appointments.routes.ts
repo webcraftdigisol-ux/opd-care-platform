@@ -158,6 +158,33 @@ const statusSchema = z.object({
   status: z.enum(['BOOKED', 'CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED', 'CANCELLED', 'NO_SHOW']),
 });
 
+appointmentsRouter.get(
+  '/:id',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: req.params.id, clinicId: req.auth!.clinicId },
+      include: {
+        patient: true,
+        doctor: { include: { user: true } },
+        consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
+      },
+    });
+    if (!appointment) throw new HttpError(404, 'Appointment not found');
+
+    if (req.auth!.role === 'PATIENT' && appointment.patientId !== req.auth!.userId) {
+      throw new HttpError(403, 'Not your appointment');
+    }
+    if (req.auth!.role === 'DOCTOR') {
+      const doctor = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
+      if (!doctor || doctor.id !== appointment.doctorId) {
+        throw new HttpError(403, 'Not your appointment');
+      }
+    }
+
+    res.json(toAppointment(appointment));
+  }),
+);
+
 appointmentsRouter.patch(
   '/:id/status',
   requireRole('DOCTOR', 'ADMIN', 'RECEPTIONIST'),

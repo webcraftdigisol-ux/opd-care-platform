@@ -58,12 +58,14 @@ export async function registerPatient(opts: {
   name?: string;
   email?: string;
   password?: string;
+  phone?: string;
 }): Promise<Session> {
   return request<Session>('POST', '/auth/register', {
     clinicSlug: opts.clinicSlug,
     name: opts.name ?? 'Test Patient',
     email: opts.email ?? uniqueEmail('patient'),
     password: opts.password ?? 'password123',
+    phone: opts.phone,
   });
 }
 
@@ -73,6 +75,17 @@ export async function login(opts: { clinicSlug: string; email: string; password?
     email: opts.email,
     password: opts.password ?? 'password123',
   });
+}
+
+export async function bookAppointment(
+  patientToken: string,
+  opts: { doctorId: string; date: string; startTime: string },
+): Promise<{ id: string }> {
+  return request('POST', '/appointments', opts, patientToken);
+}
+
+export async function updateWhatsAppOptIn(token: string, whatsappOptIn: boolean): Promise<void> {
+  await request('PUT', '/auth/me/whatsapp-optin', { whatsappOptIn }, token);
 }
 
 export async function createDoctor(

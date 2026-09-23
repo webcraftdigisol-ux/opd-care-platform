@@ -4,7 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getConsultation, saveConsultation } from '../api/consultations';
 import { getAppointment } from '../api/appointments';
 import { createDietPlan, listDietPlans, sendDietPlanWhatsApp, sendPrescriptionWhatsApp } from '../api/dietplans';
+import { listPharmacyItems } from '../api/pharmacy';
+import { listLabCatalog } from '../api/lab';
+import { listRadiologyCatalog } from '../api/radiology';
 import { AttachmentPanel } from '../components/AttachmentPanel';
+import { SuggestInput } from '../components/SuggestInput';
 import { useAuth } from '../context/AuthContext';
 import type { DietaryPreference, LabTestOrderInput, PrescriptionInput, RadiologyTestOrderInput, Vitals } from '@opd/shared';
 
@@ -39,6 +43,29 @@ export function ConsultationPage() {
     queryFn: () => listDietPlans(patient!.id),
     enabled: !!patient,
   });
+
+  // Pharmacy/lab/radiology catalogs only exist for a Tier 2+ clinic
+  // (the endpoints themselves 403 below that) -- same tier gate the Lab
+  // Tests Ordered / Radiology Ordered sections below already use.
+  const tierAllowsCatalogs = (clinic?.tier ?? 1) >= 2;
+  const { data: pharmacyItems } = useQuery({
+    queryKey: ['pharmacy-items'],
+    queryFn: listPharmacyItems,
+    enabled: tierAllowsCatalogs,
+  });
+  const { data: labCatalog } = useQuery({
+    queryKey: ['lab-catalog'],
+    queryFn: listLabCatalog,
+    enabled: tierAllowsCatalogs,
+  });
+  const { data: radiologyCatalog } = useQuery({
+    queryKey: ['radiology-catalog'],
+    queryFn: listRadiologyCatalog,
+    enabled: tierAllowsCatalogs,
+  });
+  const medicineNames = pharmacyItems?.map((i) => i.name) ?? [];
+  const labTestNames = labCatalog?.map((c) => c.name) ?? [];
+  const radiologyTestNames = radiologyCatalog?.map((c) => c.name) ?? [];
 
   const [vitals, setVitals] = useState<Vitals>({});
   const [diagnosis, setDiagnosis] = useState('');
@@ -235,12 +262,16 @@ export function ConsultationPage() {
         <div className="space-y-3">
           {prescriptions.map((p, i) => (
             <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-5">
-              <input
-                placeholder="Medicine"
-                value={p.medicine}
-                onChange={(e) => updatePrescription(i, 'medicine', e.target.value)}
-                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
-              />
+              <div className="sm:col-span-2">
+                <SuggestInput
+                  placeholder="Medicine"
+                  value={p.medicine}
+                  onChange={(v) => updatePrescription(i, 'medicine', v)}
+                  suggestions={medicineNames}
+                  testId={`prescription-medicine-${i}`}
+                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                />
+              </div>
               <input
                 placeholder="Dosage"
                 value={p.dosage}
@@ -386,12 +417,16 @@ export function ConsultationPage() {
           <div className="space-y-3">
             {labTestsOrdered.map((o, i) => (
               <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-4">
-                <input
-                  placeholder="Test name"
-                  value={o.testName}
-                  onChange={(e) => updateLabTest(i, 'testName', e.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
-                />
+                <div className="sm:col-span-2">
+                  <SuggestInput
+                    placeholder="Test name"
+                    value={o.testName}
+                    onChange={(v) => updateLabTest(i, 'testName', v)}
+                    suggestions={labTestNames}
+                    testId={`lab-test-name-${i}`}
+                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
                 <input
                   placeholder="Notes (optional)"
                   value={o.notes ?? ''}
@@ -419,12 +454,16 @@ export function ConsultationPage() {
           <div className="space-y-3">
             {radiologyOrdered.map((o, i) => (
               <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-4">
-                <input
-                  placeholder="Test name (e.g. Chest X-Ray)"
-                  value={o.testName}
-                  onChange={(e) => updateRadiologyTest(i, 'testName', e.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
-                />
+                <div className="sm:col-span-2">
+                  <SuggestInput
+                    placeholder="Test name (e.g. Chest X-Ray)"
+                    value={o.testName}
+                    onChange={(v) => updateRadiologyTest(i, 'testName', v)}
+                    suggestions={radiologyTestNames}
+                    testId={`radiology-test-name-${i}`}
+                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
                 <input
                   placeholder="Notes (optional)"
                   value={o.notes ?? ''}

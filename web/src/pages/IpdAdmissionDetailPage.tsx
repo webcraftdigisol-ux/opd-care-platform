@@ -14,11 +14,12 @@ import {
   transferRoom,
 } from '../api/ipd';
 import { listDoctors } from '../api/doctors';
-import { createPharmacySale } from '../api/pharmacy';
+import { createPharmacySale, listPharmacyItems } from '../api/pharmacy';
 import { createLabInvoice } from '../api/lab';
 import { createRadiologyInvoice } from '../api/radiology';
 import { VitalsTrendChart } from '../components/VitalsTrendChart';
 import { PaymentRecorder } from '../components/PaymentRecorder';
+import { SuggestInput } from '../components/SuggestInput';
 import { useAuth } from '../context/AuthContext';
 import type { MedicationSource } from '@opd/shared';
 
@@ -69,6 +70,10 @@ export function IpdAdmissionDetailPage() {
 
   // --- Doctor visits ---
   const { data: doctors } = useQuery({ queryKey: ['doctors'], queryFn: listDoctors });
+  // IPD is Tier 3+ only, which always implies Tier 2+, so the pharmacy
+  // catalog this route needs always exists -- no tier gate needed here.
+  const { data: pharmacyItems } = useQuery({ queryKey: ['pharmacy-items'], queryFn: listPharmacyItems });
+  const medicineNames = pharmacyItems?.map((i) => i.name) ?? [];
   const [visitForm, setVisitForm] = useState({ doctorId: '', notes: '', fee: '0' });
   const visitMutation = useMutation({
     mutationFn: () =>
@@ -483,7 +488,16 @@ export function IpdAdmissionDetailPage() {
         </div>
         {isAdmitted && canDoNursing && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-            <input placeholder="Medicine" value={medForm.medicine} onChange={(e) => setMedForm((f) => ({ ...f, medicine: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
+            <div className="sm:col-span-2">
+              <SuggestInput
+                placeholder="Medicine"
+                value={medForm.medicine}
+                onChange={(v) => setMedForm((f) => ({ ...f, medicine: v }))}
+                suggestions={medicineNames}
+                testId="ipd-medication-medicine"
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
             <input placeholder="Dosage" value={medForm.dosage} onChange={(e) => setMedForm((f) => ({ ...f, dosage: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <input placeholder="Qty" type="number" value={medForm.quantity} onChange={(e) => setMedForm((f) => ({ ...f, quantity: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <select value={medForm.source} onChange={(e) => setMedForm((f) => ({ ...f, source: e.target.value as MedicationSource }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
@@ -535,7 +549,16 @@ export function IpdAdmissionDetailPage() {
         </div>
         {isAdmitted && canManageClinical && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <input placeholder="Medicine" value={pharmForm.medicine} onChange={(e) => setPharmForm((f) => ({ ...f, medicine: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
+            <div className="sm:col-span-2">
+              <SuggestInput
+                placeholder="Medicine"
+                value={pharmForm.medicine}
+                onChange={(v) => setPharmForm((f) => ({ ...f, medicine: v }))}
+                suggestions={medicineNames}
+                testId="ipd-pharmacy-medicine"
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
             <input placeholder="Qty" type="number" value={pharmForm.quantity} onChange={(e) => setPharmForm((f) => ({ ...f, quantity: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <div className="flex gap-1">
               <input placeholder="Unit ₹" type="number" value={pharmForm.unitPrice} onChange={(e) => setPharmForm((f) => ({ ...f, unitPrice: e.target.value }))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />

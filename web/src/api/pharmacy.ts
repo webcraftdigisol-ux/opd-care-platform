@@ -25,6 +25,10 @@ export async function updatePharmacyItem(
   return res.data;
 }
 
+export async function deletePharmacyItem(id: string): Promise<void> {
+  await apiClient.delete(`/pharmacy/items/${id}`);
+}
+
 export async function getPendingPharmacyLines(patientId: string): Promise<PendingPharmacyLine[]> {
   const res = await apiClient.get<PendingPharmacyLine[]>(`/pharmacy/patients/${patientId}/pending`);
   return res.data;

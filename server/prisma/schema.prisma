@@ -302,6 +302,7 @@ model PharmacyItem {
   clinicId         String
   clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   name             String
+  brand            String? // manufacturer/brand name, e.g. "Crocin" for paracetamol -- optional, purely informational
   unitsPerStrip    Int? // null = sold per unit directly (e.g. a syrup bottle)
   pricePerUnit     Float
   costPricePerUnit Float

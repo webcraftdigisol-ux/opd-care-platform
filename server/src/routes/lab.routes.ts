@@ -53,6 +53,23 @@ labRouter.put(
   }),
 );
 
+labRouter.delete(
+  '/catalog/:id',
+  requireRole('ADMIN', 'LAB_TECHNICIAN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existing = await prisma.labTestCatalog.findFirst({
+      where: { id: req.params.id, clinicId: req.auth!.clinicId },
+    });
+    if (!existing) throw new HttpError(404, 'Lab test not found');
+    // LabResultItem.catalogItemId is ON DELETE SET NULL, and a result item
+    // already carries its own frozen testName/price snapshot from the
+    // invoice it was created in, so this always succeeds and never rewrites
+    // a past invoice.
+    await prisma.labTestCatalog.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  }),
+);
+
 // ---- Counter workflow ----
 
 labRouter.get(

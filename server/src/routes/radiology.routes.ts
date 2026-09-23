@@ -53,6 +53,23 @@ radiologyRouter.put(
   }),
 );
 
+radiologyRouter.delete(
+  '/catalog/:id',
+  requireRole('ADMIN', 'RADIOLOGY_TECHNICIAN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existing = await prisma.radiologyCatalog.findFirst({
+      where: { id: req.params.id, clinicId: req.auth!.clinicId },
+    });
+    if (!existing) throw new HttpError(404, 'Radiology test not found');
+    // RadiologyResultItem.catalogItemId is ON DELETE SET NULL, and a result
+    // item already carries its own frozen testName/price snapshot from the
+    // invoice it was created in, so this always succeeds and never rewrites
+    // a past invoice.
+    await prisma.radiologyCatalog.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  }),
+);
+
 // ---- Counter workflow ----
 
 radiologyRouter.get(

@@ -225,6 +225,7 @@ export function toPharmacyItem(item: PrismaPharmacyItem): PharmacyItem {
   return {
     id: item.id,
     name: item.name,
+    brand: item.brand,
     unitsPerStrip: item.unitsPerStrip,
     pricePerUnit: item.pricePerUnit,
     costPricePerUnit: item.costPricePerUnit,

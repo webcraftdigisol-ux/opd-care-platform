@@ -109,6 +109,19 @@ export async function createDoctor(
   }, adminToken);
 }
 
+export async function createPharmacyItem(
+  adminToken: string,
+  opts: { name: string; brand?: string; pricePerUnit?: number; costPricePerUnit?: number; stockUnits?: number },
+): Promise<{ id: string; name: string }> {
+  return request('POST', '/pharmacy/items', {
+    name: opts.name,
+    brand: opts.brand,
+    pricePerUnit: opts.pricePerUnit ?? 5,
+    costPricePerUnit: opts.costPricePerUnit ?? 3,
+    stockUnits: opts.stockUnits ?? 50,
+  }, adminToken);
+}
+
 // Every day of the week, all-day -- so a booking or walk-in test never fails
 // just because it happened to run on a day the doctor "isn't available".
 export async function giveDoctorFullWeekSchedule(adminToken: string, doctorId: string): Promise<void> {

@@ -142,7 +142,7 @@ export default function App() {
         <Route
           path="/admin/pharmacy"
           element={
-            <ProtectedRoute roles={['ADMIN']}>
+            <ProtectedRoute roles={['ADMIN', 'PHARMACIST']}>
               <PharmacyInventoryPage />
             </ProtectedRoute>
           }
@@ -150,7 +150,7 @@ export default function App() {
         <Route
           path="/admin/lab"
           element={
-            <ProtectedRoute roles={['ADMIN']}>
+            <ProtectedRoute roles={['ADMIN', 'LAB_TECHNICIAN']}>
               <LabCatalogPage />
             </ProtectedRoute>
           }
@@ -158,7 +158,7 @@ export default function App() {
         <Route
           path="/admin/radiology"
           element={
-            <ProtectedRoute roles={['ADMIN']}>
+            <ProtectedRoute roles={['ADMIN', 'RADIOLOGY_TECHNICIAN']}>
               <RadiologyCatalogPage />
             </ProtectedRoute>
           }

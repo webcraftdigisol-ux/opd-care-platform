@@ -27,6 +27,7 @@ pharmacyRouter.get(
 
 const upsertItemSchema = z.object({
   name: z.string().min(1),
+  brand: z.string().nullable().optional(),
   unitsPerStrip: z.number().int().positive().nullable().optional(),
   pricePerUnit: z.number().positive(),
   costPricePerUnit: z.number().nonnegative(),
@@ -56,6 +57,23 @@ pharmacyRouter.put(
     if (!existing) throw new HttpError(404, 'Pharmacy item not found');
     const item = await prisma.pharmacyItem.update({ where: { id: req.params.id }, data });
     res.json(toPharmacyItem(item));
+  }),
+);
+
+pharmacyRouter.delete(
+  '/items/:id',
+  requireRole('ADMIN', 'PHARMACIST'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existing = await prisma.pharmacyItem.findFirst({
+      where: { id: req.params.id, clinicId: req.auth!.clinicId },
+    });
+    if (!existing) throw new HttpError(404, 'Pharmacy item not found');
+    // PharmacySaleItem.itemId is ON DELETE SET NULL, and a sale item already
+    // carries its own frozen medicineName/unitPrice snapshot from the sale
+    // it was created in (see the "own recorded charge" design elsewhere in
+    // this schema) -- so this always succeeds and never rewrites a past sale.
+    await prisma.pharmacyItem.delete({ where: { id: req.params.id } });
+    res.status(204).end();
   }),
 );
 

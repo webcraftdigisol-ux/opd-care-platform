@@ -81,6 +81,48 @@ queue, the admin/reception day view, a patient's own appointments) sort by
 `startTime` first so slotted visits show in actual visit order, with
 same-day walk-ins falling after them by booking order.
 
+## Medicine/Test Catalogs & Autocomplete
+
+Each Tier 2+ clinic keeps its own exhaustive lists of medicines
+(`PharmacyItem`: name, an optional `brand`, packaging, price/unit, cost/unit,
+stock), lab tests (`LabTestCatalog`: name, price), and radiology tests
+(`RadiologyCatalog`: name, price) — not a shared cross-clinic drug database,
+since prices, stock, and what a given clinic actually stocks are all
+clinic-specific. Full CRUD (add, edit every field, delete) is available to
+Admin **and** the matching counter-staff role for that catalog — Pharmacist
+for medicines, Lab Technician for lab tests, Radiology Technician for
+radiology tests — at `/admin/pharmacy`, `/admin/lab`, `/admin/radiology`
+(reachable from a **Medicine Catalog**/**Test Catalog** nav link for that
+staff role, not just Admin's nav, which is what actually makes this usable
+day-to-day rather than a page only an Admin happens to be able to reach).
+Deleting a catalog entry always succeeds, even if it's been sold/ordered
+before: `PharmacySaleItem.itemId`/`LabResultItem.catalogItemId`/
+`RadiologyResultItem.catalogItemId` are all `ON DELETE SET NULL`, and every
+sale/result line already carries its own frozen name/price snapshot from
+the moment it was created (the same "own recorded charge" discipline
+documented under Billing & Payments) — so a delete only detaches the
+now-stale live link, never rewrites a past sale or invoice.
+
+**Autocomplete while prescribing, not a separate lookup step.** A doctor
+typing a medicine name into an OPD consultation's Prescriptions section, a
+lab/radiology test name into that same consultation's ordering sections, or
+a nurse/doctor typing a medicine name into an IPD admission's Medications
+Given or in-patient Pharmacy sections, all get a live filtered dropdown
+(`web/src/components/SuggestInput.tsx`) sourced from that exact catalog —
+picking a suggestion fills the field, but free-text entry still works for
+anything not yet in the catalog (a doctor is never blocked from prescribing
+something the pharmacist hasn't catalogued yet). This is a plain
+client-side substring filter over the clinic's own already-small catalog
+(typically tens to a few hundred entries), refetched via the same
+`listPharmacyItems`/`listLabCatalog`/`listRadiologyCatalog` calls the
+counter/inventory pages already use — deliberately not a remote-search
+autocomplete with debouncing, since there's nothing at this scale worth
+debouncing against. The OPD prescription/lab/radiology autocompletes only
+activate for a Tier 2+ clinic (mirroring the existing tier gate on those
+sections, since a Tier 1 clinic has no such catalog to suggest from); IPD is
+Tier 3+, which always implies Tier 2+, so its medicine autocomplete needs no
+separate gate.
+
 ## Billing & Payments
 
 Every doctor has a `consultationFee`, snapshotted onto the `Appointment` at
@@ -882,10 +924,13 @@ access lockout on lapse (see "Subscription Billing" above), WhatsApp
 messaging for reminders/prescriptions/diet plans with opt-in consent and a
 provider-agnostic adapter (scaffolded end-to-end, pending real Twilio/Meta
 credentials — see "WhatsApp messaging" above), doctor-authored diet plans
-(see "Diet Plans" above), a server integration test suite, a web unit test
-suite (Vitest), a Playwright web e2e suite, mobile component tests, and a
-CI workflow that runs all of it on every push/PR, on a multi-tenant hosted
-architecture. Deliberately deferred:
+(see "Diet Plans" above), clinic-managed medicine/lab/radiology catalogs
+with full CRUD for Admin and the matching counter-staff role plus live
+autocomplete while prescribing on both OPD and IPD (see "Medicine/Test
+Catalogs & Autocomplete" above), a server integration test suite, a web
+unit test suite (Vitest), a Playwright web e2e suite, mobile component
+tests, and a CI workflow that runs all of it on every push/PR, on a
+multi-tenant hosted architecture. Deliberately deferred:
 - DICOM Modality Worklist (MWL) / C-STORE network integration — the
   protocols a real PACS uses to push a worklist to a scanner or receive
   images back directly, which need a LAN-attached device or DICOM

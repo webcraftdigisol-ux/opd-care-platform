@@ -283,6 +283,7 @@ export interface UpsertScheduleRequest {
 export interface PharmacyItem {
   id: string;
   name: string;
+  brand: string | null;
   unitsPerStrip: number | null;
   pricePerUnit: number;
   costPricePerUnit: number;
@@ -291,6 +292,7 @@ export interface PharmacyItem {
 
 export interface UpsertPharmacyItemRequest {
   name: string;
+  brand?: string | null;
   unitsPerStrip?: number | null;
   pricePerUnit: number;
   costPricePerUnit: number;

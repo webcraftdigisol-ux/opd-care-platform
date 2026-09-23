@@ -70,6 +70,36 @@ export function Navbar() {
             </Link>
           </div>
         )}
+        {user?.role === 'PHARMACIST' && (
+          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            <Link to="/pharmacy" className="hover:text-teal">
+              Counter
+            </Link>
+            <Link to="/admin/pharmacy" className="hover:text-teal">
+              Medicine Catalog
+            </Link>
+          </div>
+        )}
+        {user?.role === 'LAB_TECHNICIAN' && (
+          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            <Link to="/lab" className="hover:text-teal">
+              Counter
+            </Link>
+            <Link to="/admin/lab" className="hover:text-teal">
+              Test Catalog
+            </Link>
+          </div>
+        )}
+        {user?.role === 'RADIOLOGY_TECHNICIAN' && (
+          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+            <Link to="/radiology" className="hover:text-teal">
+              Counter
+            </Link>
+            <Link to="/admin/radiology" className="hover:text-teal">
+              Test Catalog
+            </Link>
+          </div>
+        )}
         {(user?.role === 'NURSE' || user?.role === 'HEAD_NURSE') && (
           <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
             <Link to="/admin/ipd/admissions" className="hover:text-teal">

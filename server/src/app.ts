@@ -12,15 +12,23 @@ import { labRouter } from './routes/lab.routes';
 import { radiologyRouter } from './routes/radiology.routes';
 import { reportsRouter } from './routes/reports.routes';
 import { ipdRouter } from './routes/ipd.routes';
-import { paymentsRouter } from './routes/payments.routes';
+import { paymentsRouter, razorpayWebhookHandler } from './routes/payments.routes';
 import { attachmentsRouter } from './routes/attachments.routes';
 import { platformRouter } from './routes/platform.routes';
 import { dietPlansRouter } from './routes/dietplans.routes';
-import { errorHandler } from './middleware/errorHandler';
+import { asyncHandler, errorHandler } from './middleware/errorHandler';
 
 export const app = express();
 
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') ?? '*' }));
+
+// Razorpay's webhook signature is computed over the exact raw request
+// bytes, so this route needs the unparsed body -- it's registered with its
+// own raw-body parser before the global express.json() below, which would
+// otherwise consume and re-serialize the body (breaking the signature) for
+// every route, this one included.
+app.post('/api/payments/razorpay/webhook', express.raw({ type: 'application/json' }), asyncHandler(razorpayWebhookHandler));
+
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

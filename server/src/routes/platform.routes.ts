@@ -7,6 +7,7 @@ import { toClinicWithSubscription, toSubscription, toSubscriptionPayment } from 
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requirePlatformAdmin, type PlatformAuthedRequest } from '../middleware/platformAuth';
 import { defaultSubscriptionAmount } from '../utils/subscriptionPricing';
+import { computeRenewalPeriod } from '../utils/subscriptionRenewal';
 import type { PlatformAdminAuthResponse, RenewSubscriptionRequest } from '@opd/shared';
 
 export const platformRouter = Router();
@@ -57,7 +58,7 @@ platformRouter.get(
     if (!subscription) throw new HttpError(404, 'This clinic has no subscription record');
     const payments = await prisma.subscriptionPayment.findMany({
       where: { subscriptionId: subscription.id },
-      include: { recordedByAdmin: true },
+      include: { recordedByAdmin: true, paidByUser: true },
       orderBy: { recordedAt: 'desc' },
     });
     res.json(payments.map(toSubscriptionPayment));
@@ -79,13 +80,7 @@ platformRouter.post(
     if (!subscription) throw new HttpError(404, 'This clinic has no subscription record');
 
     const amount = data.amount ?? defaultSubscriptionAmount(data.tier, data.billingCycle);
-    // A renewal always extends from whichever is later: "now" (a lapsed
-    // subscription doesn't get backdated credit for the time it was down)
-    // or the current period end (an early renewal stacks on top of time
-    // already paid for, rather than shortening it).
-    const periodStart = new Date(Math.max(Date.now(), subscription.currentPeriodEnd.getTime()));
-    const periodDays = data.billingCycle === 'MONTHLY' ? 30 : 365;
-    const periodEnd = new Date(periodStart.getTime() + periodDays * 24 * 60 * 60 * 1000);
+    const { periodStart, periodEnd } = computeRenewalPeriod(subscription.currentPeriodEnd, data.billingCycle);
 
     const [updatedSubscription] = await prisma.$transaction([
       prisma.subscription.update({

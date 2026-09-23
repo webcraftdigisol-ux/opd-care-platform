@@ -5,8 +5,9 @@ import { prisma } from '../prisma';
 import { signToken } from '../utils/jwt';
 import { toClinicSummary, toPublicUser } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
-import { requireAuth, type AuthedRequest } from '../middleware/auth';
+import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { defaultSubscriptionAmount } from '../utils/subscriptionPricing';
+import { toSubscription } from '../utils/serialize';
 import type { AuthResponse } from '@opd/shared';
 
 const NEW_CLINIC_TRIAL_DAYS = 30;
@@ -96,5 +97,20 @@ clinicsRouter.get(
     const clinic = await prisma.clinic.findUnique({ where: { id: req.auth!.clinicId } });
     if (!clinic) throw new HttpError(404, 'Clinic not found');
     res.json(toClinicSummary(clinic));
+  }),
+);
+
+// Self-service read of the clinic's own billing status -- distinct from
+// the platform-admin-only /api/platform/clinics/:id/subscription view,
+// which can see every clinic's; this is what powers a clinic ADMIN's own
+// "Renew Now" page.
+clinicsRouter.get(
+  '/me/subscription',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const subscription = await prisma.subscription.findUnique({ where: { clinicId: req.auth!.clinicId } });
+    if (!subscription) throw new HttpError(404, 'This clinic has no subscription record');
+    res.json(toSubscription(subscription));
   }),
 );

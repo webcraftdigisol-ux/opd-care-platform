@@ -103,6 +103,7 @@ model Clinic {
   wards             Ward[]
   admissions        Admission[]
   payments          Payment[]
+  paymentOrders     PaymentOrder[]
   notifications     Notification[]
   attachments       Attachment[]
   subscription      Subscription?
@@ -139,6 +140,8 @@ model User {
   vitalsRecorded           IpdVitals[]
   paymentsMade             Payment[]      @relation("PatientPayments")
   paymentsRecorded         Payment[]      @relation("PaymentsRecorded")
+  paymentOrdersInitiated   PaymentOrder[] @relation("PaymentOrdersInitiated")
+  subscriptionPaymentsPaid SubscriptionPayment[] @relation("SubscriptionPaymentsPaid")
   notificationsReceived    Notification[] @relation("PatientNotifications")
   attachmentsOwned         Attachment[]   @relation("PatientAttachments")
   attachmentsUploaded      Attachment[]   @relation("AttachmentsUploaded")
@@ -682,9 +685,12 @@ model IpdBill {
 // table per module. billId is a polymorphic reference whose meaning depends
 // on billType: an Appointment id for CONSULTATION, a PharmacySale/LabInvoice/
 // RadiologyInvoice id for those, or an Admission id for IPD (looked up via
-// its IpdBill). Manual recording only for now (cash/card/UPI/etc marked by
-// staff at the counter) -- razorpayOrderId/razorpayPaymentId are reserved
-// for a future online-gateway integration, not used yet.
+// its IpdBill). Most rows are manually recorded by staff at the counter
+// (cash/card/UPI/etc); a RAZORPAY-method row is instead created only once
+// razorpayVerify/the webhook has confirmed a real online payment (see
+// PaymentOrder below) -- recordedById is still set on it (to whichever user
+// account initiated the online payment), keeping "who this is attributed
+// to" uniform across every payment method.
 model Payment {
   id                String        @id @default(uuid())
   clinicId          String
@@ -696,7 +702,7 @@ model Payment {
   amount            Float
   method            PaymentMethod
   razorpayOrderId   String?
-  razorpayPaymentId String?
+  razorpayPaymentId String?       @unique // enforces idempotent capture: the client-side verify callback and the webhook can both fire for the same payment, and Postgres allows multiple NULLs so manual (non-Razorpay) rows are unaffected
   recordedById      String
   recordedBy        User          @relation("PaymentsRecorded", fields: [recordedById], references: [id])
   createdAt         DateTime      @default(now())
@@ -704,6 +710,37 @@ model Payment {
   @@index([clinicId])
   @@index([billType, billId])
   @@index([patientId])
+}
+
+// A Razorpay order created for one specific bill or subscription renewal,
+// recorded the moment we ask Razorpay for an order id (before the patient/
+// admin has actually paid). This is the server's own record of "what this
+// order id is for" -- neither the signed checkout callback nor the webhook
+// payload is trusted to carry that context; both look it up here by
+// razorpayOrderId instead. Exactly one of (billType+billId) or
+// subscriptionId is set, matching `kind`.
+model PaymentOrder {
+  id                 String            @id @default(uuid())
+  clinicId           String
+  clinic             Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  razorpayOrderId    String            @unique
+  kind               PaymentOrderKind
+  billType           BillType?
+  billId             String?
+  subscriptionId     String?
+  patientId          String? // set when kind = BILL; who the payment is for
+  initiatedByUserId  String // who clicked "Pay" -- the patient for a bill, a clinic ADMIN for a subscription renewal
+  initiatedBy        User              @relation("PaymentOrdersInitiated", fields: [initiatedByUserId], references: [id])
+  amount             Float // rupees, snapshotted at order-creation time -- what was actually authorized, regardless of any later change to the bill's balance
+  createdAt          DateTime          @default(now())
+
+  @@index([clinicId])
+  @@index([billType, billId])
+}
+
+enum PaymentOrderKind {
+  BILL
+  SUBSCRIPTION
 }
 
 // ---- Notifications ----
@@ -827,6 +864,13 @@ model SubscriptionPayment {
   recordedAt         DateTime       @default(now())
   recordedByAdminId  String?
   recordedByAdmin    PlatformAdmin? @relation(fields: [recordedByAdminId], references: [id])
+  // Set instead of recordedByAdminId when a clinic ADMIN pays their own
+  // renewal online (self-serve) rather than a platform admin recording a
+  // manual payment -- exactly one of the two is set, never both.
+  paidByUserId       String?
+  paidByUser         User?          @relation("SubscriptionPaymentsPaid", fields: [paidByUserId], references: [id])
+  razorpayOrderId    String?
+  razorpayPaymentId  String?        @unique
   notes              String?
 
   @@index([subscriptionId])

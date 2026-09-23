@@ -56,6 +56,9 @@ export function Navbar() {
             <Link to="/admin/notifications" className="hover:text-teal">
               Notifications
             </Link>
+            <Link to="/admin/billing" className="hover:text-teal">
+              Billing
+            </Link>
           </div>
         )}
         {user?.role === 'DOCTOR' && (

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cancelAppointment, listMyAppointments } from '../api/appointments';
 import { updateWhatsAppOptIn } from '../api/auth';
 import { StatusBadge } from '../components/StatusBadge';
+import { PaymentRecorder } from '../components/PaymentRecorder';
 import { useAuth } from '../context/AuthContext';
 
 export function PatientDashboard() {
@@ -86,6 +87,7 @@ export function PatientDashboard() {
                   Cancel appointment
                 </button>
               )}
+              <PaymentRecorder billType="CONSULTATION" billId={a.id} />
             </div>
           ))}
         </div>
@@ -107,6 +109,7 @@ export function PatientDashboard() {
                 </div>
                 <StatusBadge status={a.status} />
               </div>
+              {a.status !== 'CANCELLED' && <PaymentRecorder billType="CONSULTATION" billId={a.id} />}
             </div>
           ))}
         </div>

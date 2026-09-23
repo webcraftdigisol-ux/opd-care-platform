@@ -14,6 +14,7 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminDoctorsPage } from './pages/AdminDoctorsPage';
 import { AdminWalkInPage } from './pages/AdminWalkInPage';
 import { AdminStaffPage } from './pages/AdminStaffPage';
+import { SubscriptionBillingPage } from './pages/SubscriptionBillingPage';
 import { PharmacyCounterPage } from './pages/PharmacyCounterPage';
 import { PharmacyInventoryPage } from './pages/PharmacyInventoryPage';
 import { LabCounterPage } from './pages/LabCounterPage';
@@ -136,6 +137,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMIN']}>
               <AdminNotificationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/billing"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <SubscriptionBillingPage />
             </ProtectedRoute>
           }
         />

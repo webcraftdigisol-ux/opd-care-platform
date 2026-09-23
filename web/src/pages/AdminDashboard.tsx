@@ -21,6 +21,9 @@ export function AdminDashboard() {
           <Link to="/admin/doctors" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
             Manage Doctors
           </Link>
+          <Link to="/admin/billing" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
+            Billing
+          </Link>
           <Link to="/admin/walk-in" className="rounded-md bg-teal px-3 py-2 text-sm text-white hover:bg-teal-mid">
             Register Walk-in
           </Link>

@@ -140,14 +140,78 @@ payable amount is the bill's `amountDue` (total minus deposit already
 collected), never the raw bill total — an overpaid deposit correctly shows
 ₹0 payable through this ledger rather than double-charging the difference.
 
-**Not built**: a live payment gateway (Razorpay, Stripe, etc.) for
-patient-initiated online checkout. This is a deliberate scoping decision,
-not an oversight — there's no real merchant sandbox credentials available to
-test an integration like that against, and shipping an unverified checkout
-flow would be worse than not shipping one. The schema reserves
-`razorpayOrderId`/`razorpayPaymentId` fields on `Payment` for exactly this,
-so a real gateway integration slots in without a schema change once a
-clinic has real credentials to test against.
+### Online Payments (Razorpay)
+
+Alongside the manual counter ledger above, a patient can pay their own
+consultation fee, pharmacy/lab/radiology bill, or IPD balance online, and a
+clinic `ADMIN` can pay their own subscription renewal online (`/admin/
+billing`) — via Razorpay Checkout. **One platform-level Razorpay account
+serves every clinic**, the same shared-account design already used for
+WhatsApp: a clinic gets a working "Pay Online" button immediately on
+signup, with no merchant-onboarding wait of its own.
+
+**Never fakes a successful payment.** Unlike the WhatsApp stub adapter
+(below), which safely fakes success when unconfigured — a missed message is
+low-stakes — a payment must never fake success: a phantom "paid" state with
+no money actually moved is dangerous. `getRazorpayClient()`
+(`server/src/utils/razorpay.ts`) returns `null` when `RAZORPAY_KEY_ID`/
+`RAZORPAY_KEY_SECRET` aren't set, and every route that would create a real
+order refuses with a 400 instead. The web app checks
+`GET /payments/razorpay/status` first and shows "online payment isn't set
+up for this clinic yet" instead of a Pay Online / Renew Now button when
+it's unconfigured — verified in `e2e/tests/razorpay-unconfigured.spec.ts`,
+since that's the actual state of this environment today (see below).
+
+**`PaymentOrder` is the server's own record of what a `razorpayOrderId` is
+for**, created the moment an order is requested, before any money has
+moved. Neither Razorpay's signed checkout callback nor its webhook payload
+is ever trusted to carry `billType`/`billId`/`amount` — both look that up
+locally by `razorpayOrderId` instead, so a client can't claim to be paying
+for something other than what the order was actually created for. This is
+more defensive than strictly required by Razorpay's documented contract,
+a deliberate choice made because this environment has no network access to
+verify Razorpay's exact webhook payload shape against live documentation.
+
+**Idempotent capture, so either confirmation path — or both — is safe to
+call for the same real payment.** `Payment.razorpayPaymentId` and
+`SubscriptionPayment.razorpayPaymentId` are each `String? @unique`
+(nullable, so manual cash/card payments are unaffected — Postgres allows
+multiple `NULL`s). A `P2002` unique-constraint violation on capture is
+caught and treated as "already captured" rather than an error. This is
+what makes the two independent, complementary confirmation paths safe
+together: (1) the client-side signed checkout callback
+(`POST /payments/razorpay/verify`), which gives the patient/admin immediate
+on-screen feedback, and (2) `POST /api/payments/razorpay/webhook`
+(mounted with a raw-body parser *before* `express.json()` in `app.ts`,
+since Razorpay's webhook signature is computed over the exact raw request
+bytes), the authoritative backstop for when the browser closes before
+verify fires — standard Razorpay best practice ("webhook as source of
+truth, client callback as UX nicety").
+
+**Self-serve subscription renewal always renews at the clinic's current
+tier and billing cycle, at the listed default price**
+(`defaultSubscriptionAmount()`) — changing tier or billing cycle, or
+getting a discounted/custom rate, stays platform-admin-mediated only (the
+existing manual renew endpoint under **Subscription Billing** above).
+`computeRenewalPeriod()` (`server/src/utils/subscriptionRenewal.ts`) is
+shared by both the manual and self-serve renewal paths, so the two can
+never drift into different date math for the same operation.
+
+**No real Razorpay credentials exist in this environment** — every
+payment in this codebase today, tests included, either goes through a
+fake test-only client (`server/tests/payments-razorpay.test.ts` injects a
+`FakeRazorpayClient` via `resetRazorpayClientForTests()`, exactly the DI
+pattern `resetWhatsAppClientForTests()` already established) or, live,
+reports itself unconfigured. Sandbox/test-mode Razorpay keys tied to a
+personal account work exactly the same as production keys tied to a
+registered business account from this app's point of view — swapping one
+for the other later is a pure environment-variable change
+(`RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET`/`RAZORPAY_WEBHOOK_SECRET`), never
+a code change. Configure the three `RAZORPAY_*` env vars (see
+`server/.env.example`) and register a webhook endpoint
+(`https://<your-domain>/api/payments/razorpay/webhook`, subscribed to the
+`payment.captured` event) in the Razorpay dashboard to go live; nothing
+else in the payment path needs to change.
 
 ## Notifications
 
@@ -920,10 +984,14 @@ scans) with full view/download on both web and mobile, a DICOM file
 upload + in-browser viewer for a single uncompressed radiology image (see
 "DICOM file support" above), per-tier monthly/annual subscription billing
 with platform-admin-managed renew/suspend/reactivate and automatic
-access lockout on lapse (see "Subscription Billing" above), WhatsApp
-messaging for reminders/prescriptions/diet plans with opt-in consent and a
-provider-agnostic adapter (scaffolded end-to-end, pending real Twilio/Meta
-credentials — see "WhatsApp messaging" above), doctor-authored diet plans
+access lockout on lapse (see "Subscription Billing" above), online payments
+via Razorpay for any bill type plus self-serve subscription renewal, with
+idempotent capture and a never-fake-success design (scaffolded end-to-end,
+pending real Razorpay credentials — see "Online Payments (Razorpay)"
+above), WhatsApp messaging for reminders/prescriptions/diet plans with
+opt-in consent and a provider-agnostic adapter (scaffolded end-to-end,
+pending real Twilio/Meta credentials — see "WhatsApp messaging" above),
+doctor-authored diet plans
 (see "Diet Plans" above), clinic-managed medicine/lab/radiology catalogs
 with full CRUD for Admin and the matching counter-staff role plus live
 autocomplete while prescribing on both OPD and IPD (see "Medicine/Test
@@ -937,11 +1005,6 @@ multi-tenant hosted architecture. Deliberately deferred:
   conformance simulator that this hosted, no-on-prem-device architecture
   doesn't provide. (Viewing an already-exported `.dcm` file *is* built —
   see "DICOM file support" above.)
-- A live online payment gateway (Razorpay/Stripe) — no real merchant
-  credentials available to test against, for either patient-facing checkout
-  (the `Payment` schema reserves the fields for it) or subscription
-  renewals (a platform admin records a renewal manually today, the same
-  constraint)
 - An SMS notification channel (only email and WhatsApp are wired up) — the
   `NotificationChannel` enum already has `SMS` reserved, but there's no SMS
   provider account to send through
@@ -949,6 +1012,10 @@ multi-tenant hosted architecture. Deliberately deferred:
   Twilio credentials available to send through; every WhatsApp send in this
   codebase today, tests included, goes through the stub adapter (see
   "WhatsApp messaging" above)
+- Real Razorpay credentials — no live merchant account configured in this
+  environment; every route that would create a real order reports itself
+  unconfigured and refuses cleanly rather than faking a payment (see
+  "Online Payments (Razorpay)" above)
 - CD is scaffolded (`deploy/` + `.github/workflows/deploy.yml`) but
   inactive — it needs real AWS infrastructure provisioned and GitHub
   secrets configured by hand first (see `deploy/README.md`); nothing has

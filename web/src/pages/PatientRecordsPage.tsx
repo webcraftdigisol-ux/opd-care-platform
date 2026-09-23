@@ -5,6 +5,7 @@ import { getPatientRecords } from '../api/patients';
 import { openAttachment } from '../api/attachments';
 import { StatusBadge } from '../components/StatusBadge';
 import { DicomViewer } from '../components/DicomViewer';
+import { PaymentRecorder } from '../components/PaymentRecorder';
 import type { Attachment } from '@opd/shared';
 
 const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
@@ -110,6 +111,7 @@ export function PatientRecordsPage() {
                     </li>
                   ))}
                 </ul>
+                <PaymentRecorder billType="PHARMACY" billId={sale.id} />
               </div>
             ))}
           </div>
@@ -134,6 +136,7 @@ export function PatientRecordsPage() {
                     </li>
                   ))}
                 </ul>
+                <PaymentRecorder billType="LAB" billId={invoice.id} />
               </div>
             ))}
           </div>
@@ -158,6 +161,7 @@ export function PatientRecordsPage() {
                     </li>
                   ))}
                 </ul>
+                <PaymentRecorder billType="RADIOLOGY" billId={invoice.id} />
               </div>
             ))}
           </div>

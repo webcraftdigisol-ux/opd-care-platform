@@ -572,7 +572,7 @@ export function toSubscription(sub: PrismaSubscription): Subscription {
 }
 
 export function toSubscriptionPayment(
-  payment: PrismaSubscriptionPayment & { recordedByAdmin?: PlatformAdmin | null },
+  payment: PrismaSubscriptionPayment & { recordedByAdmin?: PlatformAdmin | null; paidByUser?: User | null },
 ): SubscriptionPayment {
   return {
     id: payment.id,
@@ -583,6 +583,7 @@ export function toSubscriptionPayment(
     periodEnd: payment.periodEnd.toISOString(),
     recordedAt: payment.recordedAt.toISOString(),
     recordedByAdminName: payment.recordedByAdmin?.name ?? null,
+    paidByUserName: payment.paidByUser?.name ?? null,
     notes: payment.notes,
   };
 }

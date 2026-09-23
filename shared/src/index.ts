@@ -787,6 +787,55 @@ export interface BillPaymentsResponse {
   payments: Payment[];
 }
 
+// ---- Online payments (Razorpay) ----
+
+export type PaymentOrderKind = 'BILL' | 'SUBSCRIPTION';
+
+// keyId is Razorpay's public key id -- safe to hand to the browser, it
+// identifies the merchant account to Checkout.js but authorizes nothing on
+// its own (only key_secret, which never leaves the server, can do that).
+export interface RazorpayOrderResponse {
+  orderId: string;
+  amount: number; // paise
+  currency: string;
+  keyId: string;
+}
+
+export interface CreateBillPaymentOrderRequest {
+  billType: BillType;
+  billId: string;
+}
+
+// Deliberately carries only what Razorpay's signed checkout callback itself
+// hands back -- never billType/billId/amount, which the server looks up
+// server-side from the PaymentOrder the razorpayOrderId points to, rather
+// than trusting whatever the client claims they're paying for.
+export interface VerifyRazorpayPaymentRequest {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}
+
+export interface RazorpayConfigStatus {
+  configured: boolean;
+}
+
+// Returned by POST /payments/razorpay/verify -- shape depends on what kind
+// of PaymentOrder the razorpayOrderId pointed to.
+export interface VerifyBillPaymentResponse {
+  billType: BillType;
+  billId: string;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+}
+
+export interface VerifySubscriptionPaymentResponse {
+  tier: ClinicTier;
+  currentPeriodEnd: string;
+  status: SubscriptionStatus;
+}
+
 // ---- Notifications ----
 
 export type NotificationChannel = 'EMAIL' | 'SMS' | 'WHATSAPP';
@@ -877,6 +926,10 @@ export interface SubscriptionPayment {
   periodEnd: string;
   recordedAt: string;
   recordedByAdminName: string | null;
+  // Set instead of recordedByAdminName when a clinic ADMIN paid online
+  // (self-serve) rather than a platform admin recording it manually --
+  // exactly one of the two is non-null.
+  paidByUserName: string | null;
   notes: string | null;
 }
 

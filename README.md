@@ -35,7 +35,7 @@ deploy/   PM2/Nginx config + the CD GitHub Actions workflow (see CI/CD below)
 
 ## Roles
 
-- **Patient** — register/login under their clinic, book appointments, see live queue position (token number), view visit history, prescriptions, pharmacy purchases & lab results. Web + mobile.
+- **Patient** *(switched off in this phase — see below)* — register/login under their clinic, book appointments, see live queue position (token number), view visit history, prescriptions, pharmacy purchases & lab results. Web + mobile.
 - **Doctor** — see today's queue ordered by token, check patients in, record vitals/diagnosis/notes/prescriptions/lab test orders. Web.
 - **Admin** — full staff/doctor management, all front-desk and in-patient actions, manages pharmacy inventory & lab/radiology catalogs, sees every report. Web.
 - **Receptionist** — the front-desk subset of Admin: register walk-in patients and view/check in the day's appointments (`/reception`). Cannot manage doctors, staff, catalogs, or see any clinical/financial data — deliberately excluded from patient records for privacy, since front desk only needs appointment/demographic info, not diagnoses or results.
@@ -60,6 +60,30 @@ Admins (and doctors, for the follow-ups view and in-patient management) also get
   charges. Discharge computes a final bill from every charge source and nets
   out the deposit — the result can be a refund owed, not just an amount due,
   and the UI presents that as a normal outcome rather than an error state.
+
+
+### Patient portal (off in this phase)
+
+This phase ships hospital/clinic-staff software: staff manage patients,
+consultations, prescriptions, IPD, billing and reports, and the payment
+gateway is for clinics paying their own subscription (see Subscription
+Billing). Everything a patient would log in to use — self-registration,
+patient login, booking, the records view, online bill payment, and the whole
+`mobile/` app — is switched off by default and comes back in the patient
+phase:
+
+- `PATIENT_PORTAL_ENABLED=true` (server) lets patients register and log in.
+  While it is off the server refuses `/auth/register`, refuses patient
+  logins, and rejects any patient token on every route, so the web app, the
+  mobile app and direct API calls are all covered.
+- `VITE_PATIENT_PORTAL_ENABLED=true` (web, build time) shows the "Create an
+  account" link and the `/register`, `/book` and `/records` pages.
+
+Patients still exist as records — walk-in registration, consultations,
+bills and IPD work as before. The server and e2e test suites run with the
+flag on (see `server/.env.test`, `e2e/.env.e2e`) so the patient code stays
+covered for the next phase; `server/tests/patient-portal-disabled.test.ts`
+covers the default.
 
 ## Booking
 

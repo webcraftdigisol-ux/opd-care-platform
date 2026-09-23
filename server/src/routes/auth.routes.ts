@@ -6,7 +6,8 @@ import { signToken } from '../utils/jwt';
 import { toClinicSummary, toPublicUser } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { isSubscriptionActive, requireAuth, SUBSCRIPTION_INACTIVE_MESSAGE, type AuthedRequest } from '../middleware/auth';
-import type { AuthResponse } from '@opd/shared';
+import { PATIENT_PORTAL_DISABLED_MESSAGE, type AuthResponse } from '@opd/shared';
+import { isPatientPortalEnabled } from '../utils/features';
 
 export const authRouter = Router();
 
@@ -27,6 +28,7 @@ const registerSchema = z.object({
 authRouter.post(
   '/register',
   asyncHandler(async (req, res) => {
+    if (!isPatientPortalEnabled()) throw new HttpError(403, PATIENT_PORTAL_DISABLED_MESSAGE);
     const data = registerSchema.parse(req.body);
     const clinic = await findClinicBySlug(data.clinicSlug);
 
@@ -79,6 +81,9 @@ authRouter.post(
     const valid = await bcrypt.compare(data.password, user.password);
     if (!valid) {
       throw new HttpError(401, 'Invalid email or password');
+    }
+    if (user.role === 'PATIENT' && !isPatientPortalEnabled()) {
+      throw new HttpError(403, PATIENT_PORTAL_DISABLED_MESSAGE);
     }
     // Checked only after credentials are confirmed valid, so an
     // unauthenticated login attempt never leaks a clinic's billing state.

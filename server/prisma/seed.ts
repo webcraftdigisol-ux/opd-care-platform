@@ -255,7 +255,7 @@ async function main() {
   console.log('Seed data ready. Clinic code: demo-clinic');
   console.log('  Admin:      admin@opdcare.test / admin123');
   console.log('  Doctor:     doctor@opdcare.test / doctor123');
-  console.log('  Patient:    patient@opdcare.test / patient123');
+  console.log('  Patient:    patient@opdcare.test / patient123  (login needs PATIENT_PORTAL_ENABLED=true)');
   console.log('  Pharmacist: pharmacist@opdcare.test / pharmacist123');
   console.log('  Lab tech:   labtech@opdcare.test / labtech123');
   console.log('  Radiology:  radiologytech@opdcare.test / radiologytech123');

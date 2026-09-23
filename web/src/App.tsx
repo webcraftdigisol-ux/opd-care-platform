@@ -32,6 +32,7 @@ import { PlatformLoginPage } from './pages/PlatformLoginPage';
 import { PlatformDashboardPage } from './pages/PlatformDashboardPage';
 import { PlatformProtectedRoute } from './components/PlatformProtectedRoute';
 import { homeRouteForRole } from './utils/roleHome';
+import { PATIENT_PORTAL_ENABLED } from './utils/features';
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -52,7 +53,7 @@ export default function App() {
       {!isPlatformRoute && <Navbar />}
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        {PATIENT_PORTAL_ENABLED && <Route path="/register" element={<RegisterPage />} />}
         <Route path="/register-clinic" element={<RegisterClinicPage />} />
 
         <Route path="/platform/login" element={<PlatformLoginPage />} />
@@ -66,22 +67,26 @@ export default function App() {
         />
 
         <Route path="/" element={<HomeRedirect />} />
-        <Route
-          path="/book"
-          element={
-            <ProtectedRoute roles={['PATIENT']}>
-              <BookAppointmentPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/records"
-          element={
-            <ProtectedRoute roles={['PATIENT']}>
-              <PatientRecordsPage />
-            </ProtectedRoute>
-          }
-        />
+        {PATIENT_PORTAL_ENABLED && (
+          <>
+            <Route
+              path="/book"
+              element={
+                <ProtectedRoute roles={['PATIENT']}>
+                  <BookAppointmentPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/records"
+              element={
+                <ProtectedRoute roles={['PATIENT']}>
+                  <PatientRecordsPage />
+                </ProtectedRoute>
+              }
+            />
+          </>
+        )}
 
         <Route
           path="/doctor"

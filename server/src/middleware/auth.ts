@@ -1,8 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
-import { SUBSCRIPTION_INACTIVE_MESSAGE, type ClinicTier, type Role } from '@opd/shared';
+import { PATIENT_PORTAL_DISABLED_MESSAGE, SUBSCRIPTION_INACTIVE_MESSAGE, type ClinicTier, type Role } from '@opd/shared';
 import { verifyToken } from '../utils/jwt';
 import { prisma } from '../prisma';
 import { HttpError } from './errorHandler';
+import { isPatientPortalEnabled } from '../utils/features';
 
 export { SUBSCRIPTION_INACTIVE_MESSAGE };
 
@@ -34,6 +35,11 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     payload = verifyToken(token);
   } catch {
     return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+  // Login already refuses patients while the portal is off; this also shuts
+  // out a patient token issued before it was switched off.
+  if (payload.role === 'PATIENT' && !isPatientPortalEnabled()) {
+    return res.status(403).json({ message: PATIENT_PORTAL_DISABLED_MESSAGE });
   }
   // Fetched fresh per request, same as requireTier below -- so a clinic
   // suspended (or reactivated) by a platform admin takes effect on the very

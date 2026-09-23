@@ -962,5 +962,13 @@ export interface RenewSubscriptionRequest {
 // matches against it to show a dedicated lockout screen instead of a
 // generic error toast. Keep them in lockstep -- see
 // server/src/middleware/auth.ts and web/src/api/client.ts.
+// Patient-facing features (self-registration, login, booking, records,
+// online bill payment -- web and mobile) are switched off until the
+// patient phase ships; the product is hospital/clinic-staff software for
+// now. Enabled per deployment with PATIENT_PORTAL_ENABLED=true (server)
+// and VITE_PATIENT_PORTAL_ENABLED=true (web).
+export const PATIENT_PORTAL_DISABLED_MESSAGE =
+  'Patient accounts are not available yet. Please contact the clinic directly.';
+
 export const SUBSCRIPTION_INACTIVE_MESSAGE =
   "This clinic's subscription is not active. Contact your platform administrator to restore access.";

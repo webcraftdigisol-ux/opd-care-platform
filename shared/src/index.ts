@@ -175,6 +175,20 @@ export interface LoginRequest {
   password: string;
 }
 
+// Forgot-password over WhatsApp. `identifier` is the account's email or
+// phone number at that clinic.
+export interface PasswordResetRequest {
+  clinicSlug: string;
+  identifier: string;
+}
+
+export interface PasswordResetConfirmRequest {
+  clinicSlug: string;
+  identifier: string;
+  code: string;
+  newPassword: string;
+}
+
 export interface AuthResponse {
   token: string;
   user: PublicUser;
@@ -195,6 +209,9 @@ export interface WalkInRequest {
   patientName: string;
   patientPhone: string;
   reason?: string;
+  // The patient agreed, at the desk, to receive WhatsApp messages. Only
+  // ever turns consent on -- leaving it unset never revokes it.
+  whatsappOptIn?: boolean;
 }
 
 export interface UpdateAppointmentStatusRequest {
@@ -846,7 +863,8 @@ export type NotificationType =
   | 'DISCHARGE_SUMMARY'
   | 'APPOINTMENT_REMINDER'
   | 'PRESCRIPTION_SHARED'
-  | 'DIET_PLAN_SHARED';
+  | 'DIET_PLAN_SHARED'
+  | 'PASSWORD_RESET_OTP';
 export type NotificationStatus = 'SENT' | 'FAILED' | 'SKIPPED';
 
 export interface Notification {
@@ -862,6 +880,13 @@ export interface Notification {
   error: string | null;
   providerMessageId: string | null;
   createdAt: string;
+}
+
+// POST /reports/follow-ups/:consultationId/remind -- one reminder goes out
+// on both channels; each has its own outcome.
+export interface FollowUpReminderResult {
+  email: Notification;
+  whatsapp: Notification;
 }
 
 // ---- Attachments ----

@@ -241,6 +241,7 @@ const walkInSchema = z.object({
   patientName: z.string().min(2),
   patientPhone: z.string().min(6),
   reason: z.string().optional(),
+  whatsappOptIn: z.boolean().optional(),
 });
 
 appointmentsRouter.post(
@@ -252,6 +253,14 @@ appointmentsRouter.post(
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
     const doctor = await assertDoctorInClinic(clinicId, data.doctorId, today);
+
+    // The front desk recording the patient's in-person WhatsApp consent --
+    // Meta accepts consent collected offline as long as it's recorded, and
+    // this keeps who recorded it and when. Only ever turns consent on;
+    // leaving the box unticked never revokes an earlier opt-in.
+    const consent = data.whatsappOptIn
+      ? { whatsappOptIn: true, whatsappOptInAt: new Date(), whatsappOptInRecordedById: req.auth!.userId }
+      : {};
 
     let patient = await prisma.user.findUnique({
       where: { clinicId_phone: { clinicId, phone: data.patientPhone } },
@@ -266,8 +275,11 @@ appointmentsRouter.post(
           phone: data.patientPhone,
           password: randomPassword,
           role: 'PATIENT',
+          ...consent,
         },
       });
+    } else if (data.whatsappOptIn && !patient.whatsappOptIn) {
+      patient = await prisma.user.update({ where: { id: patient.id }, data: consent });
     }
 
     const appointment = await prisma.$transaction(async (tx) => {

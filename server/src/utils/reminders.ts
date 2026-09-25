@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { notifyPatientEmail } from './notify';
 import { notifyPatientWhatsApp } from './whatsapp';
@@ -71,4 +72,77 @@ export async function sendDueAppointmentReminders(): Promise<{ sent: number }> {
   }
 
   return { sent: due.length };
+}
+
+type FollowUpConsultation = Prisma.ConsultationGetPayload<{
+  include: { appointment: { include: { patient: true; doctor: { include: { user: true } } } } };
+}>;
+
+// One follow-up reminder, by email and WhatsApp (the latter only if the
+// patient opted in). Shared by the manual "Send reminder" button on the
+// Follow-ups report and the automatic day-before job below, so both say the
+// same thing.
+export async function sendFollowUpReminder(consultation: FollowUpConsultation) {
+  const { appointment } = consultation;
+  const due = consultation.followUpDate!.toISOString().slice(0, 10);
+  const body = `Hi ${appointment.patient.name}, this is a reminder for your follow-up with Dr. ${appointment.doctor.user.name} (due ${due}). Please call the clinic to schedule your visit.`;
+
+  const email = await notifyPatientEmail({
+    clinicId: appointment.clinicId,
+    patientId: appointment.patientId,
+    type: 'FOLLOWUP_REMINDER',
+    to: appointment.patient.email,
+    subject: 'Follow-up reminder',
+    body,
+  });
+  const whatsapp = await notifyPatientWhatsApp({
+    clinicId: appointment.clinicId,
+    patientId: appointment.patientId,
+    type: 'FOLLOWUP_REMINDER',
+    to: appointment.patient.phone,
+    optedIn: appointment.patient.whatsappOptIn,
+    templateName: 'followup_reminder',
+    params: [appointment.patient.name, appointment.doctor.user.name, due],
+    renderedBody: body,
+  });
+  return { email, whatsapp };
+}
+
+// Automatic follow-up reminders, the day before a consultation's follow-up
+// date -- same "tomorrow in UTC" convention as appointment reminders above.
+// Skipped (but still marked, so it isn't re-checked every hour) when the
+// follow-up is already handled: staff marked the patient contacted, or the
+// patient already has an upcoming appointment at this clinic.
+export async function sendDueFollowUpReminders(): Promise<{ sent: number }> {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+  const due = await prisma.consultation.findMany({
+    where: { followUpDate: tomorrow, followUpContacted: false, followUpReminderSentAt: null },
+    include: { appointment: { include: { patient: true, doctor: { include: { user: true } } } } },
+  });
+
+  let sent = 0;
+  for (const consultation of due) {
+    const upcoming = await prisma.appointment.findFirst({
+      where: {
+        clinicId: consultation.appointment.clinicId,
+        patientId: consultation.appointment.patientId,
+        date: { gte: today },
+        status: { in: ['BOOKED', 'CHECKED_IN'] },
+        id: { not: consultation.appointmentId },
+      },
+    });
+    if (!upcoming) {
+      await sendFollowUpReminder(consultation);
+      sent++;
+    }
+    await prisma.consultation.update({
+      where: { id: consultation.id },
+      data: { followUpReminderSentAt: new Date() },
+    });
+  }
+  return { sent };
 }

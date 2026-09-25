@@ -59,6 +59,7 @@ enum NotificationType {
   APPOINTMENT_REMINDER
   PRESCRIPTION_SHARED
   DIET_PLAN_SHARED
+  PASSWORD_RESET_OTP
 }
 
 enum NotificationStatus {
@@ -127,8 +128,15 @@ model User {
   // themself. `phone` doubles as the WhatsApp number; no separate field,
   // to avoid the two silently drifting apart.
   whatsappOptIn Boolean @default(false)
+  // When consent was last given, and by whom: null recordedById means the
+  // patient opted in themself; otherwise it's the staff member who recorded
+  // the patient's in-person consent at walk-in registration. Kept as a plain
+  // id rather than a relation -- it's an audit trail, not something queried.
+  whatsappOptInAt           DateTime?
+  whatsappOptInRecordedById String?
 
   doctorProfile            DoctorProfile?
+  passwordResetOtps        PasswordResetOtp[]
   appointments             Appointment[]      @relation("PatientAppointments")
   pharmacyPurchases        PharmacySale[]     @relation("PharmacySalePatient")
   pharmacySalesHandled     PharmacySale[]     @relation("PharmacySaleSeller")
@@ -234,6 +242,9 @@ model Consultation {
   notes             String?
   followUpDate      DateTime?
   followUpContacted Boolean     @default(false)
+  // Set when the automatic day-before follow-up reminder was attempted
+  // (whatever its outcome), so the hourly job sends it at most once.
+  followUpReminderSentAt DateTime?
   createdAt         DateTime    @default(now())
 
   prescriptions    Prescription[]
@@ -884,4 +895,20 @@ model PlatformAdmin {
   createdAt DateTime @default(now())
 
   subscriptionPayments SubscriptionPayment[]
+}
+
+// One-time code for resetting a forgotten password, sent to the user's phone
+// on WhatsApp. Only a hash of the code is stored. A code is valid for a short
+// window and a limited number of guesses; see auth.routes.ts.
+model PasswordResetOtp {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
 }

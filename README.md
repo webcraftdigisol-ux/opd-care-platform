@@ -280,25 +280,67 @@ adding a second, driftable phone field. `notifyPatientWhatsApp()` checks
 bypass consent by forgetting to check first, because there's nothing to
 forget; a non-opted-in patient always resolves to a logged `SKIPPED`
 Notification (`error: 'Patient has not opted in to WhatsApp messages'`),
-never a silent no-op and never a send. A patient opts in themself from a
-toggle on their dashboard (`PUT /api/auth/me/whatsapp-optin`,
-self-service only — no staff-facing route sets this on someone else's
-behalf, since the opt-in has to be the recipient's own).
+never a silent no-op and never a send. Consent is recorded two ways, each
+with an audit trail (`whatsappOptInAt`, and `whatsappOptInRecordedById` —
+null when the patient did it themself): the patient's own toggle on their
+dashboard (`PUT /api/auth/me/whatsapp-optin`), or the front desk ticking
+"Patient agrees to receive prescriptions and reminders on WhatsApp" at
+walk-in registration (`whatsappOptIn` on `POST /appointments/walk-in`).
+The second exists because most OPD patients are walk-ins who never log in;
+Meta accepts consent collected in person as long as it's recorded. It only
+ever turns consent on — an unticked box on a later visit never revokes it.
+
+**Every message names its clinic.** Each template's `{{1}}` is the
+clinic's name, prepended by `notifyPatientWhatsApp()` itself, so a
+patient who visits two clinics on the shared number can tell them apart.
+Phone numbers are normalized to E.164 at send time (`toWhatsAppNumber()`:
+a bare 10-digit number is taken as Indian, `+91`), and every parameter is
+flattened (`sanitizeTemplateParam()`), since Meta rejects parameters with
+newlines, tabs or long runs of spaces. The exact templates to submit for
+approval are in [`docs/whatsapp-templates.md`](docs/whatsapp-templates.md).
 
 **Provider-agnostic adapter, stub by default.** `WhatsAppClient`
 (`server/src/utils/whatsapp.ts`) is a one-method interface
-(`sendTemplatedMessage`); `getWhatsAppClient()` picks a real
-`TwilioWhatsAppClient` (built against Twilio's WhatsApp API via Node's
-native `fetch`, no new dependency) when `TWILIO_ACCOUNT_SID`/
-`TWILIO_AUTH_TOKEN`/`TWILIO_WHATSAPP_FROM` are set, and otherwise falls
-back to `StubWhatsAppClient`, which logs the attempt and returns a fake
-`stub-<timestamp>-<random>` message id. **No real WhatsApp Business
-account exists in this environment** — every send in this codebase today,
-tests included, goes through the stub. Configure the three `TWILIO_*`
-env vars (and complete Meta's WhatsApp Business + template-approval
-process, since a business-initiated send requires an approved message
-template, not free-form text) to go live; nothing else in the send path
-needs to change.
+(`sendTemplatedMessage`) with two real implementations, both on Node's
+native `fetch` (no new dependency):
+- `MetaCloudWhatsAppClient`, Meta's WhatsApp Cloud API called directly —
+  the cheapest per-message option in India. Needs `META_WHATSAPP_TOKEN`
+  and `META_WHATSAPP_PHONE_NUMBER_ID` (plus optional
+  `META_WHATSAPP_TEMPLATE_LANG`, default `en`, and
+  `META_GRAPH_API_VERSION`).
+- `TwilioWhatsAppClient`. Needs `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/
+  `TWILIO_WHATSAPP_FROM`, plus `TWILIO_CONTENT_SIDS` (JSON, template name →
+  ContentSid) so sends use the approved templates; an unmapped template
+  falls back to plain text, which only works in Twilio's sandbox.
+
+`WHATSAPP_PROVIDER` (`meta`/`twilio`) picks one explicitly; unset, whichever
+has credentials wins, else `StubWhatsAppClient`, which logs the attempt and
+returns a fake `stub-<timestamp>-<random>` message id. **No real WhatsApp
+Business account exists in this environment** — every send today, tests
+included, goes through the stub.
+
+**Follow-up reminders.** A consultation's follow-up date gets a reminder by
+email and WhatsApp the day before (`sendDueFollowUpReminders()`, on the same
+hourly scheduler as appointment reminders), at most once
+(`Consultation.followUpReminderSentAt`), and not at all if staff already
+marked the patient contacted or the patient already has an upcoming
+appointment at the clinic. Staff can also send one on demand from Reports →
+Follow-ups, which shows each channel's outcome.
+
+**Forgot password over WhatsApp.** "Forgot password?" on the sign-in page
+sends a 6-digit code to the account's WhatsApp number
+(`POST /auth/password-reset/request`, then `/confirm` with the code and a
+new password). The account is found by email or by phone, however the
+phone was typed. Only a bcrypt hash of the code is stored
+(`PasswordResetOtp`), and the code is never logged or written to the
+Notification row, even by the stub. A code lasts 10 minutes and allows 5
+guesses; only the newest code is valid; codes can be requested once a
+minute and 5 times an hour. The request always gets the same reply, so it
+can't be used to discover who has an account. No opt-in is needed: the
+user asked for the code themself, which is what Meta's authentication
+template category is for. Sign-in also accepts a phone number in place of
+the email, since walk-in patients only have a placeholder email; this is
+how they claim their account.
 
 ### Scheduled reminders
 

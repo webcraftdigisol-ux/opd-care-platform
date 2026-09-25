@@ -1,5 +1,5 @@
 import { prisma, setupClinicWithAdmin, createUser, createDoctor } from './helpers';
-import { sendDueAppointmentReminders } from '../src/utils/reminders';
+import { sendDueAppointmentReminders, sendDueFollowUpReminders } from '../src/utils/reminders';
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -172,5 +172,55 @@ describe('Scheduled appointment reminders (sendDueAppointmentReminders)', () => 
     await sendDueAppointmentReminders();
     expect(await reminderNotificationFor(clinicA.id, patientA.id)).not.toBeNull();
     expect(await reminderNotificationFor(clinicB.id, patientB.id)).not.toBeNull();
+  });
+});
+
+describe('Scheduled follow-up reminders (sendDueFollowUpReminders)', () => {
+  async function consultationWithFollowUp(opts: { followUpDate: Date; contacted?: boolean; optedIn?: boolean }) {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const { user: patient } = await createUser(clinic.id, 'PATIENT', { phone: `+9198${Math.floor(10000000 + Math.random() * 89999999)}` });
+    if (opts.optedIn) await prisma.user.update({ where: { id: patient.id }, data: { whatsappOptIn: true } });
+    const visit = await createAppointment(clinic.id, patient.id, doctorProfile.id, { date: dateOnlyOffsetFromToday(-7), status: 'COMPLETED' });
+    const consultation = await prisma.consultation.create({
+      data: { appointmentId: visit.id, followUpDate: opts.followUpDate, followUpContacted: opts.contacted ?? false },
+    });
+    return { clinic, patient, doctorProfile, consultation };
+  }
+
+  function followUpNotifications(patientId: string) {
+    return prisma.notification.findMany({ where: { patientId, type: 'FOLLOWUP_REMINDER' } });
+  }
+
+  it('sends email + WhatsApp the day before the follow-up date, once', async () => {
+    const { patient, consultation } = await consultationWithFollowUp({ followUpDate: dateOnlyOffsetFromToday(1), optedIn: true });
+
+    await sendDueFollowUpReminders();
+    await sendDueFollowUpReminders();
+
+    const sent = await followUpNotifications(patient.id);
+    expect(sent.map((n) => n.channel).sort()).toEqual(['EMAIL', 'WHATSAPP']);
+    expect(sent.find((n) => n.channel === 'WHATSAPP')!.status).toBe('SENT');
+    const refetched = await prisma.consultation.findUniqueOrThrow({ where: { id: consultation.id } });
+    expect(refetched.followUpReminderSentAt).not.toBeNull();
+  });
+
+  it('skips a follow-up already handled: contacted, or the patient has already booked', async () => {
+    const contacted = await consultationWithFollowUp({ followUpDate: dateOnlyOffsetFromToday(1), contacted: true });
+    const booked = await consultationWithFollowUp({ followUpDate: dateOnlyOffsetFromToday(1) });
+    await createAppointment(booked.clinic.id, booked.patient.id, booked.doctorProfile.id, { date: dateOnlyOffsetFromToday(1) });
+
+    await sendDueFollowUpReminders();
+
+    expect(await followUpNotifications(contacted.patient.id)).toHaveLength(0);
+    expect(await followUpNotifications(booked.patient.id)).toHaveLength(0);
+    const bookedRow = await prisma.consultation.findUniqueOrThrow({ where: { id: booked.consultation.id } });
+    expect(bookedRow.followUpReminderSentAt).not.toBeNull(); // not re-checked every hour
+  });
+
+  it('does nothing for a follow-up that is not due tomorrow', async () => {
+    const { patient } = await consultationWithFollowUp({ followUpDate: dateOnlyOffsetFromToday(3) });
+    await sendDueFollowUpReminders();
+    expect(await followUpNotifications(patient.id)).toHaveLength(0);
   });
 });

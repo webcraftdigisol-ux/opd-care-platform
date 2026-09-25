@@ -7,7 +7,7 @@ import {
   markFollowUpContacted,
   sendFollowUpReminder,
 } from '../api/reports';
-import type { FollowUpItem, RevenueSection } from '@opd/shared';
+import type { FollowUpItem, FollowUpReminderResult, Notification, RevenueSection } from '@opd/shared';
 
 type Tab = 'financial' | 'activity' | 'follow-ups';
 
@@ -183,6 +183,12 @@ function ActivityTab() {
   );
 }
 
+function channelOutcome(label: string, n: Notification): string {
+  if (n.status === 'SENT') return `${label}: sent`;
+  if (n.status === 'FAILED') return `${label}: failed`;
+  return `${label}: not sent${n.error ? ` — ${n.error.toLowerCase()}` : ''}`;
+}
+
 function FollowUpGroup({
   title,
   items,
@@ -190,6 +196,7 @@ function FollowUpGroup({
   onContact,
   onRemind,
   remindingId,
+  results,
 }: {
   title: string;
   items: FollowUpItem[];
@@ -197,6 +204,7 @@ function FollowUpGroup({
   onContact: (id: string) => void;
   onRemind: (id: string) => void;
   remindingId: string | null;
+  results: Record<string, FollowUpReminderResult>;
 }) {
   if (items.length === 0) return null;
   return (
@@ -215,6 +223,12 @@ function FollowUpGroup({
               <p className="text-sm text-gray-500">
                 {item.patientPhone ?? 'No phone'} · Dr. {item.doctorName} · Follow-up {item.followUpDate}
               </p>
+              {results[item.consultationId] && (
+                <p className="mt-1 text-xs text-gray-500" data-testid="reminder-outcome">
+                  {channelOutcome('WhatsApp', results[item.consultationId].whatsapp)} ·{' '}
+                  {channelOutcome('Email', results[item.consultationId].email)}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -244,7 +258,11 @@ function FollowUpsTab() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['report-follow-ups'] }),
   });
 
-  const remindMutation = useMutation({ mutationFn: sendFollowUpReminder });
+  const [results, setResults] = useState<Record<string, FollowUpReminderResult>>({});
+  const remindMutation = useMutation({
+    mutationFn: sendFollowUpReminder,
+    onSuccess: (result, consultationId) => setResults((r) => ({ ...r, [consultationId]: result })),
+  });
 
   if (isLoading) return <p className="text-gray-500">Loading…</p>;
   if (!data) return null;
@@ -262,6 +280,7 @@ function FollowUpsTab() {
         onContact={contactMutation.mutate}
         onRemind={remindMutation.mutate}
         remindingId={remindingId}
+        results={results}
       />
       <FollowUpGroup
         title="Due Today"
@@ -270,6 +289,7 @@ function FollowUpsTab() {
         onContact={contactMutation.mutate}
         onRemind={remindMutation.mutate}
         remindingId={remindingId}
+        results={results}
       />
       <FollowUpGroup
         title="Due This Week"
@@ -277,6 +297,7 @@ function FollowUpsTab() {
         onContact={contactMutation.mutate}
         onRemind={remindMutation.mutate}
         remindingId={remindingId}
+        results={results}
       />
     </div>
   );

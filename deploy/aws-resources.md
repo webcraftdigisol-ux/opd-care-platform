@@ -37,6 +37,15 @@ names, auto-renewed by the `certbot.timer` systemd timer). Nginx config is
 `DEPLOY_SSH_KEY` (the GitHub Actions deploy key, whose public half is
 already in `~ubuntu/.ssh/authorized_keys`).
 
+These are the source of truth for `server/.env`: the box has the AWS CLI
+and its instance role can read `/opd-care/prod/*`, so to rotate, put new
+values here (and `aws rds modify-db-instance --master-user-password ...
+--apply-immediately` for the DB password), then on the box rewrite
+`DATABASE_URL`/`JWT_SECRET` in `server/.env` from
+`aws ssm get-parameter --with-decryption` and
+`pm2 reload opd-care-server --update-env`. Rotating `JWT_SECRET` signs
+everyone out. Last rotated 2026-09-25.
+
 ```bash
 aws ssm get-parameter --region ap-south-1 --with-decryption \
   --name /opd-care/prod/ADMIN_SSH_KEY --query Parameter.Value --output text > opd-admin.pem

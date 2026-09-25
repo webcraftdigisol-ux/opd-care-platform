@@ -73,8 +73,8 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   `VITE_API_URL=https://api.ohmscare.in/api npm run build:web` and
   `sudo rsync -a --delete web/dist/ /var/www/opd-care/`.
 - **Live web build is ahead of `main`**: `/var/www/opd-care` was built from
-  `4320baf` on `claude/determined-brahmagupta-wc774v` (mobile nav menu,
-  web-only). The API and the box's git checkout are still on `main`. Once
+  `ccab4ab` on `claude/determined-brahmagupta-wc774v` (mobile nav menu +
+  doctor's Patient History panel, web-only). The API and the box's git checkout are still on `main`. Once
   that branch is merged, rebuild the web app from `main` as usual.
 - The database is migrated but **not seeded**. The first clinic signs up
   through the app's registration flow.

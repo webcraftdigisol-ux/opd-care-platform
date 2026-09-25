@@ -15,6 +15,7 @@ Account `026587008370`, default VPC `vpc-04658e9176f126746`.
 | EC2 role | `opd-care-ec2-role` / profile `opd-care-ec2-profile` -- `AmazonSSMManagedInstanceCore`, so the box is reachable via SSM Session Manager as well as SSH |
 | Key pair | `opd-care-admin` (private key: `/opd-care/prod/ADMIN_SSH_KEY`) |
 | S3 | `opd-care-web-026587008370` -- all public access blocked, currently empty |
+| S3 (uploads) | `opd-care-uploads-026587008370` -- uploaded reports/scans/DICOM (`UPLOADS_S3_BUCKET` in `server/.env`). Private (public access blocked, bucket-owner-enforced), SSE-S3, TLS-only bucket policy, versioning on with non-current versions expired after 30 days. The EC2 role's `opd-care-uploads-s3` inline policy allows Get/Put/DeleteObject on it plus ListBucket (so a missing key reads as 404, not 403) |
 | Domain | `ohmscare.in`, registered at GoDaddy, nameservers delegated to Route 53 |
 | Route 53 zone | `Z04804252LG40JXTDNAI4` -- A records for `ohmscare.in`, `www`, `app`, `api` -> `3.7.243.104`; CAA allows `letsencrypt.org` and `amazon.com` |
 

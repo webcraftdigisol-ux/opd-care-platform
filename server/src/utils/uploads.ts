@@ -3,12 +3,14 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { HttpError } from '../middleware/errorHandler';
+import { createFileStorage } from './fileStorage';
 
-// Local disk, not S3 -- this deployment's own architecture is a single EC2
-// instance (see deploy/README.md), so there's no multi-instance fan-out
-// problem a shared filesystem would break. Would need S3 (or an EFS mount)
-// the moment this ever scaled to more than one app server.
+// Where multer writes each incoming file. With UPLOADS_S3_BUCKET unset this
+// is also where files are stored for good; with it set, it's only a staging
+// area and accepted files move to S3 (see fileStorage.ts).
 export const UPLOADS_ROOT = path.resolve(process.env.UPLOADS_ROOT || path.join(__dirname, '..', '..', 'uploads'));
+
+export const fileStorage = createFileStorage(UPLOADS_ROOT);
 
 const ALLOWED_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
 // DICOM exports run larger than a typical scanned report (a single
@@ -94,13 +96,6 @@ export function absolutePathFor(storageKey: string): string {
   return path.join(UPLOADS_ROOT, storageKey);
 }
 
-export function deleteUploadedFile(storageKey: string): void {
-  const absolute = absolutePathFor(storageKey);
-  fs.unlink(absolute, (err) => {
-    // Best-effort: a missing file on disk shouldn't block deleting the DB
-    // record that references it.
-    if (err && err.code !== 'ENOENT') {
-      console.error(`Failed to delete uploaded file ${absolute}:`, err);
-    }
-  });
+export function deleteUploadedFile(storageKey: string): Promise<void> {
+  return fileStorage.remove(storageKey);
 }

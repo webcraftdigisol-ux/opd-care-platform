@@ -548,7 +548,7 @@ any real deployment.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - PostgreSQL (or use the provided `docker-compose.yml`)
 - Expo Go app (or an emulator) for the mobile app
 

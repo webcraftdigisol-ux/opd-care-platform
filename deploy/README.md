@@ -21,8 +21,8 @@ automatically, once you've done steps 1–5 and filled in the secrets below.
 Launch a `t4g.micro` instance (Ubuntu 22.04+) in `ap-south-1`. SSH in and:
 
 ```bash
-# Node 20, git, nginx, certbot, pm2
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# Node 24, git, nginx, certbot, pm2
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt-get install -y nodejs git nginx certbot python3-certbot-nginx
 sudo npm install -g pm2
 

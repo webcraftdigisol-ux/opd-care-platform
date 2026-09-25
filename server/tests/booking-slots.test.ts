@@ -70,18 +70,26 @@ describe('Fixed time-slot booking', () => {
     expect(second.res.body.message).toMatch(/not available/i);
   });
 
-  it('under a genuine race, exactly one of two concurrent bookings for the same slot wins', async () => {
+  it('under a genuine race, exactly one of five concurrent bookings for the same slot wins', async () => {
     const { clinic } = await setupClinicWithAdmin({ tier: 1 });
     const { doctorProfile } = await createDoctor(clinic.id);
     const date = tomorrowDateStr();
 
-    const [a, b] = await Promise.all([
-      bookAsNewPatient(clinic.slug, clinic.id, doctorProfile.id, date, '12:00'),
-      bookAsNewPatient(clinic.slug, clinic.id, doctorProfile.id, date, '12:00'),
-    ]);
-    const statuses = [a.res.status, b.res.status].sort();
+    // Log everyone in first, so the five booking requests really do land
+    // at the same moment rather than staggered by registration.
+    const sessions = [];
+    for (let i = 0; i < 5; i++) {
+      const { user, password } = await createUser(clinic.id, 'PATIENT');
+      sessions.push(await loginAs(clinic.slug, user.email, password));
+    }
+    const results = await Promise.all(
+      sessions.map((s) =>
+        request(app).post('/api/appointments').set(auth(s.token)).send({ doctorId: doctorProfile.id, date, startTime: '12:00' }),
+      ),
+    );
+    const statuses = results.map((r) => r.status).sort();
     expect(statuses[0]).toBe(201);
-    expect([400, 409]).toContain(statuses[1]);
+    for (const status of statuses.slice(1)) expect([400, 409]).toContain(status);
 
     const bookedCount = await prisma.appointment.count({
       where: { doctorId: doctorProfile.id, date: new Date(`${date}T00:00:00.000Z`), startTime: '12:00', status: { not: 'CANCELLED' } },
@@ -134,5 +142,38 @@ describe('Fixed time-slot booking', () => {
     expect(res.status).toBe(201);
     expect(res.body.startTime).toBeNull();
     expect(res.body.isWalkIn).toBe(true);
+  });
+
+  it('concurrent walk-ins for the same doctor each get their own token', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+
+    const results = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        request(app)
+          .post('/api/appointments/walk-in')
+          .set(auth(adminToken))
+          .send({ doctorId: doctorProfile.id, patientName: `Walk-in ${i}`, patientPhone: `91234000${10 + i}` }),
+      ),
+    );
+    expect(results.every((r) => r.status === 201)).toBe(true);
+    expect(results.map((r) => r.body.tokenNumber).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('a cancellation never frees a token number for someone else to share', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const date = tomorrowDateStr();
+
+    const first = await bookAsNewPatient(clinic.slug, clinic.id, doctorProfile.id, date, '09:00');
+    const second = await bookAsNewPatient(clinic.slug, clinic.id, doctorProfile.id, date, '09:15');
+    const third = await bookAsNewPatient(clinic.slug, clinic.id, doctorProfile.id, date, '09:30');
+    expect([first, second, third].map((b) => b.res.body.tokenNumber)).toEqual([1, 2, 3]);
+
+    const cancel = await request(app).post(`/api/appointments/${second.res.body.id}/cancel`).set(auth(second.session.token));
+    expect(cancel.status).toBe(200);
+
+    const fourth = await bookAsNewPatient(clinic.slug, clinic.id, doctorProfile.id, date, '09:45');
+    expect(fourth.res.body.tokenNumber).toBe(4);
   });
 });

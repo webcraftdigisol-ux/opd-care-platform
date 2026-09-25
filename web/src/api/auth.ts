@@ -37,3 +37,8 @@ export async function confirmPasswordReset(data: PasswordResetConfirmRequest): P
   const res = await apiClient.post<{ message: string }>('/auth/password-reset/confirm', data);
   return res.data;
 }
+
+export async function getPasswordResetStatus(): Promise<{ available: boolean }> {
+  const res = await apiClient.get<{ available: boolean }>('/auth/password-reset/status');
+  return res.data;
+}

@@ -180,6 +180,16 @@ function getWhatsAppClient(): WhatsAppClient {
   return client;
 }
 
+// Whether a WhatsApp message would actually reach someone. False when the
+// app fell back to the stub because no provider is configured (the state of
+// a fresh deployment) -- then features that only make sense if the message
+// arrives, like a password-reset code, are switched off rather than
+// pretending to send. Dev and tests opt into the stub explicitly with
+// WHATSAPP_PROVIDER=stub, which counts as available.
+export function isWhatsAppDeliveryAvailable(): boolean {
+  return !(getWhatsAppClient() instanceof StubWhatsAppClient) || process.env.WHATSAPP_PROVIDER === 'stub';
+}
+
 // Reset the memoized client -- used by tests that toggle WhatsApp env vars
 // between cases, same purpose as resetNotifyTransporterForTests().
 export function resetWhatsAppClientForTests() {

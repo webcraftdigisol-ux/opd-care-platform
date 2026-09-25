@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import request from 'supertest';
 import { app, prisma, setupClinicWithAdmin, createUser, loginAs, uniqueEmail } from './helpers';
+import { resetWhatsAppClientForTests } from '../src/utils/whatsapp';
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -144,5 +145,35 @@ describe('Sign-in and reset by phone with a shared number', () => {
 
     await request(app).post('/api/auth/password-reset/request').send({ clinicSlug: clinic.slug, identifier: '9811100000' });
     expect(await prisma.passwordResetOtp.count({ where: { userId: patient.id } })).toBe(0);
+  });
+});
+
+describe('Password reset without a WhatsApp provider', () => {
+  const saved = process.env.WHATSAPP_PROVIDER;
+  beforeEach(() => {
+    delete process.env.WHATSAPP_PROVIDER; // like a fresh deployment: no provider, stub fallback
+    resetWhatsAppClientForTests();
+  });
+  afterEach(() => {
+    process.env.WHATSAPP_PROVIDER = saved;
+    resetWhatsAppClientForTests();
+  });
+
+  it('reports itself unavailable and refuses to "send" a code nobody would receive', async () => {
+    const { clinic, email, user } = await setupPatient();
+
+    const status = await request(app).get('/api/auth/password-reset/status');
+    expect(status.body).toEqual({ available: false });
+
+    const res = await requestCode(clinic.slug, email);
+    expect(res.status).toBe(503);
+    expect(await prisma.passwordResetOtp.count({ where: { userId: user.id } })).toBe(0);
+  });
+});
+
+describe('Password reset status', () => {
+  it('is available when a provider (or the deliberately chosen stub) is configured', async () => {
+    const status = await request(app).get('/api/auth/password-reset/status');
+    expect(status.body).toEqual({ available: true });
   });
 });

@@ -89,3 +89,26 @@ describe('IPD discharge billing', () => {
     expect(discharge.body.bill.radiologyCharges).toBe(6000); // still the invoice's own recorded total, not 9000
   });
 });
+
+describe('IPD bed claims under concurrency', () => {
+  it('two simultaneous admissions to the same bed: exactly one gets it', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 3 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const ward = await prisma.ward.create({ data: { clinicId: clinic.id, name: 'Race Ward' } });
+    const bed = await prisma.bed.create({ data: { wardId: ward.id, label: 'R-1', dailyRate: 1000 } });
+    const patients = await Promise.all([1, 2, 3].map(() => createUser(clinic.id, 'PATIENT')));
+
+    const results = await Promise.all(
+      patients.map(({ user }) =>
+        request(app)
+          .post('/api/ipd/admissions')
+          .set(auth(adminToken))
+          .send({ patientId: user.id, bedId: bed.id, admittingDoctorId: doctorProfile.id }),
+      ),
+    );
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses[0]).toBe(201);
+    for (const status of statuses.slice(1)) expect([400, 409]).toContain(status);
+    expect(await prisma.admission.count({ where: { bedId: bed.id, status: 'ADMITTED' } })).toBe(1);
+  });
+});

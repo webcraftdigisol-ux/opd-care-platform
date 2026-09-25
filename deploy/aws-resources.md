@@ -78,5 +78,15 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   steps from the README, then
   `VITE_API_URL=https://api.ohmscare.in/api npm run build:web` and
   `sudo rsync -a --delete web/dist/ /var/www/opd-care/`.
+- **Production runs ahead of `main`**: the box is checked out at `791d716`
+  on `claude/determined-brahmagupta-wc774v` (PR #5: booking/bed concurrency
+  fixes, WhatsApp password reset gated on a real provider), which also
+  brought the WhatsApp work from #4 and its migration live. RDS snapshot
+  `opd-care-db-pre-whatsapp-20260925-1654` was taken just before that
+  migration. Once #5 is merged, `git checkout main && git pull` on the box
+  and rebuild as usual.
+- **WhatsApp isn't connected yet**: no `WHATSAPP_PROVIDER`/`META_*`/`TWILIO_*`
+  in `server/.env`, so sends are logged by the stub and "Forgot password?"
+  is hidden. See `docs/whatsapp-templates.md` for going live.
 - The database is migrated but **not seeded**. The first clinic signs up
   through the app's registration flow.

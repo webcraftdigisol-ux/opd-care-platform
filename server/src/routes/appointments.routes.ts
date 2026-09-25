@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { toAppointment } from '../utils/serialize';
 import { notifyPatientEmail } from '../utils/notify';
@@ -14,11 +15,27 @@ export const appointmentsRouter = Router();
 
 appointmentsRouter.use(requireAuth);
 
-async function nextTokenNumber(clinicId: string, doctorId: string, date: Date): Promise<number> {
-  const count = await prisma.appointment.count({
-    where: { clinicId, doctorId, date, status: { not: 'CANCELLED' } },
-  });
-  return count + 1;
+type Tx = Prisma.TransactionClient;
+
+// Serializes every booking for one doctor on one day (slot bookings and
+// walk-ins alike) for the rest of the transaction, so "is the slot free?" and
+// "which token is next?" can't both be answered the same way for two
+// concurrent requests. Without it, simultaneous requests all passed the slot
+// check and all got the same token. A transaction-scoped Postgres advisory
+// lock -- released automatically on commit or rollback -- rather than a
+// unique index, because the slot rule only applies to non-cancelled rows and
+// Prisma's schema can't express a partial unique index.
+async function lockDoctorDay(tx: Tx, doctorId: string, date: Date): Promise<void> {
+  const key = `appointments:${doctorId}:${date.toISOString().slice(0, 10)}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+}
+
+// Highest token issued that day + 1, counting cancelled appointments too, so
+// a cancellation never frees a number that a later patient then shares with
+// someone still in the queue. Must run under lockDoctorDay.
+async function nextTokenNumber(tx: Tx, doctorId: string, date: Date): Promise<number> {
+  const { _max } = await tx.appointment.aggregate({ where: { doctorId, date }, _max: { tokenNumber: true } });
+  return (_max.tokenNumber ?? 0) + 1;
 }
 
 async function assertDoctorInClinic(clinicId: string, doctorId: string, date: Date) {
@@ -62,18 +79,16 @@ appointmentsRouter.post(
     }
 
     const appointment = await prisma.$transaction(async (tx) => {
-      // Re-check inside the transaction as the actual double-booking guard
-      // (the same check-then-write pattern used for bed occupancy in
-      // ipd.routes.ts admitPatient, not a DB-level constraint -- a CANCELLED
-      // appointment must free its slot for someone else to rebook, and
-      // Postgres has no partial-unique support through Prisma's schema DSL).
+      // Re-check under the lock as the actual double-booking guard; the
+      // check above only fails fast for a slot that was already taken.
+      await lockDoctorDay(tx, data.doctorId, date);
       const conflict = await tx.appointment.findFirst({
         where: { doctorId: data.doctorId, date, startTime: data.startTime, status: { not: 'CANCELLED' } },
       });
       if (conflict) {
         throw new HttpError(409, 'That time slot was just taken -- please pick another');
       }
-      const tokenNumber = await nextTokenNumber(clinicId, data.doctorId, date);
+      const tokenNumber = await nextTokenNumber(tx, data.doctorId, date);
       return tx.appointment.create({
         data: {
           clinicId,
@@ -283,7 +298,8 @@ appointmentsRouter.post(
     }
 
     const appointment = await prisma.$transaction(async (tx) => {
-      const tokenNumber = await nextTokenNumber(clinicId, data.doctorId, today);
+      await lockDoctorDay(tx, data.doctorId, today);
+      const tokenNumber = await nextTokenNumber(tx, data.doctorId, today);
       return tx.appointment.create({
         data: {
           clinicId,

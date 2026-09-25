@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { signToken } from '../utils/jwt';
 import { toClinicSummary, toPublicUser } from '../utils/serialize';
-import { sendWhatsAppOtp, toWhatsAppNumber } from '../utils/whatsapp';
+import { isWhatsAppDeliveryAvailable, sendWhatsAppOtp, toWhatsAppNumber } from '../utils/whatsapp';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { isSubscriptionActive, requireAuth, SUBSCRIPTION_INACTIVE_MESSAGE, type AuthedRequest } from '../middleware/auth';
 import type { AuthResponse } from '@opd/shared';
@@ -160,6 +160,13 @@ const OTP_REQUEST_REPLY = {
 };
 const OTP_INVALID = 'That code is invalid or has expired. Request a new one and try again.';
 
+const OTP_UNAVAILABLE = "Password reset over WhatsApp isn't available yet. Please ask your clinic to reset it for you.";
+
+// Lets the sign-in page decide whether to offer "Forgot password?".
+authRouter.get('/password-reset/status', (_req, res) => {
+  res.json({ available: isWhatsAppDeliveryAvailable() });
+});
+
 const passwordResetRequestSchema = z.object({
   clinicSlug: z.string().min(1),
   identifier: z.string().min(3),
@@ -168,6 +175,7 @@ const passwordResetRequestSchema = z.object({
 authRouter.post(
   '/password-reset/request',
   asyncHandler(async (req, res) => {
+    if (!isWhatsAppDeliveryAvailable()) throw new HttpError(503, OTP_UNAVAILABLE);
     const data = passwordResetRequestSchema.parse(req.body);
     const clinic = await findClinicBySlug(data.clinicSlug);
     const user = await findUserByIdentifier(clinic.id, data.identifier);

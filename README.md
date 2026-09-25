@@ -338,7 +338,12 @@ guesses; only the newest code is valid; codes can be requested once a
 minute and 5 times an hour. The request always gets the same reply, so it
 can't be used to discover who has an account. No opt-in is needed: the
 user asked for the code themself, which is what Meta's authentication
-template category is for. Sign-in also accepts a phone number in place of
+template category is for. It is only offered when a real provider is
+configured (`GET /auth/password-reset/status`): with the stub fallback of a
+fresh deployment, the sign-in page hides "Forgot password?" and the request
+endpoint answers 503 rather than claiming to send a code nobody receives.
+Dev and tests opt into the stub on purpose with `WHATSAPP_PROVIDER=stub`,
+which counts as available. Sign-in also accepts a phone number in place of
 the email, since walk-in patients only have a placeholder email; this is
 how they claim their account.
 

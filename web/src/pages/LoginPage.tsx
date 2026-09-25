@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SUBSCRIPTION_INACTIVE_MESSAGE } from '@opd/shared';
-import { login } from '../api/auth';
+import { useQuery } from '@tanstack/react-query';
+import { getPasswordResetStatus, login } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { homeRouteForRole } from '../utils/roleHome';
 
@@ -15,6 +16,8 @@ export function LoginPage() {
   );
   const [submitting, setSubmitting] = useState(false);
   const { setSession } = useAuth();
+  // "Forgot password?" only when a code can actually be delivered.
+  const { data: resetStatus } = useQuery({ queryKey: ['password-reset-status'], queryFn: getPasswordResetStatus });
   const navigate = useNavigate();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,12 +70,14 @@ export function LoginPage() {
         <div>
           <div className="mb-1 flex items-baseline justify-between">
             <label className="block text-sm font-medium text-gray-700">Password</label>
-            <Link
-              to={`/forgot-password${clinicSlug ? `?clinic=${encodeURIComponent(clinicSlug.trim())}` : ''}`}
-              className="text-xs text-teal underline"
-            >
-              Forgot password?
-            </Link>
+            {resetStatus?.available && (
+              <Link
+                to={`/forgot-password${clinicSlug ? `?clinic=${encodeURIComponent(clinicSlug.trim())}` : ''}`}
+                className="text-xs text-teal underline"
+              >
+                Forgot password?
+              </Link>
+            )}
           </div>
           <input
             type="password"

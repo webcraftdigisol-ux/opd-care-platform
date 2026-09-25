@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { confirmPasswordReset, requestPasswordReset } from '../api/auth';
+import { useQuery } from '@tanstack/react-query';
+import { confirmPasswordReset, getPasswordResetStatus, requestPasswordReset } from '../api/auth';
 
 const inputClass = 'w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none';
 
@@ -18,6 +19,7 @@ export function ForgotPasswordPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { data: resetStatus } = useQuery({ queryKey: ['password-reset-status'], queryFn: getPasswordResetStatus });
 
   async function handleRequest(e?: React.FormEvent) {
     e?.preventDefault();
@@ -65,7 +67,13 @@ export function ForgotPasswordPage() {
       <h1 className="mb-1 text-2xl font-semibold text-teal">Reset password</h1>
       <p className="mb-6 text-sm text-gray-500">We'll send a 6-digit code to your WhatsApp number.</p>
 
-      {step === 'request' && (
+      {resetStatus && !resetStatus.available && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800" data-testid="reset-unavailable">
+          Password reset over WhatsApp isn't available yet. Please ask your clinic to reset your password.
+        </p>
+      )}
+
+      {step === 'request' && resetStatus?.available && (
         <form onSubmit={handleRequest} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Clinic code</label>

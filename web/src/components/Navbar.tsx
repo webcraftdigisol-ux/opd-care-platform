@@ -1,10 +1,20 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { homeRouteForRole } from '../utils/roleHome';
+import { navLinksFor } from '../utils/navLinks';
 
 export function Navbar() {
   const { user, clinic, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close the mobile menu whenever the route changes, so tapping a link
+  // doesn't leave it covering the page that was just opened.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   function handleLogout() {
     logout();
@@ -12,118 +22,72 @@ export function Navbar() {
   }
 
   const homeLink = user ? homeRouteForRole(user.role) : '/';
-
-  const tierAllowsPharmacyLab = (clinic?.tier ?? 1) >= 2;
-  const tierAllowsIpd = (clinic?.tier ?? 1) >= 3;
+  const links = user ? navLinksFor(user.role, clinic?.tier ?? 1) : [];
 
   return (
-    <nav className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-light bg-white px-6 py-3 shadow-sm">
-      <div className="flex items-center gap-6">
-        <Link to={homeLink} className="text-lg font-semibold text-teal">
-          {clinic?.name ?? 'OPD'} <span className="text-gold">Care</span>
-        </Link>
-        {user?.role === 'ADMIN' && (
-          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            {tierAllowsPharmacyLab && (
-              <>
-                <Link to="/admin/pharmacy" className="hover:text-teal">
-                  Pharmacy
+    <nav className="border-b border-teal-light bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
+        <div className="flex items-center gap-6">
+          <Link to={homeLink} className="text-lg font-semibold text-teal">
+            {clinic?.name ?? 'OPD'} <span className="text-gold">Care</span>
+          </Link>
+          {links.length > 0 && (
+            <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
+              {links.map((l) => (
+                <Link key={l.to} to={l.to} className="hover:text-teal">
+                  {l.label}
                 </Link>
-                <Link to="/admin/lab" className="hover:text-teal">
-                  Lab
-                </Link>
-                <Link to="/admin/radiology" className="hover:text-teal">
-                  Radiology
-                </Link>
-              </>
-            )}
-            <Link to="/admin/staff" className="hover:text-teal">
-              Staff
-            </Link>
-            {tierAllowsIpd && (
-              <>
-                <Link to="/admin/ipd/admissions" className="hover:text-teal">
-                  In-Patients
-                </Link>
-                <Link to="/admin/ipd/wards" className="hover:text-teal">
-                  Wards
-                </Link>
-              </>
-            )}
-            <Link to="/admin/reports" className="hover:text-teal">
-              Reports
-            </Link>
-            <Link to="/admin/notifications" className="hover:text-teal">
-              Notifications
-            </Link>
-            <Link to="/admin/billing" className="hover:text-teal">
-              Billing
-            </Link>
-          </div>
-        )}
-        {user?.role === 'DOCTOR' && (
-          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            {tierAllowsIpd && (
-              <Link to="/admin/ipd/admissions" className="hover:text-teal">
-                In-Patients
-              </Link>
-            )}
-            <Link to="/admin/reports" className="hover:text-teal">
-              Reports
-            </Link>
-          </div>
-        )}
-        {user?.role === 'PHARMACIST' && (
-          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            <Link to="/pharmacy" className="hover:text-teal">
-              Counter
-            </Link>
-            <Link to="/admin/pharmacy" className="hover:text-teal">
-              Medicine Catalog
-            </Link>
-          </div>
-        )}
-        {user?.role === 'LAB_TECHNICIAN' && (
-          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            <Link to="/lab" className="hover:text-teal">
-              Counter
-            </Link>
-            <Link to="/admin/lab" className="hover:text-teal">
-              Test Catalog
-            </Link>
-          </div>
-        )}
-        {user?.role === 'RADIOLOGY_TECHNICIAN' && (
-          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            <Link to="/radiology" className="hover:text-teal">
-              Counter
-            </Link>
-            <Link to="/admin/radiology" className="hover:text-teal">
-              Test Catalog
-            </Link>
-          </div>
-        )}
-        {(user?.role === 'NURSE' || user?.role === 'HEAD_NURSE') && (
-          <div className="hidden gap-4 text-sm text-gray-600 sm:flex">
-            <Link to="/admin/ipd/admissions" className="hover:text-teal">
-              In-Patients
-            </Link>
-            {user.role === 'HEAD_NURSE' && (
-              <Link to="/admin/ipd/wards" className="hover:text-teal">
-                Wards
-              </Link>
-            )}
+              ))}
+            </div>
+          )}
+        </div>
+        {user && (
+          <div className="flex items-center gap-4 text-sm">
+            <span className="hidden text-gray-600 sm:inline">
+              {user.name} <span className="text-gray-400">· {user.role}</span>
+            </span>
+            <button
+              onClick={handleLogout}
+              className="hidden rounded-md border border-teal px-3 py-1.5 text-teal transition hover:bg-teal hover:text-white sm:block"
+            >
+              Log out
+            </button>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-nav"
+              data-testid="mobile-menu-button"
+              className="rounded-md border border-teal-light p-2 text-teal sm:hidden"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
           </div>
         )}
       </div>
-      {user && (
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-gray-600">
+      {user && menuOpen && (
+        <div id="mobile-nav" className="border-t border-teal-light px-6 pb-4 pt-2 sm:hidden">
+          <p className="py-2 text-sm text-gray-600">
             {user.name} <span className="text-gray-400">· {user.role}</span>
-          </span>
+          </p>
+          <Link to={homeLink} className="block rounded-md px-2 py-2.5 text-gray-700 hover:bg-teal-light hover:text-teal">
+            Home
+          </Link>
+          {links.map((l) => (
+            <Link
+              key={l.to}
+              to={l.to}
+              className="block rounded-md px-2 py-2.5 text-gray-700 hover:bg-teal-light hover:text-teal"
+            >
+              {l.label}
+            </Link>
+          ))}
           <button
             onClick={handleLogout}
-            className="rounded-md border border-teal px-3 py-1.5 text-teal transition hover:bg-teal hover:text-white"
+            className="mt-2 w-full rounded-md border border-teal px-3 py-2 text-teal transition hover:bg-teal hover:text-white"
           >
             Log out
           </button>

@@ -8,6 +8,7 @@ import { listPharmacyItems } from '../api/pharmacy';
 import { listLabCatalog } from '../api/lab';
 import { listRadiologyCatalog } from '../api/radiology';
 import { AttachmentPanel } from '../components/AttachmentPanel';
+import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { SuggestInput } from '../components/SuggestInput';
 import { useAuth } from '../context/AuthContext';
 import type { DietaryPreference, LabTestOrderInput, PrescriptionInput, RadiologyTestOrderInput, Vitals } from '@opd/shared';
@@ -198,6 +199,14 @@ export function ConsultationPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-semibold text-teal">Consultation</h1>
+
+      {patient && (
+        <PatientHistoryPanel
+          patientId={patient.id}
+          currentAppointmentId={appointmentId!}
+          currentConsultationId={existing?.id}
+        />
+      )}
 
       <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
         <h2 className="mb-3 font-semibold text-gray-700">Vitals</h2>

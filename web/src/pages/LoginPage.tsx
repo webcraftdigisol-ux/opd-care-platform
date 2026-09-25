@@ -4,6 +4,7 @@ import { SUBSCRIPTION_INACTIVE_MESSAGE } from '@opd/shared';
 import { login } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { homeRouteForRole } from '../utils/roleHome';
+import { PATIENT_PORTAL_ENABLED } from '../utils/features';
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -91,13 +92,15 @@ export function LoginPage() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
-      <p className="mt-4 text-center text-sm text-gray-500">
-        New patient?{' '}
-        <Link to={`/register${clinicSlug ? `?clinic=${clinicSlug}` : ''}`} className="text-teal underline">
-          Create an account
-        </Link>
-      </p>
-      <p className="mt-2 text-center text-sm text-gray-500">
+      {PATIENT_PORTAL_ENABLED && (
+        <p className="mt-4 text-center text-sm text-gray-500">
+          New patient?{' '}
+          <Link to={`/register${clinicSlug ? `?clinic=${clinicSlug}` : ''}`} className="text-teal underline">
+            Create an account
+          </Link>
+        </p>
+      )}
+      <p className={`${PATIENT_PORTAL_ENABLED ? 'mt-2' : 'mt-4'} text-center text-sm text-gray-500`}>
         Setting up a new clinic?{' '}
         <Link to="/register-clinic" className="text-teal underline">
           Register your clinic

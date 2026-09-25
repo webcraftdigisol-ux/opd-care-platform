@@ -47,6 +47,7 @@ export default defineConfig({
         JWT_SECRET: process.env.JWT_SECRET!,
         CORS_ORIGIN: process.env.CORS_ORIGIN!,
         PORT: apiPort,
+        PATIENT_PORTAL_ENABLED: process.env.PATIENT_PORTAL_ENABLED ?? '',
       },
     },
     {
@@ -57,6 +58,7 @@ export default defineConfig({
       timeout: 60_000,
       env: {
         VITE_API_URL: `${apiUrl}/api`,
+        VITE_PATIENT_PORTAL_ENABLED: process.env.PATIENT_PORTAL_ENABLED ?? '',
       },
     },
   ],

@@ -15,6 +15,21 @@ Account `026587008370`, default VPC `vpc-04658e9176f126746`.
 | EC2 role | `opd-care-ec2-role` / profile `opd-care-ec2-profile` -- `AmazonSSMManagedInstanceCore`, so the box is reachable via SSM Session Manager as well as SSH |
 | Key pair | `opd-care-admin` (private key: `/opd-care/prod/ADMIN_SSH_KEY`) |
 | S3 | `opd-care-web-026587008370` -- all public access blocked, currently empty |
+| Domain | `ohmscare.in`, registered at GoDaddy, nameservers delegated to Route 53 |
+| Route 53 zone | `Z04804252LG40JXTDNAI4` -- A records for `ohmscare.in`, `www`, `app`, `api` -> `3.7.243.104`; CAA allows `letsencrypt.org` and `amazon.com` |
+
+## URLs
+
+- Web app: https://app.ohmscare.in
+- API: https://api.ohmscare.in/api (health check at `/health`)
+- `ohmscare.in` and `www.ohmscare.in` 301 to the app; plain HTTP redirects
+  to HTTPS; requests by bare IP are dropped (`return 444`).
+
+TLS is Let's Encrypt via `certbot --nginx` (one certificate covering all four
+names, auto-renewed by the `certbot.timer` systemd timer). Nginx config is
+`/etc/nginx/sites-available/opd-care` on the box. Backend `server/.env` has
+`CORS_ORIGIN="https://app.ohmscare.in"`, and the frontend is built with
+`VITE_API_URL=https://api.ohmscare.in/api`.
 
 ## SSM parameters
 
@@ -35,16 +50,18 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   later with a short restart (`aws rds modify-db-instance --db-instance-class db.t4g.micro --apply-immediately`).
 - **No CloudFront yet**: `CreateDistribution` is refused until AWS Support
   verifies the account. Until then the frontend is built on the EC2 box
-  (`VITE_API_URL=/api`) and served by Nginx from `/var/www/opd-care`, with
-  `/api/*` and `/health` proxied to the backend on the same origin
-  (`/etc/nginx/sites-available/opd-care`). The app is at
-  `http://3.7.243.104/` (HTTP only until a domain + certificate exist).
+  and served by Nginx from `/var/www/opd-care` as `app.ohmscare.in`. Moving
+  it to CloudFront later is a DNS change for `app` (plus an ACM certificate
+  in us-east-1); the URL stays the same. Route 53 domain registration is
+  blocked on the same account verification, which is why the domain is at
+  GoDaddy.
 - **IAM user for GitHub Actions (step 5) and the Actions secrets (step 6)
   aren't set up yet**: `deploy.yml` syncs the frontend to S3 and invalidates
   CloudFront, so it can't fully work until the distribution exists. With
   `DEPLOY_HOST` unset, pushes to `main` don't redeploy. Until then, redeploy
   by hand on the box: `git pull`, run the build/migrate/`pm2 startOrReload`
-  steps from the README, then `VITE_API_URL=/api npm run build:web` and
+  steps from the README, then
+  `VITE_API_URL=https://api.ohmscare.in/api npm run build:web` and
   `sudo rsync -a --delete web/dist/ /var/www/opd-care/`.
 - The database is migrated but **not seeded**. The first clinic signs up
   through the app's registration flow.

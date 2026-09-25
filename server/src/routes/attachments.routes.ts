@@ -1,10 +1,10 @@
-import fs from 'fs';
 import path from 'path';
+import { pipeline } from 'stream';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toAttachment } from '../utils/serialize';
-import { upload, UPLOADS_ROOT, absolutePathFor, deleteUploadedFile } from '../utils/uploads';
+import { upload, UPLOADS_ROOT, fileStorage, deleteUploadedFile } from '../utils/uploads';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import type { AttachmentCategory } from '@opd/shared';
@@ -84,6 +84,7 @@ attachmentsRouter.post(
       // trust a consistent value instead of re-deriving it from the
       // filename every time.
       const mimeType = data.category === 'RADIOLOGY_DICOM' ? 'application/dicom' : req.file.mimetype;
+      await fileStorage.persist(req.file.path, storageKey, mimeType, req.file.size);
 
       const attachment = await prisma.attachment.create({
         data: {
@@ -101,7 +102,7 @@ attachmentsRouter.post(
       });
       res.status(201).json(toAttachment(attachment));
     } catch (err) {
-      deleteUploadedFile(storageKey);
+      await deleteUploadedFile(storageKey);
       throw err;
     }
   }),
@@ -142,13 +143,17 @@ attachmentsRouter.get(
       throw new HttpError(403, 'Not authorized to view this attachment');
     }
 
-    const absolute = absolutePathFor(attachment.storageKey);
-    if (!fs.existsSync(absolute)) {
-      throw new HttpError(404, 'The stored file is missing');
-    }
+    const body = await fileStorage.open(attachment.storageKey);
     res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Length', String(attachment.sizeBytes));
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.fileName)}"`);
-    res.sendFile(absolute);
+    // pipeline, not pipe: it also tears down the source (an open S3
+    // response) if the client disconnects mid-download.
+    pipeline(body, res, (err: NodeJS.ErrnoException | null) => {
+      if (err && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+        console.error(`Failed streaming attachment ${attachment.id}:`, err);
+      }
+    });
   }),
 );
 
@@ -161,7 +166,7 @@ attachmentsRouter.delete(
     });
     if (!attachment) throw new HttpError(404, 'Attachment not found');
     await prisma.attachment.delete({ where: { id: attachment.id } });
-    deleteUploadedFile(attachment.storageKey);
+    await deleteUploadedFile(attachment.storageKey);
     res.status(204).send();
   }),
 );

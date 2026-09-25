@@ -9,12 +9,13 @@ Account `026587008370`, default VPC `vpc-04658e9176f126746`.
 | Piece | Resource |
 |---|---|
 | RDS | `opd-care-db` -- Postgres 16.15, `db.t3.micro`, 20 GB gp3, encrypted, single-AZ, 7-day backups, deletion protection on, not publicly accessible. Endpoint `opd-care-db.cfimyigai521.ap-south-1.rds.amazonaws.com`, db `opd_care`, user `opd` |
-| EC2 | `i-0ea50601907cb4f08` (`opd-care-api`) -- `t4g.micro`, Ubuntu 24.04 arm64, 20 GB gp3, 2 GB swapfile |
+| EC2 | `i-0ea50601907cb4f08` (`opd-care-api`) -- `t4g.micro`, Ubuntu 24.04 arm64, 20 GB gp3, 2 GB swapfile, Node 24 (NodeSource apt repo) + PM2 |
 | Elastic IP | `3.7.243.104` (`eipalloc-09324d0d9e617a14d`) |
 | Security groups | `opd-care-api-sg` (`sg-0eff7044d4d7b4265`): 22/80/443 from anywhere. `opd-care-db-sg` (`sg-00f5e1a8555ff37f8`): 5432 from the API SG only |
 | EC2 role | `opd-care-ec2-role` / profile `opd-care-ec2-profile` -- `AmazonSSMManagedInstanceCore`, so the box is reachable via SSM Session Manager as well as SSH |
 | Key pair | `opd-care-admin` (private key: `/opd-care/prod/ADMIN_SSH_KEY`) |
 | S3 | `opd-care-web-026587008370` -- all public access blocked, currently empty |
+| S3 (uploads) | `opd-care-uploads-026587008370` -- uploaded reports/scans/DICOM (`UPLOADS_S3_BUCKET` in `server/.env`). Private (public access blocked, bucket-owner-enforced), SSE-S3, TLS-only bucket policy, versioning on with non-current versions expired after 30 days. The EC2 role's `opd-care-uploads-s3` inline policy allows Get/Put/DeleteObject on it plus ListBucket (so a missing key reads as 404, not 403) |
 | Domain | `ohmscare.in`, registered at GoDaddy, nameservers delegated to Route 53 |
 | Route 53 zone | `Z04804252LG40JXTDNAI4` -- A records for `ohmscare.in`, `www`, `app`, `api` -> `3.7.243.104`; CAA allows `letsencrypt.org` and `amazon.com` |
 
@@ -77,9 +78,9 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   steps from the README, then
   `VITE_API_URL=https://api.ohmscare.in/api npm run build:web` and
   `sudo rsync -a --delete web/dist/ /var/www/opd-care/`.
-- **Live web build is ahead of `main`**: `/var/www/opd-care` was built from
-  `ccab4ab` on `claude/determined-brahmagupta-wc774v` (mobile nav menu +
-  doctor's Patient History panel, web-only). The API and the box's git checkout are still on `main`. Once
-  that branch is merged, rebuild the web app from `main` as usual.
+- **Production runs ahead of `main`**: the box is checked out at `5aa2366`
+  on `claude/determined-brahmagupta-wc774v` (uploads to S3, Node 24) for
+  both the API and the web build. Once that's merged, `git checkout main && git pull` on
+  the box and rebuild as usual.
 - The database is migrated but **not seeded**. The first clinic signs up
   through the app's registration flow.

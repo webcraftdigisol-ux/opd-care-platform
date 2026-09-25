@@ -343,9 +343,15 @@ dependency alongside WhatsApp and the payment gateway.
 Lab/radiology report scans and prescription scans attach as real files (PDF,
 JPEG, PNG, or WebP), plus a raw DICOM export (`.dcm`) for radiology imaging
 (see "DICOM file support" below) — all sharing one 25MB upload ceiling,
-stored on local disk under `server/uploads/`
-(not committed — see `UPLOADS_ROOT` in `.env.example`) and served only
-through an authenticated download route, never as static files. Who can
+and served only through an authenticated download route, never as static
+files or bucket URLs. Storage is chosen by `UPLOADS_S3_BUCKET`
+(`server/src/utils/fileStorage.ts`): set, and each accepted file is moved to
+that private S3 bucket (production — see `deploy/aws-resources.md`), so
+uploads survive losing the app server's disk; unset, files stay on local
+disk under `server/uploads/` (dev, tests and CI — not committed, see
+`UPLOADS_ROOT` in `.env.example`). Either way multer first writes the
+upload to `UPLOADS_ROOT`, and the storage key (`<clinicId>/<uuid>.<ext>`)
+is the same in both. Who can
 upload which category mirrors exactly who already produces that content
 elsewhere (Lab Technician for lab reports, Radiology Technician for
 radiology reports and DICOM images, a doctor for a prescription scan
@@ -542,7 +548,7 @@ any real deployment.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - PostgreSQL (or use the provided `docker-compose.yml`)
 - Expo Go app (or an emulator) for the mobile app
 

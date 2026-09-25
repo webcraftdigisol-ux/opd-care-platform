@@ -33,9 +33,14 @@ names, auto-renewed by the `certbot.timer` systemd timer). Nginx config is
 
 ## SSM parameters
 
-`DATABASE_URL`, `JWT_SECRET`, `DB_MASTER_PASSWORD`, `ADMIN_SSH_KEY`, and
+`DATABASE_URL`, `JWT_SECRET`, `DB_MASTER_PASSWORD`, `ADMIN_SSH_KEY`,
 `DEPLOY_SSH_KEY` (the GitHub Actions deploy key, whose public half is
-already in `~ubuntu/.ssh/authorized_keys`).
+already in `~ubuntu/.ssh/authorized_keys`), `RAZORPAY_KEY_ID` /
+`RAZORPAY_KEY_SECRET` (currently **test-mode** keys; no
+`RAZORPAY_WEBHOOK_SECRET` yet, so only the checkout-callback confirmation
+path is active), and `PLATFORM_ADMIN_PASSWORD` (for the one platform admin,
+created directly rather than via `prisma/seed.ts`, which would also add the
+demo clinic and its known passwords -- never run the seed in production).
 
 These are the source of truth for `server/.env`: the box has the AWS CLI
 and its instance role can read `/opd-care/prod/*`, so to rotate, put new

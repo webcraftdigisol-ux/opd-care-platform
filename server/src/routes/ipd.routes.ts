@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import {
   toAdmission,
@@ -19,6 +20,13 @@ import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
 
 export const ipdRouter = Router();
+
+// Marks a bed OCCUPIED only if it is still VACANT, in one statement, so two
+// concurrent requests can never both get the same bed; the loser gets a 409.
+async function claimVacantBed(tx: Prisma.TransactionClient, bedId: string): Promise<void> {
+  const claimed = await tx.bed.updateMany({ where: { id: bedId, status: 'VACANT' }, data: { status: 'OCCUPIED' } });
+  if (claimed.count === 0) throw new HttpError(409, 'That bed was just taken -- please pick another');
+}
 
 // Router-wide: authenticated + Tier 3+ only. Per-route requireRole() below
 // scopes each action to who should actually be able to perform it --
@@ -171,6 +179,9 @@ ipdRouter.post(
     if (!doctor) throw new HttpError(404, 'Doctor not found');
 
     const admission = await prisma.$transaction(async (tx) => {
+      // Claim the bed atomically: the vacancy check above can be stale by
+      // now if two admissions (or a transfer) target the same bed at once.
+      await claimVacantBed(tx, data.bedId);
       const created = await tx.admission.create({
         data: {
           clinicId,
@@ -182,7 +193,6 @@ ipdRouter.post(
         },
         include: admissionDetailInclude,
       });
-      await tx.bed.update({ where: { id: data.bedId }, data: { status: 'OCCUPIED' } });
       return created;
     });
 
@@ -235,14 +245,14 @@ ipdRouter.post(
     if (!toBed) throw new HttpError(404, 'Bed not found');
     if (toBed.status !== 'VACANT') throw new HttpError(400, 'Target bed is not vacant');
 
-    await prisma.$transaction([
-      prisma.roomTransfer.create({
+    await prisma.$transaction(async (tx) => {
+      await claimVacantBed(tx, data.toBedId);
+      await tx.roomTransfer.create({
         data: { admissionId: admission.id, fromBedId: admission.bedId, toBedId: data.toBedId },
-      }),
-      prisma.bed.update({ where: { id: admission.bedId }, data: { status: 'VACANT' } }),
-      prisma.bed.update({ where: { id: data.toBedId }, data: { status: 'OCCUPIED' } }),
-      prisma.admission.update({ where: { id: admission.id }, data: { bedId: data.toBedId } }),
-    ]);
+      });
+      await tx.bed.update({ where: { id: admission.bedId }, data: { status: 'VACANT' } });
+      await tx.admission.update({ where: { id: admission.id }, data: { bedId: data.toBedId } });
+    });
 
     const updated = await loadAdmissionOrThrow(clinicId, admission.id);
     res.json(toAdmissionDetail(updated));

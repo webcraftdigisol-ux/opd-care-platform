@@ -55,17 +55,25 @@ export function LoginPage() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Email or phone</label>
           <input
-            type="email"
             required
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
+          <div className="mb-1 flex items-baseline justify-between">
+            <label className="block text-sm font-medium text-gray-700">Password</label>
+            <Link
+              to={`/forgot-password${clinicSlug ? `?clinic=${encodeURIComponent(clinicSlug.trim())}` : ''}`}
+              className="text-xs text-teal underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <input
             type="password"
             required

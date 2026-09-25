@@ -110,7 +110,8 @@ describe('Notifications: every attempt is logged, sent or not', () => {
 
     const remind = await request(app).post(`/api/reports/follow-ups/${consultation.id}/remind`).set(auth(adminToken));
     expect(remind.status).toBe(201);
-    expect(remind.body.type).toBe('FOLLOWUP_REMINDER');
+    expect(remind.body.email.type).toBe('FOLLOWUP_REMINDER');
+    expect(remind.body.whatsapp).toMatchObject({ type: 'FOLLOWUP_REMINDER', channel: 'WHATSAPP', status: 'SKIPPED' });
   });
 
   it('GET /admin/notifications lists recent notifications, Admin-only', async () => {
@@ -129,5 +130,43 @@ describe('Notifications: every attempt is logged, sent or not', () => {
     const { password } = await createUser(clinic.id, 'DOCTOR', { email: doctorEmail });
     const doctorSession = await loginAs(clinic.slug, doctorEmail, password);
     expect((await request(app).get('/api/admin/notifications').set(auth(doctorSession.token))).status).toBe(403);
+  });
+});
+
+describe('WhatsApp consent recorded at walk-in registration', () => {
+  it('records consent, who recorded it and when, and never revokes it on a later visit', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
+    const admin = await prisma.user.findFirstOrThrow({ where: { clinicId: clinic.id, role: 'ADMIN' } });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const phone = `98${Math.floor(10000000 + Math.random() * 89999999)}`;
+
+    const first = await request(app)
+      .post('/api/appointments/walk-in')
+      .set(auth(adminToken))
+      .send({ doctorId: doctorProfile.id, patientName: 'Consenting Patient', patientPhone: phone, whatsappOptIn: true });
+    expect(first.status).toBe(201);
+    let patient = await prisma.user.findUniqueOrThrow({ where: { id: first.body.patientId } });
+    expect(patient.whatsappOptIn).toBe(true);
+    expect(patient.whatsappOptInAt).not.toBeNull();
+    expect(patient.whatsappOptInRecordedById).toBe(admin.id);
+
+    await request(app)
+      .post('/api/appointments/walk-in')
+      .set(auth(adminToken))
+      .send({ doctorId: doctorProfile.id, patientName: 'Consenting Patient', patientPhone: phone });
+    patient = await prisma.user.findUniqueOrThrow({ where: { id: first.body.patientId } });
+    expect(patient.whatsappOptIn).toBe(true);
+  });
+
+  it('leaves a walk-in opted out when the box is not ticked', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const res = await request(app)
+      .post('/api/appointments/walk-in')
+      .set(auth(adminToken))
+      .send({ doctorId: doctorProfile.id, patientName: 'No Consent', patientPhone: `97${Math.floor(10000000 + Math.random() * 89999999)}` });
+    const patient = await prisma.user.findUniqueOrThrow({ where: { id: res.body.patientId } });
+    expect(patient.whatsappOptIn).toBe(false);
+    expect(patient.whatsappOptInAt).toBeNull();
   });
 });

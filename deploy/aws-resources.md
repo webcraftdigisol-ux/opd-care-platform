@@ -78,9 +78,5 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   steps from the README, then
   `VITE_API_URL=https://api.ohmscare.in/api npm run build:web` and
   `sudo rsync -a --delete web/dist/ /var/www/opd-care/`.
-- **Production runs ahead of `main`**: the box is checked out at `5aa2366`
-  on `claude/determined-brahmagupta-wc774v` (uploads to S3, Node 24) for
-  both the API and the web build. Once that's merged, `git checkout main && git pull` on
-  the box and rebuild as usual.
 - The database is migrated but **not seeded**. The first clinic signs up
   through the app's registration flow.

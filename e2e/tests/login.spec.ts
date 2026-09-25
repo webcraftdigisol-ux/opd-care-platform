@@ -24,7 +24,7 @@ test.describe('login and role-based routing', () => {
 
     await page.goto('/login');
     await page.getByPlaceholder('e.g. sunrise-clinic').fill(clinicSlug);
-    await page.locator('input[type="email"]').fill(user.email);
+    await inputAfterLabel(page, 'Email or phone').fill(user.email);
     await page.locator('input[type="password"]').fill('password123');
     await page.getByRole('button', { name: 'Sign in' }).click();
 
@@ -39,7 +39,7 @@ test.describe('login and role-based routing', () => {
 
     await page.goto('/login');
     await page.getByPlaceholder('e.g. sunrise-clinic').fill(clinicSlug);
-    await page.locator('input[type="email"]').fill(patientEmail);
+    await inputAfterLabel(page, 'Email or phone').fill(patientEmail);
     await page.locator('input[type="password"]').fill('wrong-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
 

@@ -97,7 +97,7 @@ dietPlansRouter.post(
       to: plan.patient.phone,
       optedIn: plan.patient.whatsappOptIn,
       templateName: 'diet_plan_shared',
-      params: [plan.patient.name, plan.createdBy.name],
+      params: [plan.patient.name, plan.createdBy.name, plan.planText],
       renderedBody: `Hi ${plan.patient.name}, here is your diet plan from Dr. ${plan.createdBy.name}:\n\n${plan.planText}`,
     });
     res.json(toNotification(notification));

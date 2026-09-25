@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { sendDueAppointmentReminders } from './reminders';
+import { sendDueAppointmentReminders, sendDueFollowUpReminders } from './reminders';
 
 // Started only from index.ts, never from app.ts -- app.ts is imported
 // directly by the test suite (see helpers.ts) to drive the Express app
@@ -18,6 +18,13 @@ export function startReminderScheduler(): void {
       })
       .catch((err) => {
         console.error('Failed to send appointment reminders:', err);
+      });
+    sendDueFollowUpReminders()
+      .then(({ sent }) => {
+        if (sent > 0) console.log(`Sent ${sent} follow-up reminder(s)`);
+      })
+      .catch((err) => {
+        console.error('Failed to send follow-up reminders:', err);
       });
   });
 }

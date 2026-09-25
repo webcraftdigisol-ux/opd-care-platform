@@ -8,11 +8,11 @@ import {
   computeRadiologyReport,
   endOfDay,
 } from '../utils/reports';
-import { notifyPatientEmail } from '../utils/notify';
+import { sendFollowUpReminder } from '../utils/reminders';
 import { toNotification } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
-import type { FinancialReport, FollowUpItem, FollowUpsReport } from '@opd/shared';
+import type { FinancialReport, FollowUpItem, FollowUpReminderResult, FollowUpsReport } from '@opd/shared';
 
 export const reportsRouter = Router();
 
@@ -142,16 +142,8 @@ reportsRouter.post(
     if (!consultation) throw new HttpError(404, 'Consultation not found');
     if (!consultation.followUpDate) throw new HttpError(400, 'This consultation has no follow-up date set');
 
-    const notification = await notifyPatientEmail({
-      clinicId: req.auth!.clinicId,
-      patientId: consultation.appointment.patientId,
-      type: 'FOLLOWUP_REMINDER',
-      to: consultation.appointment.patient.email,
-      subject: 'Follow-up reminder',
-      body: `Hi ${consultation.appointment.patient.name}, this is a reminder for your follow-up with Dr. ${
-        consultation.appointment.doctor.user.name
-      } (originally due ${consultation.followUpDate.toISOString().slice(0, 10)}). Please call the clinic to schedule your visit.`,
-    });
-    res.status(201).json(toNotification(notification));
+    const { email, whatsapp } = await sendFollowUpReminder(consultation);
+    const response: FollowUpReminderResult = { email: toNotification(email), whatsapp: toNotification(whatsapp) };
+    res.status(201).json(response);
   }),
 );

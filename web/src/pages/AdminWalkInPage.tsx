@@ -9,6 +9,7 @@ export function AdminWalkInPage() {
   const [patientName, setPatientName] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
   const [reason, setReason] = useState('');
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<number | null>(null);
 
@@ -19,6 +20,7 @@ export function AdminWalkInPage() {
       setPatientName('');
       setPatientPhone('');
       setReason('');
+      setWhatsappOptIn(false);
     },
     onError: (err: any) => setError(err.response?.data?.message ?? 'Could not register walk-in'),
   });
@@ -31,7 +33,7 @@ export function AdminWalkInPage() {
       setError('Please select a doctor');
       return;
     }
-    walkInMutation.mutate({ doctorId, patientName, patientPhone, reason: reason || undefined });
+    walkInMutation.mutate({ doctorId, patientName, patientPhone, reason: reason || undefined, whatsappOptIn });
   }
 
   return (
@@ -84,6 +86,19 @@ export function AdminWalkInPage() {
             className="w-full rounded-md border border-gray-300 px-3 py-2"
           />
         </div>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            data-testid="walkin-whatsapp-optin"
+            checked={whatsappOptIn}
+            onChange={(e) => setWhatsappOptIn(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-teal"
+          />
+          <span>
+            Patient agrees to receive prescriptions and reminders on WhatsApp at this number
+            <span className="block text-xs text-gray-500">Ask the patient first. They can turn this off later.</span>
+          </span>
+        </label>
         {error && <p className="text-sm text-red-600" data-testid="walkin-error">{error}</p>}
         {success !== null && (
           <p className="rounded-md bg-teal-light p-3 text-sm text-teal" data-testid="walkin-success">

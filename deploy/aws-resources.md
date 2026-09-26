@@ -91,6 +91,13 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   migration `20260926033549_patient_profiles` ran in production
   (2026-09-26; it drops the unique phone per clinic and backfills Patient
   IDs). Safe to delete once that release has proven itself.
+- **Pre-consultation-redesign snapshot**: RDS snapshot
+  `opd-care-db-pre-consultation-redesign-20260926-0441` was taken just
+  before migration `20260926042312_consultation_redesign` ran in production
+  (2026-09-26; additive only). Safe to delete once that release has proven
+  itself.
+- **`PUBLIC_API_URL`** in `server/.env` is `https://api.ohmscare.in/api`: the
+  base of the signed visit-summary PDF links sent on WhatsApp.
 - **WhatsApp isn't connected yet**: no `WHATSAPP_PROVIDER`/`META_*`/`TWILIO_*`
   in `server/.env`, so sends are logged by the stub and "Forgot password?"
   is hidden. See `docs/whatsapp-templates.md` for going live.

@@ -1,0 +1,461 @@
+import { useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import type { Attachment, Patient, PatientRecordsResponse } from '@opd/shared';
+import { getPatient, getPatientBilling, getPatientRecords } from '../api/patients';
+import { openAttachment } from '../api/attachments';
+import { useAuth } from '../context/AuthContext';
+import { Card, Detail, EmptyState, btnPrimary, btnSecondary } from '../components/ui';
+import { Icon, type IconName } from '../components/Icon';
+import { initials } from '../components/AppShell';
+import { StatusBadge } from '../components/StatusBadge';
+import { VitalsTrendChart } from '../components/VitalsTrendChart';
+import { DicomViewer } from '../components/DicomViewer';
+import { formatBp, vitalsSeries, type VisitWithConsultation } from '../utils/patientHistory';
+import { GENDER_LABEL, doctorName, formatDate, formatMoney } from '../utils/patientFormat';
+
+type Tab = 'summary' | 'consultations' | 'vitals' | 'reports' | 'images' | 'billing';
+const TABS: { id: Tab; label: string; clinical: boolean }[] = [
+  { id: 'summary', label: 'Summary', clinical: false },
+  { id: 'consultations', label: 'Consultations', clinical: true },
+  { id: 'vitals', label: 'Vitals', clinical: true },
+  { id: 'reports', label: 'Reports', clinical: true },
+  { id: 'images', label: 'Images', clinical: true },
+  { id: 'billing', label: 'Billing', clinical: false },
+];
+
+// The patient's hub: header with the key facts, then tabs. Clinical tabs
+// are hidden from the front desk (the records API refuses them anyway).
+export function PatientProfilePage() {
+  const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const canSeeClinical = user?.role !== 'RECEPTIONIST';
+  const canEdit = !!user && ['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(user.role);
+  const canBookVisit = !!user && ['ADMIN', 'RECEPTIONIST'].includes(user.role);
+  const tabs = TABS.filter((t) => canSeeClinical || !t.clinical);
+  const requested = params.get('tab') as Tab | null;
+  const tab: Tab = tabs.some((t) => t.id === requested) ? requested! : 'summary';
+
+  const { data: patient, isError } = useQuery({ queryKey: ['patient', id], queryFn: () => getPatient(id!) });
+  const { data: records } = useQuery({
+    queryKey: ['patient-records', id],
+    queryFn: () => getPatientRecords(id!),
+    enabled: canSeeClinical,
+  });
+
+  if (isError) return <div className="px-6 py-10 text-red-600">Patient not found.</div>;
+  if (!patient) return <div className="px-6 py-10 text-gray-500">Loading…</div>;
+
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <ProfileHeader patient={patient} canEdit={canEdit} canBookVisit={canBookVisit} />
+
+      <div className="mt-6 overflow-x-auto border-b border-gray-200" role="tablist">
+        <div className="flex min-w-max gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setParams(t.id === 'summary' ? {} : { tab: t.id }, { replace: true })}
+              className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+                tab === t.id ? 'border-teal text-teal' : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        {tab === 'summary' && <SummaryTab patient={patient} canEdit={canEdit} />}
+        {tab === 'consultations' && <ConsultationsTab records={records} canBookVisit={canBookVisit} patientId={patient.id} />}
+        {tab === 'vitals' && <VitalsTab records={records} />}
+        {tab === 'reports' && <ReportsTab records={records} />}
+        {tab === 'images' && <ImagesTab records={records} />}
+        {tab === 'billing' && <BillingTab patientId={patient.id} />}
+      </div>
+    </div>
+  );
+}
+
+function Fact({ icon, children }: { icon: IconName; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <Icon name={icon} className="h-4 w-4 text-gray-400" />
+      {children}
+    </span>
+  );
+}
+
+function ProfileHeader({ patient, canEdit, canBookVisit }: { patient: Patient; canEdit: boolean; canBookVisit: boolean }) {
+  const place = [patient.city, patient.state].filter(Boolean).join(', ');
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start gap-4">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-teal text-lg font-semibold text-white">
+          {initials(patient.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-gray-900" data-testid="patient-name">
+              {patient.name}
+            </h1>
+            <span className="rounded-md bg-teal-light px-2 py-0.5 font-mono text-sm text-teal" data-testid="patient-code">
+              {patient.patientCode}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+            {patient.gender && <Fact icon="user">{GENDER_LABEL[patient.gender]}</Fact>}
+            {patient.age != null && <Fact icon="calendar">{patient.age} years</Fact>}
+            {patient.bloodGroup && <Fact icon="drop">{patient.bloodGroup}</Fact>}
+            {patient.phone && <Fact icon="phone">{patient.phone}</Fact>}
+            {patient.email && <Fact icon="mail">{patient.email}</Fact>}
+            {place && <Fact icon="pin">{place}</Fact>}
+          </div>
+        </div>
+        <div className="flex w-full gap-2 sm:w-auto">
+          {canBookVisit && (
+            <Link to={`/admin/walk-in?patientId=${patient.id}`} className={`${btnPrimary} flex-1 sm:flex-none`}>
+              <Icon name="plus" className="h-4 w-4" /> New visit
+            </Link>
+          )}
+          {canEdit && (
+            <Link to={`/patients/${patient.id}/edit`} className={`${btnSecondary} flex-1 sm:flex-none`}>
+              <Icon name="edit" className="h-4 w-4" /> Edit
+            </Link>
+          )}
+        </div>
+      </div>
+      {patient.allergies && (
+        <p className="mt-4 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="allergy-banner">
+          <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-semibold">Allergies:</span> {patient.allergies}
+          </span>
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SummaryTab({ patient: p, canEdit }: { patient: Patient; canEdit: boolean }) {
+  const bmi = p.heightCm && p.weightKg ? (p.weightKg / (p.heightCm / 100) ** 2).toFixed(1) : null;
+  return (
+    <div className="space-y-5">
+      {canEdit && (
+        <div className="flex justify-end">
+          <Link to={`/patients/${p.id}/edit`} className="inline-flex items-center gap-1 text-sm font-medium text-teal hover:underline">
+            <Icon name="edit" className="h-4 w-4" /> Edit details
+          </Link>
+        </div>
+      )}
+      <div className="grid gap-5 md:grid-cols-2">
+        <Card title="Personal">
+          <dl className="grid grid-cols-2 gap-4">
+            <Detail label="Date of birth" value={formatDate(p.dateOfBirth)} />
+            <Detail label="Marital status" value={p.maritalStatus} />
+            <Detail label="Occupation" value={p.occupation} />
+            <Detail label="Nationality" value={p.nationality} />
+            <Detail label="Referred by" value={p.referredBy} />
+            <Detail label="Registered on" value={formatDate(p.registeredAt)} />
+          </dl>
+        </Card>
+        <Card title="Contact">
+          <dl className="grid grid-cols-2 gap-4">
+            <Detail label="Mobile" value={p.phone} />
+            <Detail label="Alternate mobile" value={p.alternatePhone} />
+            <Detail label="Email" value={p.email} />
+            <Detail label="Emergency contact" value={p.emergencyContact} />
+            <Detail label="WhatsApp messages" value={p.whatsappOptIn ? 'Agreed' : 'Not agreed'} />
+          </dl>
+        </Card>
+        <Card title="Address">
+          <dl className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <Detail label="Address" value={p.address} />
+            </div>
+            <Detail label="City" value={p.city} />
+            <Detail label="State" value={p.state} />
+            <Detail label="Pincode" value={p.pincode} />
+          </dl>
+        </Card>
+        <Card title="Vitals baseline">
+          <dl className="grid grid-cols-2 gap-4">
+            <Detail label="Height" value={p.heightCm != null ? `${p.heightCm} cm` : null} />
+            <Detail label="Weight" value={p.weightKg != null ? `${p.weightKg} kg` : null} />
+            <Detail label="BMI" value={bmi} />
+            <Detail label="Blood group" value={p.bloodGroup} />
+          </dl>
+        </Card>
+      </div>
+      <Card title="Medical history">
+        <dl className="grid gap-4 sm:grid-cols-2">
+          <Detail label="Known allergies" value={p.allergies} />
+          <Detail label="Chronic diseases" value={p.chronicDiseases} />
+          <Detail label="Past surgeries" value={p.pastSurgeries} />
+          <Detail label="Family history" value={p.familyHistory} />
+        </dl>
+      </Card>
+      <Card title="Additional">
+        <dl className="grid gap-4 sm:grid-cols-3">
+          <Detail label="Insurance details" value={p.insuranceDetails} />
+          <Detail label="TPA" value={p.tpa} />
+          <Detail label="Doctor notes" value={p.doctorNotes} />
+        </dl>
+      </Card>
+    </div>
+  );
+}
+
+function Loading() {
+  return <p className="text-sm text-gray-500">Loading…</p>;
+}
+
+function ConsultationsTab({
+  records,
+  canBookVisit,
+  patientId,
+}: {
+  records?: PatientRecordsResponse;
+  canBookVisit: boolean;
+  patientId: string;
+}) {
+  if (!records) return <Loading />;
+  const visits = [...records.appointments].sort((a, b) => b.date.localeCompare(a.date) || b.tokenNumber - a.tokenNumber);
+  return (
+    <Card
+      title="Consultation history"
+      subtitle={`${visits.length} visit${visits.length === 1 ? '' : 's'}`}
+      actions={
+        canBookVisit && (
+          <Link to={`/admin/walk-in?patientId=${patientId}`} className={btnPrimary}>
+            <Icon name="plus" className="h-4 w-4" /> New visit
+          </Link>
+        )
+      }
+    >
+      {visits.length === 0 ? (
+        <EmptyState>No visits recorded yet. Start the first visit to build this patient's timeline.</EmptyState>
+      ) : (
+        <ol className="relative space-y-4 border-l-2 border-teal-light pl-6">
+          {visits.map((v) => {
+            const c = v.consultation;
+            const bp = formatBp(c?.vitals ?? null);
+            const vitals = [
+              bp && `BP ${bp}`,
+              c?.vitals?.pulse != null && `Pulse ${c.vitals.pulse}`,
+              c?.vitals?.tempC != null && `Temp ${c.vitals.tempC}°C`,
+              c?.vitals?.spo2 != null && `SpO2 ${c.vitals.spo2}%`,
+              c?.vitals?.weightKg != null && `Wt ${c.vitals.weightKg} kg`,
+            ].filter(Boolean);
+            return (
+              <li key={v.id} className="relative" data-testid="timeline-visit">
+                <span className="absolute -left-[31px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-teal" />
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-gray-900">
+                      {formatDate(v.date)}
+                      {v.doctor && <span className="font-normal text-gray-500"> · {doctorName(v.doctor.user.name)}</span>}
+                    </p>
+                    <StatusBadge status={v.status} />
+                  </div>
+                  {v.reason && <p className="mt-1 text-sm text-gray-600">Reason: {v.reason}</p>}
+                  {c ? (
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      {c.diagnosis && (
+                        <p>
+                          <span className="text-gray-500">Diagnosis:</span> <span className="font-medium">{c.diagnosis}</span>
+                        </p>
+                      )}
+                      {vitals.length > 0 && <p className="text-gray-600">{vitals.join(' · ')}</p>}
+                      {c.prescriptions.length > 0 && (
+                        <ul className="list-inside list-disc text-gray-700">
+                          {c.prescriptions.map((rx) => (
+                            <li key={rx.id}>
+                              {rx.medicine} — {rx.dosage}, {rx.frequency}, {rx.durationDays} days
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {(c.labTestsOrdered.length > 0 || c.radiologyOrdered.length > 0) && (
+                        <p className="text-gray-600">
+                          Tests: {[...c.labTestsOrdered.map((o) => o.testName), ...c.radiologyOrdered.map((o) => o.testName)].join(', ')}
+                        </p>
+                      )}
+                      {c.notes && <p className="text-gray-600">Advice: {c.notes}</p>}
+                      {c.followUpDate && <p className="text-gray-600">Follow-up: {formatDate(c.followUpDate)}</p>}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-gray-400">No consultation recorded for this visit.</p>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
+const VITALS = [
+  { key: 'weightKg', label: 'Weight', unit: ' kg' },
+  { key: 'pulse', label: 'Pulse', unit: ' bpm' },
+  { key: 'bpSystolic', label: 'BP systolic', unit: '' },
+  { key: 'bpDiastolic', label: 'BP diastolic', unit: '' },
+  { key: 'tempC', label: 'Temperature', unit: ' °C' },
+  { key: 'spo2', label: 'SpO2', unit: '%' },
+] as const;
+
+function VitalsTab({ records }: { records?: PatientRecordsResponse }) {
+  if (!records) return <Loading />;
+  const visits = records.appointments.filter((a): a is VisitWithConsultation => !!a.consultation);
+  const charts = VITALS.map((v) => ({ ...v, points: vitalsSeries(visits, v.key) })).filter((v) => v.points.length > 0);
+  if (charts.length === 0) return <EmptyState>No vitals recorded yet.</EmptyState>;
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {charts.map((c) => (
+        <div key={c.key} className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
+          <VitalsTrendChart label={c.label} unit={c.unit} points={c.points} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  LAB_REPORT: 'Lab report',
+  RADIOLOGY_REPORT: 'Radiology report',
+  PRESCRIPTION_SCAN: 'Prescription scan',
+  RADIOLOGY_DICOM: 'DICOM image',
+};
+
+function FileRow({ a, onOpen }: { a: Attachment; onOpen: () => void }) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-gray-900">{a.fileName}</span>
+        <span className="text-xs text-gray-500">
+          {CATEGORY_LABEL[a.category]} · {formatDate(a.createdAt)}
+          {a.uploadedByName ? ` · ${a.uploadedByName}` : ''}
+        </span>
+      </span>
+      <button type="button" onClick={onOpen} className="text-sm font-medium text-teal hover:underline">
+        Open
+      </button>
+    </li>
+  );
+}
+
+function ReportsTab({ records }: { records?: PatientRecordsResponse }) {
+  if (!records) return <Loading />;
+  const results = [
+    ...records.labInvoices.flatMap((inv) => inv.items.map((i) => ({ ...i, kind: 'Lab', date: inv.createdAt }))),
+    ...records.radiologyInvoices.flatMap((inv) => inv.items.map((i) => ({ ...i, kind: 'Radiology', date: inv.createdAt }))),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+  const files = records.attachments.filter((a) => a.category !== 'RADIOLOGY_DICOM' && !a.mimeType.startsWith('image/'));
+  return (
+    <div className="space-y-5">
+      <Card title="Test results">
+        {results.length === 0 ? (
+          <p className="text-sm text-gray-500">No lab or radiology results yet.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {results.map((r) => (
+              <li key={r.id} className="py-2.5 text-sm">
+                <p className="font-medium text-gray-900">
+                  {r.testName} <span className="font-normal text-gray-500">· {r.kind} · {formatDate(r.date)}</span>
+                </p>
+                <p className={`whitespace-pre-line ${r.resultText ? 'text-gray-700' : 'text-gray-400'}`}>
+                  {r.resultText ?? 'Result pending'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card title="Report files">
+        {files.length === 0 ? (
+          <p className="text-sm text-gray-500">No reports uploaded yet.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {files.map((a) => (
+              <FileRow key={a.id} a={a} onOpen={() => openAttachment(a)} />
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function ImagesTab({ records }: { records?: PatientRecordsResponse }) {
+  const [dicom, setDicom] = useState<Attachment | null>(null);
+  if (!records) return <Loading />;
+  const images = records.attachments.filter((a) => a.category === 'RADIOLOGY_DICOM' || a.mimeType.startsWith('image/'));
+  return (
+    <Card title="Images">
+      {images.length === 0 ? (
+        <p className="text-sm text-gray-500">No images uploaded yet.</p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {images.map((a) => (
+            <FileRow key={a.id} a={a} onOpen={() => (a.category === 'RADIOLOGY_DICOM' ? setDicom(a) : openAttachment(a))} />
+          ))}
+        </ul>
+      )}
+      {dicom && <DicomViewer attachment={dicom} onClose={() => setDicom(null)} />}
+    </Card>
+  );
+}
+
+function BillingTab({ patientId }: { patientId: string }) {
+  const { data } = useQuery({ queryKey: ['patient-billing', patientId], queryFn: () => getPatientBilling(patientId) });
+  if (!data) return <Loading />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: 'Billed', value: data.totalBilled, tone: 'text-gray-900' },
+          { label: 'Paid', value: data.totalPaid, tone: 'text-teal' },
+          { label: 'Due', value: data.totalDue, tone: data.totalDue > 0 ? 'text-red-600' : 'text-gray-900' },
+        ].map((s) => (
+          <div key={s.label} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{s.label}</p>
+            <p className={`mt-1 text-2xl font-semibold ${s.tone}`}>{formatMoney(s.value)}</p>
+          </div>
+        ))}
+      </div>
+      <Card title="Bills" subtitle={`${data.bills.length} billing record${data.bills.length === 1 ? '' : 's'}`}>
+        {data.bills.length === 0 ? (
+          <p className="text-sm text-gray-500">No bills yet.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100" data-testid="bills">
+            {data.bills.map((b) => (
+              <li key={`${b.billType}:${b.billId}`} className="flex items-center justify-between gap-3 py-3">
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gold-light text-gold">
+                    <Icon name="rupee" className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-gray-900">{b.label}</span>
+                    <span className="text-xs text-gray-500">{formatDate(b.date)}</span>
+                  </span>
+                </span>
+                <span className="text-right">
+                  <span className="block font-semibold text-gray-900">{formatMoney(b.total)}</span>
+                  <span className={`text-xs ${b.balanceDue > 0.01 ? 'text-red-600' : 'text-teal'}`}>
+                    {b.balanceDue > 0.01 ? `${formatMoney(b.balanceDue)} due` : 'Paid'}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}

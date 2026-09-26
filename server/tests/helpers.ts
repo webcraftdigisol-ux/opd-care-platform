@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { ensurePatientProfile } from '../src/utils/patients';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { app } from '../src/app';
@@ -78,6 +79,7 @@ export async function createUser(
       role,
     },
   });
+  if (role === 'PATIENT') await ensurePatientProfile(prisma, user);
   return { user, password };
 }
 

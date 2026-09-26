@@ -48,7 +48,7 @@ describe('Notifications: every attempt is logged, sent or not', () => {
     });
     expect(notification!.status).toBe('SKIPPED');
     expect(notification!.error).toMatch(/No usable recipient/);
-    expect(notification!.recipient).toBe('walkin-9988776655@opd.local');
+    expect(notification!.recipient).toMatch(/^patient-.*@opd\.local$/);
   });
 
   it('recording a payment logs a PAYMENT_RECEIVED notification', async () => {

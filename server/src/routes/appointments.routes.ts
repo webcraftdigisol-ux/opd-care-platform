@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
-import { toAppointment } from '../utils/serialize';
+import { toAppointment, patientWithCode } from '../utils/serialize';
+import { createPatient, splitName } from '../utils/patients';
 import { notifyPatientEmail } from '../utils/notify';
 import { parseDateOnly } from '../utils/dates';
 import { getAvailableSlots } from '../utils/availableSlots';
@@ -100,7 +99,7 @@ appointmentsRouter.post(
           reason: data.reason,
           consultationFee: doctor.consultationFee,
         },
-        include: { patient: true, doctor: { include: { user: true } } },
+        include: { patient: patientWithCode, doctor: { include: { user: true } } },
       });
     });
 
@@ -159,7 +158,7 @@ appointmentsRouter.get(
     const appointments = await prisma.appointment.findMany({
       where: { clinicId, doctorId, date },
       include: {
-        patient: true,
+        patient: patientWithCode,
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
@@ -179,7 +178,7 @@ appointmentsRouter.get(
     const appointment = await prisma.appointment.findFirst({
       where: { id: req.params.id, clinicId: req.auth!.clinicId },
       include: {
-        patient: true,
+        patient: patientWithCode,
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
@@ -221,7 +220,7 @@ appointmentsRouter.patch(
       where: { id: req.params.id },
       data: { status },
       include: {
-        patient: true,
+        patient: patientWithCode,
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
@@ -245,19 +244,24 @@ appointmentsRouter.post(
     const updated = await prisma.appointment.update({
       where: { id: req.params.id },
       data: { status: 'CANCELLED' },
-      include: { patient: true, doctor: { include: { user: true } } },
+      include: { patient: patientWithCode, doctor: { include: { user: true } } },
     });
     res.json(toAppointment(updated));
   }),
 );
 
-const walkInSchema = z.object({
-  doctorId: z.string().min(1),
-  patientName: z.string().min(2),
-  patientPhone: z.string().min(6),
-  reason: z.string().optional(),
-  whatsappOptIn: z.boolean().optional(),
-});
+const walkInSchema = z
+  .object({
+    doctorId: z.string().min(1),
+    patientId: z.string().min(1).optional(),
+    patientName: z.string().trim().min(2).optional(),
+    patientPhone: z.string().trim().min(6).optional(),
+    reason: z.string().optional(),
+    whatsappOptIn: z.boolean().optional(),
+  })
+  .refine((d) => d.patientId || (d.patientName && d.patientPhone), {
+    message: 'Pick a registered patient, or give a name and mobile number to register a new one',
+  });
 
 appointmentsRouter.post(
   '/walk-in',
@@ -277,24 +281,25 @@ appointmentsRouter.post(
       ? { whatsappOptIn: true, whatsappOptInAt: new Date(), whatsappOptInRecordedById: req.auth!.userId }
       : {};
 
-    let patient = await prisma.user.findUnique({
-      where: { clinicId_phone: { clinicId, phone: data.patientPhone } },
-    });
-    if (!patient) {
-      const randomPassword = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
-      patient = await prisma.user.create({
-        data: {
+    // An existing patient is picked explicitly (from the search). A phone
+    // number alone never picks one: family members share mobiles, so
+    // matching on it would book the visit on someone else's record.
+    let patient;
+    if (data.patientId) {
+      patient = await prisma.user.findFirst({ where: { id: data.patientId, clinicId, role: 'PATIENT' } });
+      if (!patient) throw new HttpError(404, 'Patient not found');
+      if (data.whatsappOptIn && !patient.whatsappOptIn) {
+        patient = await prisma.user.update({ where: { id: patient.id }, data: consent });
+      }
+    } else {
+      ({ user: patient } = await prisma.$transaction((tx) =>
+        createPatient(
+          tx,
           clinicId,
-          name: data.patientName,
-          email: `walkin-${data.patientPhone}@opd.local`,
-          phone: data.patientPhone,
-          password: randomPassword,
-          role: 'PATIENT',
-          ...consent,
-        },
-      });
-    } else if (data.whatsappOptIn && !patient.whatsappOptIn) {
-      patient = await prisma.user.update({ where: { id: patient.id }, data: consent });
+          { ...splitName(data.patientName!), phone: data.patientPhone!, whatsappOptIn: data.whatsappOptIn },
+          { consentRecordedById: req.auth!.userId },
+        ),
+      ));
     }
 
     const appointment = await prisma.$transaction(async (tx) => {
@@ -312,14 +317,14 @@ appointmentsRouter.post(
           status: 'CHECKED_IN',
           consultationFee: doctor.consultationFee,
         },
-        include: { patient: true, doctor: { include: { user: true } } },
+        include: { patient: patientWithCode, doctor: { include: { user: true } } },
       });
     });
 
-    // Walk-ins are usually registered by phone only (a synthetic
-    // walkin-<phone>@opd.local email is used as the account placeholder),
-    // so this correctly ends up SKIPPED for most walk-ins -- notifyPatientEmail
-    // filters that placeholder out rather than sending to it.
+    // Walk-ins are usually registered by phone only (with a placeholder
+    // @opd.local email), so this correctly ends up SKIPPED for most of them
+    // -- notifyPatientEmail filters that placeholder out rather than
+    // sending to it.
     await notifyPatientEmail({
       clinicId,
       patientId: appointment.patientId,

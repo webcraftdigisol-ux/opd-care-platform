@@ -14,7 +14,7 @@ import { localDate } from '../pages/AppointmentsPage';
 const TYPE_LABEL: Record<BillType, string> = {
   CONSULTATION: 'Consultation',
   PHARMACY: 'Pharmacy',
-  LAB: 'Lab',
+  LAB: 'Laboratory',
   RADIOLOGY: 'Radiology',
   IPD: 'IPD',
 };
@@ -32,7 +32,7 @@ function shift(date: string, days: number) {
   return localDate(d);
 }
 
-function presets(): { key: string; label: string; from: string; to: string }[] {
+export function presets(): { key: string; label: string; from: string; to: string }[] {
   const today = localDate();
   const d = new Date(`${today}T12:00:00`);
   const monday = shift(today, -((d.getDay() + 6) % 7));
@@ -46,7 +46,7 @@ function presets(): { key: string; label: string; from: string; to: string }[] {
 
 // A CSV cell: quoted, with inner quotes doubled; formula-looking text is
 // prefixed so a spreadsheet doesn't execute it.
-function cell(v: string | number | null): string {
+export function cell(v: string | number | null): string {
   let s = v == null ? '' : String(v);
   if (/^[=+\-@]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
@@ -77,7 +77,12 @@ export function toCsv(report: TransactionsReport): string {
   return [header.map(cell).join(','), ...lines].join('\r\n');
 }
 
-function download(filename: string, text: string) {
+// "revenue", or "pharmacy_revenue" when one department is picked.
+export function csvName(types: BillType[], available: BillType[]): string {
+  return types.length === 1 && available.length > 1 ? `${TYPE_LABEL[types[0]!].toLowerCase()}_revenue` : 'revenue';
+}
+
+export function download(filename: string, text: string) {
   // A BOM so Excel opens the ₹-free UTF-8 text with the right encoding.
   const url = URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
@@ -88,11 +93,15 @@ function download(filename: string, text: string) {
 }
 
 // Revenue: every bill in a date range, what was charged and what was
-// actually collected, with quick ranges, a doctor filter and CSV export.
-export function RevenueReport() {
+// actually collected, with quick ranges, a doctor filter, one department
+// at a time or all together, and CSV export. A department counter passes
+// `lockTo` and sees only its own bills.
+export function RevenueReport({ lockTo }: { lockTo?: BillType } = {}) {
   const { user, clinic } = useAuth();
   const tier = clinic?.tier ?? 1;
-  const available: BillType[] = ['CONSULTATION', ...(tier >= 2 ? (['PHARMACY', 'LAB', 'RADIOLOGY'] as const) : []), ...(tier >= 3 ? (['IPD'] as const) : [])];
+  const available: BillType[] = lockTo
+    ? [lockTo]
+    : ['CONSULTATION', ...(tier >= 2 ? (['PHARMACY', 'LAB', 'RADIOLOGY'] as const) : []), ...(tier >= 3 ? (['IPD'] as const) : [])];
   const month = presets()[2]!;
   const [from, setFrom] = useState(month.from);
   const [to, setTo] = useState(month.to);
@@ -151,7 +160,7 @@ export function RevenueReport() {
           <button
             type="button"
             disabled={!data?.rows.length}
-            onClick={() => data && download(`revenue_${from}_to_${to}.csv`, toCsv(data))}
+            onClick={() => data && download(`${csvName(types, available)}_${from}_to_${to}.csv`, toCsv(data))}
             className={`${btnPrimary} ml-auto`}
             data-testid="export-csv"
           >
@@ -159,19 +168,22 @@ export function RevenueReport() {
           </button>
         </div>
         {available.length > 1 && (
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-700">
-            <span className="text-gray-500">Include:</span>
-            {available.map((t) => (
-              <label key={t} className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={types.includes(t)}
-                  onChange={(e) => setTypes((ts) => (e.target.checked ? [...ts, t] : ts.filter((x) => x !== t)))}
-                  className="h-4 w-4 accent-teal"
-                />
-                {TYPE_LABEL[t]}
-              </label>
-            ))}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm" role="group" aria-label="Revenue from">
+            {[{ key: 'ALL', label: 'All revenue', types: available }, ...available.map((t) => ({ key: t, label: TYPE_LABEL[t], types: [t] }))].map((o) => {
+              const on = o.types.length === types.length && o.types.every((t) => types.includes(t));
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() => setTypes(o.types)}
+                  aria-pressed={on}
+                  className={`rounded-lg border px-3 py-1 ${on ? 'border-teal bg-teal text-white' : 'border-gray-300 text-gray-700 hover:border-teal hover:text-teal'}`}
+                  data-testid={`revenue-type-${o.key}`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -290,7 +302,7 @@ export function RevenueReport() {
           </Card>
           {!isAdmin && (
             <p className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Icon name="alert" className="h-3.5 w-3.5" /> Showing your own patients' bills.
+              <Icon name="alert" className="h-3.5 w-3.5" /> {lockTo ? `Showing ${TYPE_LABEL[lockTo].toLowerCase()} bills.` : "Showing your own patients' bills."}
             </p>
           )}
         </>

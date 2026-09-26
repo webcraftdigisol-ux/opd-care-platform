@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink as RouterNavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { homeRouteForRole } from '../utils/roleHome';
 import { navSectionsFor, ROLE_LABELS } from '../utils/navLinks';
@@ -60,6 +60,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </Link>
   );
 
+  // The most specific link under the current page is lit: "/pharmacy"
+  // on a patient at the counter, but "/pharmacy/settings" on the settings
+  // page, and "/patients/new" rather than "/patients". Home and the admin
+  // dashboard only light on themselves.
+  const activeTo = sections
+    .flatMap((s) => s.links.map((l) => l.to))
+    .filter((to) => location.pathname === to || (to !== '/' && to !== '/admin' && location.pathname.startsWith(`${to}/`)))
+    .sort((a, b) => b.length - a.length)[0];
+
   const nav = (
     <nav aria-label="Main" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
       {sections.map((section, i) => (
@@ -70,19 +79,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ul className="space-y-0.5">
             {section.links.map((l) => (
               <li key={l.to}>
-                <RouterNavLink
+                <Link
                   to={l.to}
-                  // "/patients" shouldn't stay lit on "/patients/new".
-                  end={l.to === '/' || l.to === '/admin' || l.to === '/patients'}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                      isActive ? 'bg-teal font-medium text-white' : 'text-gray-600 hover:bg-teal-light hover:text-teal'
-                    }`
-                  }
+                  aria-current={l.to === activeTo ? 'page' : undefined}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                    l.to === activeTo ? 'bg-teal font-medium text-white' : 'text-gray-600 hover:bg-teal-light hover:text-teal'
+                  }`}
                 >
                   <Icon name={l.icon} className="h-[18px] w-[18px] shrink-0" />
                   {l.label}
-                </RouterNavLink>
+                </Link>
               </li>
             ))}
           </ul>

@@ -129,13 +129,13 @@ describe('role gating: cross-counter isolation', () => {
     const labTechToken = await loginRole(clinic.slug, clinic.id, 'LAB_TECHNICIAN');
 
     expect(
-      (await request(app).get(`/api/lab/patients/${patient.id}/pending`).set(auth(pharmacistToken))).status,
+      (await request(app).get(`/api/lab/patients/${patient.id}/orders`).set(auth(pharmacistToken))).status,
     ).toBe(403);
     expect(
-      (await request(app).get(`/api/pharmacy/patients/${patient.id}/pending`).set(auth(labTechToken))).status,
+      (await request(app).get(`/api/pharmacy/patients/${patient.id}/orders`).set(auth(labTechToken))).status,
     ).toBe(403);
     expect(
-      (await request(app).get(`/api/radiology/patients/${patient.id}/pending`).set(auth(pharmacistToken))).status,
+      (await request(app).get(`/api/radiology/patients/${patient.id}/orders`).set(auth(pharmacistToken))).status,
     ).toBe(403);
   });
 });

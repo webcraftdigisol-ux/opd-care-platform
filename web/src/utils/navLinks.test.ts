@@ -54,4 +54,18 @@ describe('navLinksFor', () => {
       expect(new Set(tos).size).toBe(tos.length);
     }
   });
+
+  it("replaces the Doctor's Catalogue with the departments' own lists from Tier 2", () => {
+    for (const role of ['ADMIN', 'DOCTOR'] as const) {
+      expect(labels(role, 1)).toContain("Doctor's Catalogue");
+      expect(labels(role, 2)).not.toContain("Doctor's Catalogue");
+    }
+    expect(destinations('ADMIN', 2)).toEqual(expect.arrayContaining(['/pharmacy/settings', '/lab/settings', '/radiology/settings']));
+  });
+
+  it('gives each department counter its patients, its settings and its reports', () => {
+    expect(destinations('PHARMACIST', 2)).toEqual(['/pharmacy', '/pharmacy/settings', '/admin/reports']);
+    expect(destinations('LAB_TECHNICIAN', 2)).toEqual(['/lab', '/lab/settings', '/admin/reports']);
+    expect(destinations('RADIOLOGY_TECHNICIAN', 2)).toEqual(['/radiology', '/radiology/settings', '/admin/reports']);
+  });
 });

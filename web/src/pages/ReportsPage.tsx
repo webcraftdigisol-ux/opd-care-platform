@@ -2,129 +2,27 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getDailyActivityReport,
-  getFinancialReport,
   getFollowUpsReport,
   markFollowUpContacted,
   sendFollowUpReminder,
 } from '../api/reports';
 import { useAuth } from '../context/AuthContext';
-import { RevenueReport } from '../components/RevenueReport';
-import { PageHeader } from '../components/ui';
-import type { FollowUpItem, FollowUpReminderResult, Notification, RevenueSection } from '@opd/shared';
+import { RevenueReport, cell, download } from '../components/RevenueReport';
+import { OrdersReport } from '../components/OrdersReport';
+import { PageHeader, btnSecondary } from '../components/ui';
+import type { Department, FollowUpItem, FollowUpReminderResult, Notification, Role } from '@opd/shared';
 
-type Tab = 'revenue' | 'financial' | 'activity' | 'follow-ups';
+type Tab = 'revenue' | 'orders' | 'activity' | 'follow-ups';
+
+// A department counter's reports cover only its own department.
+const DEPARTMENT_OF: Partial<Record<Role, Department>> = {
+  PHARMACIST: 'PHARMACY',
+  LAB_TECHNICIAN: 'LAB',
+  RADIOLOGY_TECHNICIAN: 'RADIOLOGY',
+};
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgoIso(days: number) {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-function RevenueSectionCard({ title, section }: { title: string; section: RevenueSection }) {
-  return (
-    <div className="rounded-xl bg-white p-6 shadow-sm">
-      <h3 className="mb-4 font-semibold text-gray-700">{title}</h3>
-      <div className="mb-4 grid grid-cols-2 gap-4">
-        <div className="rounded-lg bg-teal-light p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal">Actual</p>
-          <p className="text-2xl font-bold text-teal">₹{section.actual.total.toFixed(2)}</p>
-          <p className="text-xs text-gray-500">{section.actual.count} line items billed</p>
-        </div>
-        <div className="rounded-lg bg-gold-light p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gold">Total Ordered</p>
-          <p className="text-2xl font-bold text-gold">₹{section.totalOrdered.total.toFixed(2)}</p>
-          <p className="text-xs text-gray-500">
-            {section.totalOrdered.count} ordered
-            {section.totalOrdered.unmatchedCount > 0 && (
-              <> · {section.totalOrdered.unmatchedCount} unmatched to catalog</>
-            )}
-          </p>
-        </div>
-      </div>
-      {section.byItem.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-gray-500">
-              <tr className="border-b border-gray-200">
-                <th className="py-1">Item</th>
-                <th className="py-1 text-right">Actual Qty</th>
-                <th className="py-1 text-right">Actual ₹</th>
-                <th className="py-1 text-right">Ordered Qty</th>
-                <th className="py-1 text-right">Ordered ₹</th>
-              </tr>
-            </thead>
-            <tbody>
-              {section.byItem.map((item) => (
-                <tr key={item.name} className="border-b border-gray-100">
-                  <td className="py-1">
-                    {item.name}
-                    {item.unmatchedOrderedCount > 0 && (
-                      <span className="ml-1 text-xs text-red-500">({item.unmatchedOrderedCount} unmatched)</span>
-                    )}
-                  </td>
-                  <td className="py-1 text-right">{item.actualQuantity}</td>
-                  <td className="py-1 text-right">₹{item.actualTotal.toFixed(2)}</td>
-                  <td className="py-1 text-right">{item.orderedQuantity}</td>
-                  <td className="py-1 text-right">₹{item.orderedTotal.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {section.byItem.length === 0 && <p className="text-sm text-gray-400">No activity in this range.</p>}
-    </div>
-  );
-}
-
-function FinancialTab() {
-  const [from, setFrom] = useState(daysAgoIso(29));
-  const [to, setTo] = useState(todayIso());
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['report-financial', from, to],
-    queryFn: () => getFinancialReport(from, to),
-    retry: false,
-  });
-
-  if (isError) {
-    const message = (error as any)?.response?.data?.message ?? 'Could not load the financial report.';
-    return <p className="text-sm text-gray-500">{message}</p>;
-  }
-
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">From</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-2"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">To</label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-2"
-          />
-        </div>
-      </div>
-      {isLoading && <p className="text-gray-500">Loading…</p>}
-      {data && (
-        <div className="space-y-6">
-          <RevenueSectionCard title="Pharmacy" section={data.pharmacy} />
-          <RevenueSectionCard title="Lab" section={data.lab} />
-          <RevenueSectionCard title="Radiology" section={data.radiology} />
-        </div>
-      )}
-    </div>
-  );
 }
 
 function ActivityTab() {
@@ -147,6 +45,24 @@ function ActivityTab() {
       {isLoading && <p className="text-gray-500">Loading…</p>}
       {data && (
         <div>
+          <button
+            type="button"
+            className={`${btnSecondary} mb-4`}
+            onClick={() =>
+              download(
+                `daily_activity_${date}.csv`,
+                [
+                  ['Doctor', 'Appointments', 'Completed'],
+                  ...data.byDoctor.map((d) => [d.doctorName, d.total, d.completed]),
+                  ['All doctors', data.totalAppointments, data.completed],
+                ]
+                  .map((r) => r.map(cell).join(','))
+                  .join('\r\n'),
+              )
+            }
+          >
+            Export CSV
+          </button>
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               ['Total', data.totalAppointments],
@@ -307,20 +223,30 @@ function FollowUpsTab() {
 }
 
 export function ReportsPage() {
-  const { clinic } = useAuth();
+  const { clinic, user } = useAuth();
   const [tab, setTab] = useState<Tab>('revenue');
+  const own = user ? DEPARTMENT_OF[user.role] : undefined;
+  const tier2 = (clinic?.tier ?? 1) >= 2;
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'revenue', label: 'Revenue' },
-    // Department revenue vs orders needs the Tier 2 departments.
-    ...((clinic?.tier ?? 1) >= 2 ? [{ key: 'financial' as const, label: 'Pharmacy, Lab & Radiology' }] : []),
-    { key: 'activity', label: 'Daily Activity' },
-    { key: 'follow-ups', label: 'Follow-ups Due' },
-  ];
+  const tabs: { key: Tab; label: string }[] = own
+    ? [
+        { key: 'revenue', label: 'Revenue' },
+        { key: 'orders', label: 'Ordered vs done' },
+      ]
+    : [
+        { key: 'revenue', label: 'Revenue' },
+        // What was ordered vs done in-house needs the Tier 2 departments.
+        ...(tier2 ? [{ key: 'orders' as const, label: 'Prescribed vs in-house' }] : []),
+        { key: 'activity', label: 'Daily Activity' },
+        { key: 'follow-ups', label: 'Follow-ups Due' },
+      ];
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <PageHeader title="Reports" subtitle="Revenue, activity and follow-ups." />
+      <PageHeader
+        title="Reports"
+        subtitle={own ? 'Your department’s revenue, and what doctors ordered vs what was done here.' : 'Revenue, orders done in-house, activity and follow-ups.'}
+      />
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist">
         {tabs.map((t) => (
           <button
@@ -336,8 +262,8 @@ export function ReportsPage() {
           </button>
         ))}
       </div>
-      {tab === 'revenue' && <RevenueReport />}
-      {tab === 'financial' && <FinancialTab />}
+      {tab === 'revenue' && <RevenueReport lockTo={own} />}
+      {tab === 'orders' && <OrdersReport lockTo={own} />}
       {tab === 'activity' && <ActivityTab />}
       {tab === 'follow-ups' && <FollowUpsTab />}
     </div>

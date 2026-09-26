@@ -12,12 +12,39 @@ import { sendFollowUpReminder } from '../utils/reminders';
 import { toNotification } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
+import type { Department, OrdersReport, Role } from '@opd/shared';
+import { computeOrdersReport } from '../utils/ordersReport';
 import type { FinancialReport, FollowUpItem, FollowUpReminderResult, FollowUpsReport, TransactionsReport } from '@opd/shared';
 import { computeTransactions } from '../utils/transactions';
 
 export const reportsRouter = Router();
 
-reportsRouter.use(requireAuth, requireRole('ADMIN', 'DOCTOR'));
+reportsRouter.use(requireAuth, requireRole('ADMIN', 'DOCTOR', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN'));
+
+// Clinic-wide views; the department counters only get their own revenue
+// and orders (below).
+const CLINICAL = requireRole('ADMIN', 'DOCTOR');
+
+// The department a counter role reports on, if it is one.
+const DEPARTMENT_OF: Partial<Record<Role, Department>> = {
+  PHARMACIST: 'PHARMACY',
+  LAB_TECHNICIAN: 'LAB',
+  RADIOLOGY_TECHNICIAN: 'RADIOLOGY',
+};
+
+// A doctor only ever sees their own patients.
+async function forcedDoctorId(req: AuthedRequest, requested: string | undefined): Promise<string | undefined> {
+  if (req.auth!.role !== 'DOCTOR') return requested;
+  const me = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
+  if (!me) throw new HttpError(404, 'Doctor profile not found');
+  return me.id;
+}
+
+function checkRange(from: string, to: string) {
+  if (from > to) throw new HttpError(400, 'The start date is after the end date');
+  const days = (Date.parse(to) - Date.parse(from)) / 86_400_000;
+  if (days > 366) throw new HttpError(400, 'Pick a range of a year or less');
+}
 
 function parseDateOnly(dateStr: string): Date {
   const date = new Date(`${dateStr}T00:00:00.000Z`);
@@ -34,6 +61,7 @@ const rangeQuerySchema = z.object({
 
 reportsRouter.get(
   '/financial',
+  CLINICAL,
   requireTier(2),
   asyncHandler(async (req: AuthedRequest, res) => {
     const query = rangeQuerySchema.parse(req.query);
@@ -75,15 +103,10 @@ reportsRouter.get(
   '/transactions',
   asyncHandler(async (req: AuthedRequest, res) => {
     const q = transactionsQuerySchema.parse(req.query);
-    if (q.from > q.to) throw new HttpError(400, 'The start date is after the end date');
-    const days = (Date.parse(q.to) - Date.parse(q.from)) / 86_400_000;
-    if (days > 366) throw new HttpError(400, 'Pick a range of a year or less');
-    let doctorId = q.doctorId;
-    if (req.auth!.role === 'DOCTOR') {
-      const me = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
-      if (!me) throw new HttpError(404, 'Doctor profile not found');
-      doctorId = me.id;
-    }
+    checkRange(q.from, q.to);
+    const doctorId = await forcedDoctorId(req, q.doctorId);
+    // A department counter sees only its own bills.
+    const own = DEPARTMENT_OF[req.auth!.role];
     const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: req.auth!.clinicId }, select: { tier: true } });
     const report: TransactionsReport = await computeTransactions({
       clinicId: req.auth!.clinicId,
@@ -91,7 +114,38 @@ reportsRouter.get(
       from: q.from,
       to: q.to,
       doctorId,
-      types: q.types,
+      types: own ? [own] : q.types,
+    });
+    res.json(report);
+  }),
+);
+
+const ordersQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  doctorId: z.string().optional(),
+  departments: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',') : ['PHARMACY', 'LAB', 'RADIOLOGY']))
+    .pipe(z.array(z.enum(['PHARMACY', 'LAB', 'RADIOLOGY']))),
+});
+
+// What doctors prescribed and ordered vs what was done in-house. A doctor
+// sees their own orders; a department counter, its own department.
+reportsRouter.get(
+  '/orders',
+  requireTier(2),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const q = ordersQuerySchema.parse(req.query);
+    checkRange(q.from, q.to);
+    const own = DEPARTMENT_OF[req.auth!.role];
+    const report: OrdersReport = await computeOrdersReport({
+      clinicId: req.auth!.clinicId,
+      from: q.from,
+      to: q.to,
+      doctorId: await forcedDoctorId(req, q.doctorId),
+      departments: own ? [own] : q.departments,
     });
     res.json(report);
   }),
@@ -99,6 +153,7 @@ reportsRouter.get(
 
 reportsRouter.get(
   '/daily-activity',
+  CLINICAL,
   asyncHandler(async (req: AuthedRequest, res) => {
     const dateStr = typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
     const date = parseDateOnly(dateStr);
@@ -109,6 +164,7 @@ reportsRouter.get(
 
 reportsRouter.get(
   '/follow-ups',
+  CLINICAL,
   asyncHandler(async (req: AuthedRequest, res) => {
     const clinicId = req.auth!.clinicId;
     const today = new Date();
@@ -159,6 +215,7 @@ reportsRouter.get(
 
 reportsRouter.post(
   '/follow-ups/:consultationId/contacted',
+  CLINICAL,
   asyncHandler(async (req: AuthedRequest, res) => {
     const consultation = await prisma.consultation.findFirst({
       where: { id: req.params.consultationId, appointment: { clinicId: req.auth!.clinicId } },
@@ -174,6 +231,7 @@ reportsRouter.post(
 
 reportsRouter.post(
   '/follow-ups/:consultationId/remind',
+  CLINICAL,
   asyncHandler(async (req: AuthedRequest, res) => {
     const consultation = await prisma.consultation.findFirst({
       where: { id: req.params.consultationId, appointment: { clinicId: req.auth!.clinicId } },

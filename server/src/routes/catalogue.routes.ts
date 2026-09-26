@@ -79,7 +79,7 @@ catalogueRouter.get(
     const withDepartments = clinic.tier >= 2;
     const [items, pharmacy, lab, radiology] = await Promise.all([
       prisma.doctorCatalogItem.findMany({ where: { clinicId }, orderBy: [{ name: 'asc' }, { strength: 'asc' }] }),
-      withDepartments ? prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true, brand: true } }) : [],
+      withDepartments ? prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true, strength: true, brand: true } }) : [],
       withDepartments ? prisma.labTestCatalog.findMany({ where: { clinicId }, select: { name: true } }) : [],
       withDepartments ? prisma.radiologyCatalog.findMany({ where: { clinicId }, select: { name: true } }) : [],
     ]);
@@ -87,7 +87,7 @@ catalogueRouter.get(
     const medicines: CatalogSuggestions['medicines'] = [];
     for (const m of [
       ...items.filter((i) => i.kind === 'MEDICINE').map((i) => ({ name: i.name, strength: i.strength, brands: i.brands })),
-      ...pharmacy.map((p) => ({ name: p.name, strength: null, brands: p.brand ? [p.brand] : [] })),
+      ...pharmacy.map((p) => ({ name: p.name, strength: p.strength, brands: p.brand ? [p.brand] : [] })),
     ]) {
       const same = medicines.find((x) => sameKey(x, m));
       if (same) same.brands = cleanBrands([...same.brands, ...m.brands]);

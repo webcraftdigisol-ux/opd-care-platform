@@ -252,6 +252,7 @@ export function toPharmacyItem(item: PrismaPharmacyItem): PharmacyItem {
   return {
     id: item.id,
     name: item.name,
+    strength: item.strength,
     brand: item.brand,
     unitsPerStrip: item.unitsPerStrip,
     pricePerUnit: item.pricePerUnit,
@@ -266,6 +267,7 @@ export function toPharmacySaleItem(item: PrismaPharmacySaleItem): PharmacySaleIt
     prescriptionId: item.prescriptionId,
     itemId: item.itemId,
     medicineName: item.medicineName,
+    substitutedFor: item.substitutedFor,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     lineTotal: item.lineTotal,
@@ -301,6 +303,7 @@ export function toLabResultItem(item: PrismaLabResultItem): LabResultItem {
     orderId: item.orderId,
     catalogItemId: item.catalogItemId,
     testName: item.testName,
+    substitutedFor: item.substitutedFor,
     resultText: item.resultText,
     price: item.price,
   };
@@ -335,6 +338,7 @@ export function toRadiologyResultItem(item: PrismaRadiologyResultItem): Radiolog
     orderId: item.orderId,
     catalogItemId: item.catalogItemId,
     testName: item.testName,
+    substitutedFor: item.substitutedFor,
     resultText: item.resultText,
     price: item.price,
   };

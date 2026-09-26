@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createStaff, login, registerPatient, setupClinicWithDoctor } from '../helpers/api';
 import { applySession } from '../helpers/session';
-import { inputAfterLabel } from '../helpers/dom';
+import { billExtraTest, openAtCounter } from '../helpers/counter';
 
 test.describe('lab report file attachment', () => {
   test('a lab technician uploads a report file to a freshly created invoice, and it shows in the list', async ({
@@ -14,18 +14,10 @@ test.describe('lab report file attachment', () => {
     void patientSession;
 
     await applySession(page, labSession);
-    await page.goto('/lab');
+    await openAtCounter(page, '/lab', 'Attachment Test Patient');
 
-    await inputAfterLabel(page, 'Search patient by name or phone').fill('Attachment Test Patient');
-    await page.getByText('Attachment Test Patient').click();
-
-    await expect(page.getByText('No pending lab orders for this patient.')).toBeVisible();
-    await page.getByRole('button', { name: '+ Add test' }).click();
-    await page.getByPlaceholder('Test name').fill('Complete Blood Count');
-    await page.getByPlaceholder('Price').fill('300');
-    await page.getByRole('button', { name: 'Confirm & Print Receipt' }).click();
-
-    await expect(page.getByText('Receipt')).toBeVisible();
+    await expect(page.getByText('No tests ordered for this patient.')).toBeVisible();
+    await billExtraTest(page, 'Complete Blood Count', '300');
 
     // Playwright can hand a file's bytes straight to the input, no on-disk
     // fixture needed.
@@ -48,14 +40,8 @@ test.describe('lab report file attachment', () => {
     const patientSession = await registerPatient({ clinicSlug, name: 'Records Attachment Patient' });
 
     await applySession(page, labSession);
-    await page.goto('/lab');
-    await inputAfterLabel(page, 'Search patient by name or phone').fill('Records Attachment Patient');
-    await page.getByText('Records Attachment Patient').click();
-    await page.getByRole('button', { name: '+ Add test' }).click();
-    await page.getByPlaceholder('Test name').fill('Lipid Profile');
-    await page.getByPlaceholder('Price').fill('500');
-    await page.getByRole('button', { name: 'Confirm & Print Receipt' }).click();
-    await expect(page.getByText('Receipt')).toBeVisible();
+    await openAtCounter(page, '/lab', 'Records Attachment Patient');
+    await billExtraTest(page, 'Lipid Profile', '500');
 
     await page.getByTestId('attachment-file-input').setInputFiles({
       name: 'lipid-report.pdf',

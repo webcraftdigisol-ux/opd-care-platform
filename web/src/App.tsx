@@ -16,12 +16,12 @@ import { AdminDoctorsPage } from './pages/AdminDoctorsPage';
 import { AdminWalkInPage } from './pages/AdminWalkInPage';
 import { AdminStaffPage } from './pages/AdminStaffPage';
 import { SubscriptionBillingPage } from './pages/SubscriptionBillingPage';
-import { PharmacyCounterPage } from './pages/PharmacyCounterPage';
-import { PharmacyInventoryPage } from './pages/PharmacyInventoryPage';
-import { LabCounterPage } from './pages/LabCounterPage';
-import { LabCatalogPage } from './pages/LabCatalogPage';
-import { RadiologyCounterPage } from './pages/RadiologyCounterPage';
-import { RadiologyCatalogPage } from './pages/RadiologyCatalogPage';
+import { DepartmentHomePage } from './pages/DepartmentHomePage';
+import { PharmacyPatientPage } from './pages/PharmacyPatientPage';
+import { PharmacySettingsPage } from './pages/PharmacySettingsPage';
+import { TestPatientPage } from './pages/TestPatientPage';
+import { TestSettingsPage } from './pages/TestSettingsPage';
+import { ReceiptPage } from './pages/ReceiptPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { IpdWardsPage } from './pages/IpdWardsPage';
 import { IpdAdmissionsPage } from './pages/IpdAdmissionsPage';
@@ -56,10 +56,11 @@ export default function App() {
   // The platform-admin section is a separate actor space from any clinic
   // (see api/platformClient.ts), and the sign-in pages come before one --
   // neither shows the clinic sidebar.
-  // The printable visit summary is a page of its own too.
+  // The printable visit summary and receipts are pages of their own too.
   const bare =
     location.pathname.startsWith('/platform') ||
     /^\/visits\/[^/]+\/print$/.test(location.pathname) ||
+    /^\/receipts\//.test(location.pathname) ||
     ['/login', '/register', '/register-clinic', '/forgot-password'].includes(location.pathname);
 
   const routes = (
@@ -229,33 +230,9 @@ export default function App() {
           }
         />
         <Route
-          path="/admin/pharmacy"
-          element={
-            <ProtectedRoute roles={['ADMIN', 'PHARMACIST']}>
-              <PharmacyInventoryPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/lab"
-          element={
-            <ProtectedRoute roles={['ADMIN', 'LAB_TECHNICIAN']}>
-              <LabCatalogPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/radiology"
-          element={
-            <ProtectedRoute roles={['ADMIN', 'RADIOLOGY_TECHNICIAN']}>
-              <RadiologyCatalogPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/admin/reports"
           element={
-            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN']}>
               <ReportsPage />
             </ProtectedRoute>
           }
@@ -297,23 +274,82 @@ export default function App() {
           path="/pharmacy"
           element={
             <ProtectedRoute roles={['PHARMACIST', 'ADMIN']}>
-              <PharmacyCounterPage />
+              <DepartmentHomePage dept="PHARMACY" />
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/pharmacy/patients/:patientId"
+          element={
+            <ProtectedRoute roles={['PHARMACIST', 'ADMIN']}>
+              <PharmacyPatientPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pharmacy/settings"
+          element={
+            <ProtectedRoute roles={['PHARMACIST', 'ADMIN']}>
+              <PharmacySettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/admin/pharmacy" element={<Navigate to="/pharmacy/settings" replace />} />
         <Route
           path="/lab"
           element={
             <ProtectedRoute roles={['LAB_TECHNICIAN', 'ADMIN']}>
-              <LabCounterPage />
+              <DepartmentHomePage key="LAB" dept="LAB" />
             </ProtectedRoute>
           }
         />
         <Route
+          path="/lab/patients/:patientId"
+          element={
+            <ProtectedRoute roles={['LAB_TECHNICIAN', 'ADMIN']}>
+              <TestPatientPage key="lab" dept="lab" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lab/settings"
+          element={
+            <ProtectedRoute roles={['LAB_TECHNICIAN', 'ADMIN']}>
+              <TestSettingsPage key="lab" dept="lab" />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/admin/lab" element={<Navigate to="/lab/settings" replace />} />
+        <Route
           path="/radiology"
           element={
             <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
-              <RadiologyCounterPage />
+              <DepartmentHomePage key="RADIOLOGY" dept="RADIOLOGY" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/radiology/patients/:patientId"
+          element={
+            <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
+              <TestPatientPage key="radiology" dept="radiology" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/radiology/settings"
+          element={
+            <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
+              <TestSettingsPage key="radiology" dept="radiology" />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/admin/radiology" element={<Navigate to="/radiology/settings" replace />} />
+        <Route
+          path="/receipts/:dept/:billId"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'RECEPTIONIST', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN']}>
+              <ReceiptPage />
             </ProtectedRoute>
           }
         />

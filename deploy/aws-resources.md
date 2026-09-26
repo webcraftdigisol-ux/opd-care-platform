@@ -101,6 +101,12 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   migration `20260926044900_guest_bookings` ran in production (2026-09-26;
   makes `Appointment.patientId` optional). Safe to delete once that
   release has proven itself.
+- **Pre-staff-brands snapshot**: RDS snapshot
+  `opd-care-db-pre-staff-brands-20260926-0830` was taken just before
+  migration `20260926072858_staff_brands_patient_files` ran in production
+  (2026-09-26; additive: usernames, account active flag, medicine brands,
+  prescription brand, patient-level file categories). Safe to delete once
+  that release has proven itself.
 - **`PUBLIC_API_URL`** in `server/.env` is `https://api.ohmscare.in/api`: the
   base of the signed visit-summary PDF links sent on WhatsApp.
 - **WhatsApp isn't connected yet**: no `WHATSAPP_PROVIDER`/`META_*`/`TWILIO_*`

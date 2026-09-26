@@ -3,7 +3,6 @@ import type {
   CreateLabInvoiceRequest,
   LabInvoice,
   LabTestCatalogEntry,
-  PendingLabLine,
   UpsertLabTestCatalogRequest,
 } from '@opd/shared';
 
@@ -27,11 +26,6 @@ export async function updateLabCatalogEntry(
 
 export async function deleteLabCatalogEntry(id: string): Promise<void> {
   await apiClient.delete(`/lab/catalog/${id}`);
-}
-
-export async function getPendingLabLines(patientId: string): Promise<PendingLabLine[]> {
-  const res = await apiClient.get<PendingLabLine[]>(`/lab/patients/${patientId}/pending`);
-  return res.data;
 }
 
 export async function createLabInvoice(data: CreateLabInvoiceRequest): Promise<LabInvoice> {

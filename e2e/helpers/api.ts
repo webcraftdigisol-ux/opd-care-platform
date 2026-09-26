@@ -11,7 +11,7 @@ export interface Session {
   clinic: { id: string; name: string; slug: string; tier: number };
 }
 
-async function request<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
+export async function request<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers: {

@@ -398,6 +398,10 @@ model Prescription {
   durationDays   Int
   // Instructions for the patient.
   notes          String?
+  // Set at the pharmacy when this line won't be dispensed here (not
+  // stocked, or the patient declined), so it leaves the counter's queue.
+  skippedAt      DateTime?
+  skipReason     String?
 
   saleItems PharmacySaleItem[]
 
@@ -449,9 +453,13 @@ model PharmacyItem {
   id               String   @id @default(uuid())
   clinicId         String
   clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // The generic (composition) name, e.g. "Paracetamol"; with strength it is
+  // what makes two brands substitutes for each other at the counter.
   name             String
-  brand            String? // manufacturer/brand name, e.g. "Crocin" for paracetamol -- optional, purely informational
+  strength         String?
+  brand            String? // the product's brand, e.g. "Dolo 650"
   unitsPerStrip    Int? // null = sold per unit directly (e.g. a syrup bottle)
+  // MRP per unit; 0 means the pharmacy hasn't priced it yet.
   pricePerUnit     Float
   costPricePerUnit Float
   stockUnits       Int      @default(0)
@@ -496,11 +504,15 @@ model PharmacySaleItem {
   itemId         String?
   item           PharmacyItem? @relation(fields: [itemId], references: [id])
   medicineName   String
+  // What the doctor prescribed, when a different product was dispensed
+  // (another brand of the same composition, say, because it was out).
+  substitutedFor String?
   quantity       Int
   unitPrice      Float
   lineTotal      Float
 
   @@index([saleId])
+  @@index([prescriptionId])
 }
 
 // ---- Lab (Tier 2+) ----
@@ -513,6 +525,10 @@ model LabTestOrder {
   consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
   testName       String
   notes          String?
+  // Set at the counter when this test won't be done here (not offered, or
+  // the patient declined), so it leaves the queue.
+  skippedAt      DateTime?
+  skipReason     String?
 
   resultItems LabResultItem[]
 
@@ -564,10 +580,13 @@ model LabResultItem {
   catalogItemId String?
   catalogItem   LabTestCatalog? @relation(fields: [catalogItemId], references: [id])
   testName      String
+  // What the doctor ordered, when a different test was done instead.
+  substitutedFor String?
   resultText    String?
   price         Float
 
   @@index([invoiceId])
+  @@index([orderId])
 }
 
 // ---- Radiology (Tier 2+) ----
@@ -581,6 +600,10 @@ model RadiologyTestOrder {
   consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
   testName       String
   notes          String?
+  // Set at the counter when this test won't be done here (not offered, or
+  // the patient declined), so it leaves the queue.
+  skippedAt      DateTime?
+  skipReason     String?
 
   resultItems RadiologyResultItem[]
 
@@ -632,10 +655,13 @@ model RadiologyResultItem {
   catalogItemId String?
   catalogItem   RadiologyCatalog?   @relation(fields: [catalogItemId], references: [id])
   testName      String
+  // What the doctor ordered, when a different test was done instead.
+  substitutedFor String?
   resultText    String?
   price         Float
 
   @@index([invoiceId])
+  @@index([orderId])
 }
 
 // ---- In-Patient / IPD (Tier 3) ----

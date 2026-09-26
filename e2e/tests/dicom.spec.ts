@@ -1,18 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createStaff, login, registerPatient, setupClinicWithDoctor } from '../helpers/api';
 import { applySession } from '../helpers/session';
-import { inputAfterLabel } from '../helpers/dom';
+import { billExtraTest, openAtCounter } from '../helpers/counter';
 import { buildDicomFixture } from '../helpers/dicom';
 
 async function createRadiologyReceipt(page: Page, patientName: string) {
-  await page.goto('/radiology');
-  await inputAfterLabel(page, 'Search patient by name or phone').fill(patientName);
-  await page.getByText(patientName).click();
-  await page.getByRole('button', { name: '+ Add test' }).click();
-  await page.getByPlaceholder('Test name').fill('Chest X-Ray');
-  await page.getByPlaceholder('Price').fill('400');
-  await page.getByRole('button', { name: 'Confirm & Print Receipt' }).click();
-  await expect(page.getByText('Receipt')).toBeVisible();
+  await openAtCounter(page, '/radiology', patientName);
+  await billExtraTest(page, 'Chest X-Ray', '400');
 }
 
 test.describe('DICOM file attachment + in-browser viewer', () => {

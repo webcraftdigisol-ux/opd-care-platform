@@ -143,6 +143,7 @@ export interface DietPlan {
   clinicId: string;
   patientId: string;
   consultationId: string | null;
+  admissionId: string | null;
   createdById: string;
   createdByName?: string;
   dietaryPreference: DietaryPreference;
@@ -325,6 +326,7 @@ export interface PrescriptionInput {
 export interface DietPlanInput {
   patientId: string;
   consultationId?: string;
+  admissionId?: string;
   dietaryPreference: DietaryPreference;
   allergies?: string;
   localFoodNotes?: string;
@@ -406,10 +408,17 @@ export interface UpsertCatalogItemRequest {
 
 // What the consultation screen suggests while typing: the Doctor's
 // Catalogue plus, in Tier 2+, the department catalogues.
-export interface CatalogSuggestions {
+export interface CatalogSuggestionLists {
   medicines: { name: string; strength: string | null; brands: string[] }[];
   labTests: string[];
   radiology: string[];
+}
+
+// The clinic's own lists, and the standard list's entries the clinic
+// doesn't have -- offered after the clinic's own, so typing "C" finds CBC
+// even before a list is loaded.
+export interface CatalogSuggestions extends CatalogSuggestionLists {
+  standard: CatalogSuggestionLists;
 }
 
 // Everything the patient's printed/shared Visit Summary shows -- and
@@ -557,6 +566,7 @@ export interface PharmacySaleItem {
   substitutedFor: string | null;
   quantity: number;
   unitPrice: number;
+  unitCost: number | null;
   lineTotal: number;
 }
 
@@ -581,6 +591,8 @@ export interface LabTestCatalogEntry {
   id: string;
   name: string;
   price: number;
+  // What it costs the clinic, for profit.
+  cost: number;
 }
 
 export interface UpsertLabTestCatalogRequest {
@@ -609,6 +621,7 @@ export interface LabResultItem {
   catalogItemId: string | null;
   testName: string;
   substitutedFor: string | null;
+  cost: number | null;
   resultText: string | null;
   price: number;
 }
@@ -635,6 +648,7 @@ export interface RadiologyTestCatalogEntry {
   id: string;
   name: string;
   price: number;
+  cost: number;
 }
 
 export interface UpsertRadiologyTestCatalogRequest {
@@ -663,6 +677,7 @@ export interface RadiologyResultItem {
   catalogItemId: string | null;
   testName: string;
   substitutedFor: string | null;
+  cost: number | null;
   resultText: string | null;
   price: number;
 }
@@ -826,6 +841,65 @@ export interface OrdersReport {
   summary: DeptRevenue[];
   byDay: { date: string; cells: DeptRevenue[] }[];
   byDoctor: { doctorId: string; doctorName: string; cells: DeptRevenue[] }[];
+}
+
+// ---- Department report: what each counter sold, with cost and profit ----
+
+export interface DeptSaleLine {
+  date: string; // ISO timestamp of the sale / bill
+  billId: string;
+  receiptNo: string;
+  setting: 'OPD' | 'IPD';
+  patientName: string;
+  patientCode: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
+  item: string;
+  quantity: number;
+  unitPrice: number;
+  revenue: number; // before tax
+  cost: number;
+  profit: number;
+  // No cost was recorded at the time (older sales); today's list cost used.
+  costEstimated: boolean;
+}
+
+export interface DepartmentReport {
+  department: Department;
+  from: string;
+  to: string;
+  lines: DeptSaleLine[];
+  byDay: { date: string; revenue: number; cost: number; profit: number }[];
+  byItem: { item: string; quantity: number; revenue: number; cost: number; profit: number }[];
+  totals: { revenue: number; cost: number; profit: number; count: number };
+}
+
+// ---- Doctor's share of in-house profit (Tier 2+) ----
+
+export type ShareDepartment = Department;
+
+export interface ProfitShareRate {
+  doctorId: string | null; // null: the clinic's default
+  department: ShareDepartment;
+  percent: number;
+}
+
+export interface DoctorShareRow {
+  doctorId: string | null; // null: sales not linked to a doctor (over the counter)
+  doctorName: string;
+  department: ShareDepartment;
+  revenue: number;
+  cost: number;
+  profit: number;
+  percent: number; // the rate applied
+  share: number; // the doctor's share of the profit (0 when there's a loss)
+}
+
+export interface DoctorShareReport {
+  from: string;
+  to: string;
+  rows: DoctorShareRow[];
+  totals: { revenue: number; cost: number; profit: number; share: number };
 }
 
 // ---- Patient record ----

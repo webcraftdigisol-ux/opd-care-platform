@@ -9,10 +9,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { RevenueReport, cell, download } from '../components/RevenueReport';
 import { OrdersReport } from '../components/OrdersReport';
+import { DoctorShareReport } from '../components/DoctorShareReport';
 import { PageHeader, btnSecondary } from '../components/ui';
 import type { Department, FollowUpItem, FollowUpReminderResult, Notification, Role } from '@opd/shared';
 
-type Tab = 'revenue' | 'orders' | 'activity' | 'follow-ups';
+type Tab = 'revenue' | 'orders' | 'share' | 'activity' | 'follow-ups';
 
 // A department counter's reports cover only its own department.
 const DEPARTMENT_OF: Partial<Record<Role, Department>> = {
@@ -224,19 +225,22 @@ function FollowUpsTab() {
 
 export function ReportsPage() {
   const { clinic, user } = useAuth();
-  const [tab, setTab] = useState<Tab>('revenue');
+  const [tab, setTab] = useState<Tab>('orders');
   const own = user ? DEPARTMENT_OF[user.role] : undefined;
   const tier2 = (clinic?.tier ?? 1) >= 2;
 
+  // Every tier gets the revenue summary: consultation in Tier 1; in Tier 2
+  // also what doctors ordered vs what the lab, radiology and pharmacy
+  // earned; in Tier 3 split OPD / IPD. Tier 2+ adds the doctors' profit share.
   const tabs: { key: Tab; label: string }[] = own
     ? [
-        { key: 'revenue', label: 'Revenue' },
-        { key: 'orders', label: 'In-house revenue' },
+        { key: 'orders', label: 'Revenue summary' },
+        { key: 'revenue', label: 'Bills & collections' },
       ]
     : [
-        { key: 'revenue', label: 'Revenue' },
-        // What was ordered vs done in-house needs the Tier 2 departments.
-        ...(tier2 ? [{ key: 'orders' as const, label: 'In-house revenue' }] : []),
+        { key: 'orders', label: 'Revenue summary' },
+        { key: 'revenue', label: 'Bills & collections' },
+        ...(tier2 ? [{ key: 'share' as const, label: 'Doctor share' }] : []),
         { key: 'activity', label: 'Daily Activity' },
         { key: 'follow-ups', label: 'Follow-ups Due' },
       ];
@@ -245,7 +249,7 @@ export function ReportsPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <PageHeader
         title="Reports"
-        subtitle={own ? 'Your department’s revenue, and how much of what doctors ordered was done here.' : 'Revenue by department, in-house revenue, activity and follow-ups.'}
+        subtitle={own ? 'Your department’s revenue, and how much of what doctors ordered was done here.' : tier2 ? 'Revenue by department, doctor profit share, activity and follow-ups.' : 'Consultation revenue, bills, activity and follow-ups.'}
       />
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist">
         {tabs.map((t) => (
@@ -264,6 +268,7 @@ export function ReportsPage() {
       </div>
       {tab === 'revenue' && <RevenueReport lockTo={own} />}
       {tab === 'orders' && <OrdersReport lockTo={own} />}
+      {tab === 'share' && <DoctorShareReport />}
       {tab === 'activity' && <ActivityTab />}
       {tab === 'follow-ups' && <FollowUpsTab />}
     </div>

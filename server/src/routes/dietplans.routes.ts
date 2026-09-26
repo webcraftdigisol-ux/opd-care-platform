@@ -17,6 +17,7 @@ dietPlansRouter.use(requireAuth);
 const createSchema = z.object({
   patientId: z.string().min(1),
   consultationId: z.string().optional(),
+  admissionId: z.string().optional(),
   dietaryPreference: z.enum(['VEG', 'NON_VEG', 'EGGETARIAN', 'VEGAN']),
   allergies: z.string().optional(),
   localFoodNotes: z.string().optional(),
@@ -41,12 +42,17 @@ dietPlansRouter.post(
       });
       if (!consultation) throw new HttpError(404, 'Consultation not found for this patient');
     }
+    if (data.admissionId) {
+      const admission = await prisma.admission.findFirst({ where: { id: data.admissionId, clinicId: req.auth!.clinicId, patientId: data.patientId } });
+      if (!admission) throw new HttpError(404, 'Admission not found for this patient');
+    }
 
     const plan = await prisma.dietPlan.create({
       data: {
         clinicId: req.auth!.clinicId,
         patientId: data.patientId,
         consultationId: data.consultationId,
+        admissionId: data.admissionId,
         createdById: req.auth!.userId,
         dietaryPreference: data.dietaryPreference,
         allergies: data.allergies,

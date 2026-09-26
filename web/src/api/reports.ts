@@ -3,6 +3,9 @@ import type {
   BillType,
   DailyActivityReport,
   Department,
+  DepartmentReport,
+  DoctorShareReport,
+  ProfitShareRate,
   FinancialReport,
   FollowUpReminderResult,
   FollowUpsReport,
@@ -46,4 +49,20 @@ export async function getOrdersReport(q: { from: string; to: string; doctorId?: 
     params: { from: q.from, to: q.to, doctorId: q.doctorId, departments: q.departments?.join(',') },
   });
   return res.data;
+}
+
+export async function getDepartmentReport(department: Department, from: string, to: string): Promise<DepartmentReport> {
+  return (await apiClient.get<DepartmentReport>('/reports/department', { params: { department, from, to } })).data;
+}
+
+export async function getDoctorShare(from: string, to: string): Promise<DoctorShareReport> {
+  return (await apiClient.get<DoctorShareReport>('/reports/doctor-share', { params: { from, to } })).data;
+}
+
+export async function getProfitShareRates(): Promise<ProfitShareRate[]> {
+  return (await apiClient.get<ProfitShareRate[]>('/reports/profit-share-rates')).data;
+}
+
+export async function saveProfitShareRates(rates: { doctorId: string | null; department: ProfitShareRate['department']; percent: number | null }[]): Promise<ProfitShareRate[]> {
+  return (await apiClient.put<ProfitShareRate[]>('/reports/profit-share-rates', { rates })).data;
 }

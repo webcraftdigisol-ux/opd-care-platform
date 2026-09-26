@@ -73,11 +73,15 @@ test.describe('Patient record: register, find, profile, edit', () => {
     await applySession(page, admin);
     await page.goto('/admin');
     const nav = page.getByRole('navigation', { name: 'Main' });
-    for (const label of ['Dashboard', 'New Patient', 'Find Patient', 'Pharmacy counter', 'Lab counter', 'Radiology counter', 'In-Patients', 'Wards', 'Staff', 'Reports']) {
+    for (const label of ['Dashboard', 'New Patient', 'Find Patient', 'Pharmacy', 'Laboratory', 'Radiology', 'In-Patients', 'Wards', 'Staff', 'Reports']) {
       await expect(nav.getByRole('link', { name: label })).toBeVisible();
     }
-    // ...and can open them, e.g. the pharmacy counter.
-    await nav.getByRole('link', { name: 'Pharmacy counter' }).click();
+    // ...one entry per department, whose counter, list and report are tabs.
+    await expect(nav.getByRole('link', { name: /counter|list/i })).toHaveCount(0);
+    await nav.getByRole('link', { name: 'Pharmacy' }).click();
     await expect(page).toHaveURL(/\/pharmacy$/);
+    await page.getByTestId('dept-tab-report').click();
+    await expect(page).toHaveURL(/\/pharmacy\/report$/);
+    await expect(page.getByTestId('dept-report-revenue')).toBeVisible();
   });
 });

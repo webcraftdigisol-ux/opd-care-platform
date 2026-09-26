@@ -223,6 +223,10 @@ describe("Doctor's Catalogue", () => {
     ]);
     expect(s.body.labTests).toEqual(['CBC']);
     expect(s.body.radiology).toEqual(['X-Ray']);
+    // The standard list backs them up with only what the clinic doesn't have.
+    expect(s.body.standard.labTests).not.toContain('CBC');
+    expect(s.body.standard.medicines.some((m: { name: string; strength: string }) => m.name === 'Paracetamol' && m.strength === '500 mg')).toBe(false);
+    expect(s.body.standard.medicines.some((m: { name: string; strength: string }) => m.name === 'Paracetamol' && m.strength === '650 mg')).toBe(true);
 
     const edited = await request(app).put(`/api/catalogue/${xray.body.id}`).set(auth(doctorToken)).send({ name: 'Chest X-Ray' });
     expect(edited.body.name).toBe('Chest X-Ray');
@@ -248,6 +252,16 @@ describe("Doctor's Catalogue", () => {
     expect(saved.body.prescriptions[0]).toMatchObject({ medicine: 'Paracetamol', brand: 'Dolo 650' });
     const summary = await request(app).get(`/api/consultations/${visitId}/summary`).set(auth(doctorToken));
     expect(summary.body.prescriptions[0].brand).toBe('Dolo 650');
+  });
+
+  it('backs up empty lists with the standard list, so "C" offers CBC and "X" the X-rays', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 2 });
+    void clinic;
+    const s = await request(app).get('/api/catalogue/suggestions').set(auth(adminToken));
+    expect(s.body.labTests).toEqual([]);
+    expect(s.body.standard.labTests.some((n: string) => /^CBC/.test(n))).toBe(true);
+    expect(s.body.standard.radiology.filter((n: string) => /^X-Ray/i.test(n)).length).toBeGreaterThan(3);
+    expect(s.body.standard.medicines.some((m: { name: string }) => m.name === 'Paracetamol')).toBe(true);
   });
 
   it('adds the starter list once, skipping what is already there', async () => {

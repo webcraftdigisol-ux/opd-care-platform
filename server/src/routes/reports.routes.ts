@@ -12,7 +12,8 @@ import { sendFollowUpReminder } from '../utils/reminders';
 import { toNotification } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
-import type { Department, OrdersReport, Role } from '@opd/shared';
+import type { Department, DepartmentReport, DoctorShareReport, OrdersReport, ProfitShareRate, Role } from '@opd/shared';
+import { computeDepartmentReport, computeDoctorShare } from '../utils/departmentLines';
 import { computeOrdersReport } from '../utils/ordersReport';
 import type { FinancialReport, FollowUpItem, FollowUpReminderResult, FollowUpsReport, TransactionsReport } from '@opd/shared';
 import { computeTransactions } from '../utils/transactions';
@@ -137,7 +138,6 @@ const ordersQuerySchema = z.object({
 // department.
 reportsRouter.get(
   '/orders',
-  requireTier(2),
   asyncHandler(async (req: AuthedRequest, res) => {
     const q = ordersQuerySchema.parse(req.query);
     checkRange(q.from, q.to);
@@ -152,6 +152,88 @@ reportsRouter.get(
       departments: own ? [own] : q.departments,
     });
     res.json(report);
+  }),
+);
+
+const rangeSchema = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
+
+// A department's own report: every medicine or test it sold in the dates,
+// with revenue, cost and profit. A counter sees its own department.
+reportsRouter.get(
+  '/department',
+  requireTier(2),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const q = rangeSchema.extend({ department: z.enum(['PHARMACY', 'LAB', 'RADIOLOGY']) }).parse(req.query);
+    checkRange(q.from, q.to);
+    const own = DEPARTMENT_OF[req.auth!.role];
+    if (req.auth!.role === 'DOCTOR') throw new HttpError(403, 'Department reports are for the department and admin');
+    if (own && own !== q.department) throw new HttpError(403, 'You can only see your own department');
+    const report: DepartmentReport = await computeDepartmentReport(req.auth!.clinicId, q.department, q.from, q.to);
+    res.json(report);
+  }),
+);
+
+// The doctors' share of in-house profit. Admin sees every doctor; a doctor
+// sees their own.
+reportsRouter.get(
+  '/doctor-share',
+  CLINICAL,
+  requireTier(2),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const q = rangeSchema.parse(req.query);
+    checkRange(q.from, q.to);
+    const report: DoctorShareReport = await computeDoctorShare(req.auth!.clinicId, q.from, q.to, await forcedDoctorId(req, undefined));
+    res.json(report);
+  }),
+);
+
+reportsRouter.get(
+  '/profit-share-rates',
+  CLINICAL,
+  requireTier(2),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const doctorId = await forcedDoctorId(req, undefined);
+    const rates = await prisma.profitShareRate.findMany({
+      where: { clinicId: req.auth!.clinicId, ...(doctorId ? { OR: [{ doctorId }, { doctorId: null }] } : {}) },
+    });
+    const response: ProfitShareRate[] = rates.map((r) => ({ doctorId: r.doctorId, department: r.department, percent: r.percent }));
+    res.json(response);
+  }),
+);
+
+const ratesSchema = z.object({
+  rates: z
+    .array(
+      z.object({
+        doctorId: z.string().min(1).nullable(),
+        department: z.enum(['PHARMACY', 'LAB', 'RADIOLOGY']),
+        // null clears a doctor's own rate (back to the clinic default).
+        percent: z.number().min(0).max(100).nullable(),
+      }),
+    )
+    .max(500),
+});
+
+// Admin sets the rates: the clinic default per department, and any
+// doctor's own.
+reportsRouter.put(
+  '/profit-share-rates',
+  requireRole('ADMIN'),
+  requireTier(2),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { rates } = ratesSchema.parse(req.body);
+    const clinicId = req.auth!.clinicId;
+    const doctorIds = [...new Set(rates.flatMap((r) => (r.doctorId ? [r.doctorId] : [])))];
+    const found = await prisma.doctorProfile.count({ where: { id: { in: doctorIds }, user: { clinicId } } });
+    if (found !== doctorIds.length) throw new HttpError(404, 'Doctor not found');
+    await prisma.$transaction(async (tx) => {
+      for (const r of rates) {
+        await tx.profitShareRate.deleteMany({ where: { clinicId, doctorId: r.doctorId, department: r.department } });
+        if (r.percent != null) await tx.profitShareRate.create({ data: { clinicId, doctorId: r.doctorId, department: r.department, percent: r.percent } });
+      }
+    });
+    const all = await prisma.profitShareRate.findMany({ where: { clinicId } });
+    res.json(all.map((r) => ({ doctorId: r.doctorId, department: r.department, percent: r.percent })));
   }),
 );
 

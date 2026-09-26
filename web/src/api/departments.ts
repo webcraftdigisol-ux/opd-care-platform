@@ -66,11 +66,11 @@ export async function listTestCatalog(dept: TestDept): Promise<LabTestCatalogEnt
   return (await apiClient.get<LabTestCatalogEntry[]>(`/${dept}/catalog`)).data;
 }
 
-export async function createTestCatalogEntry(dept: TestDept, data: { name: string; price: number }): Promise<LabTestCatalogEntry> {
+export async function createTestCatalogEntry(dept: TestDept, data: { name: string; price: number; cost?: number }): Promise<LabTestCatalogEntry> {
   return (await apiClient.post<LabTestCatalogEntry>(`/${dept}/catalog`, data)).data;
 }
 
-export async function updateTestCatalogEntry(dept: TestDept, id: string, data: { name?: string; price?: number }): Promise<LabTestCatalogEntry> {
+export async function updateTestCatalogEntry(dept: TestDept, id: string, data: { name?: string; price?: number; cost?: number }): Promise<LabTestCatalogEntry> {
   return (await apiClient.put<LabTestCatalogEntry>(`/${dept}/catalog/${id}`, data)).data;
 }
 

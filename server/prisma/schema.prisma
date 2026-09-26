@@ -123,6 +123,7 @@ model Clinic {
   attachments       Attachment[]
   consentForms      ConsentForm[]
   certificates      MedicalCertificate[]
+  profitShareRates  ProfitShareRate[]
   subscription      Subscription?
   dietPlans         DietPlan[]
   patientProfiles   PatientProfile[]
@@ -288,6 +289,7 @@ model DoctorProfile {
   ipdVisits    IpdDoctorVisit[]
   consentForms ConsentForm[]
   certificates MedicalCertificate[]
+  profitShares ProfitShareRate[]
 }
 
 model Schedule {
@@ -440,6 +442,9 @@ model DietPlan {
   patient           User              @relation("PatientDietPlans", fields: [patientId], references: [id])
   consultationId    String?
   consultation      Consultation?     @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  // A diet advised during an admission (IPD).
+  admissionId       String?
+  admission         Admission?        @relation(fields: [admissionId], references: [id], onDelete: SetNull)
   createdById       String
   createdBy         User              @relation("DietPlansAuthored", fields: [createdById], references: [id])
   dietaryPreference DietaryPreference
@@ -518,6 +523,8 @@ model PharmacySaleItem {
   substitutedFor String?
   quantity       Int
   unitPrice      Float
+  // Cost per unit when sold (from the medicine list), for profit.
+  unitCost       Float?
   lineTotal      Float
 
   @@index([saleId])
@@ -550,6 +557,8 @@ model LabTestCatalog {
   clinic      Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   name        String
   price       Float
+  // What the test costs the clinic (reagents, film, reporting fee...).
+  cost        Float @default(0)
   resultItems LabResultItem[]
 
   @@index([clinicId])
@@ -593,6 +602,8 @@ model LabResultItem {
   substitutedFor String?
   resultText    String?
   price         Float
+  // Cost when done (from the test list), for profit.
+  cost          Float?
 
   @@index([invoiceId])
   @@index([orderId])
@@ -625,6 +636,8 @@ model RadiologyCatalog {
   clinic      Clinic                @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   name        String
   price       Float
+  // What the test costs the clinic (reagents, film, reporting fee...).
+  cost        Float @default(0)
   resultItems RadiologyResultItem[]
 
   @@index([clinicId])
@@ -668,6 +681,8 @@ model RadiologyResultItem {
   substitutedFor String?
   resultText    String?
   price         Float
+  // Cost when done (from the test list), for profit.
+  cost          Float?
 
   @@index([invoiceId])
   @@index([orderId])
@@ -748,6 +763,7 @@ model Admission {
   radiologyInvoices RadiologyInvoice[]
   bill              IpdBill?
   consentForms      ConsentForm[]
+  dietPlans         DietPlan[]
 
   @@index([clinicId])
   @@index([patientId])
@@ -1182,4 +1198,28 @@ model MedicalCertificate {
 
   @@index([clinicId])
   @@index([patientId])
+}
+
+enum ShareDepartment {
+  PHARMACY
+  LAB
+  RADIOLOGY
+}
+
+// The doctor's share of the profit (revenue - cost) the in-house pharmacy,
+// lab and radiology make from that doctor's patients. A row with no
+// doctorId is the clinic's default for the department; a doctor's own row
+// overrides it. Set by the admin.
+model ProfitShareRate {
+  id         String          @id @default(uuid())
+  clinicId   String
+  clinic     Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId   String?
+  doctor     DoctorProfile?  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  department ShareDepartment
+  percent    Float
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([clinicId, doctorId, department])
+  @@index([clinicId])
 }

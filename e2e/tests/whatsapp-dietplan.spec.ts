@@ -42,18 +42,21 @@ test.describe('WhatsApp opt-in and diet plans', () => {
     await applySession(page, doctorSession);
     await page.goto(`/doctor/consult/${appointment.id}`);
 
-    await expect(page.getByRole('heading', { name: 'Diet Plan' })).toBeVisible();
-    await page.getByPlaceholder('Allergies (optional)').fill('shellfish');
-    await page.getByPlaceholder('Locally available food notes (optional)').fill('seasonal greens');
-    await page
-      .getByPlaceholder(/Diet plan \/ recommendation/)
-      .fill('High-protein recovery diet, avoid processed sugar.');
-    await page.getByRole('button', { name: 'Save diet plan' }).click();
+    await expect(page.getByRole('heading', { name: 'Diet plan' })).toBeVisible();
+    // The diagnosis suggests a template; non-veg fills the non-veg version.
+    await page.getByTestId('diagnosis').fill('Viral fever');
+    await page.getByTestId('diet-suggestion').filter({ hasText: 'Fever / viral infection' }).click();
+    await page.getByTestId('diet-kind-NON_VEG').click();
+    const plan = page.getByTestId('diet-plan-text');
+    await expect(plan).toHaveValue(/^Fever \/ viral infection — non-vegetarian diet/);
+    await expect(plan).toHaveValue(/chicken soup/);
+    await plan.fill(`${await plan.inputValue()}\nAvoid processed sugar.`);
+    await page.getByTestId('save-diet-plan').click();
 
-    await expect(page.getByText('High-protein recovery diet, avoid processed sugar.')).toBeVisible();
+    await expect(page.getByTestId('diet-plan').filter({ hasText: 'Avoid processed sugar.' })).toContainText('Non-veg');
 
-    await page.getByRole('button', { name: 'Send via WhatsApp' }).click();
-    await expect(page.getByText('Diet plan sent via WhatsApp.')).toBeVisible();
+    await page.getByRole('button', { name: 'Send on WhatsApp' }).click();
+    await expect(page.getByText('Diet plan sent on WhatsApp.')).toBeVisible();
   });
 
   test('the send button is disabled with an explanation when the patient has not opted in', async ({ page }) => {
@@ -70,11 +73,11 @@ test.describe('WhatsApp opt-in and diet plans', () => {
     await applySession(page, doctorSession);
     await page.goto(`/doctor/consult/${appointment.id}`);
 
-    await page.getByPlaceholder(/Diet plan \/ recommendation/).fill('Balanced diet.');
-    await page.getByRole('button', { name: 'Save diet plan' }).click();
-    await expect(page.getByText('Balanced diet.')).toBeVisible();
+    await page.getByTestId('diet-plan-text').fill('Balanced diet.');
+    await page.getByTestId('save-diet-plan').click();
+    await expect(page.getByTestId('diet-plan').filter({ hasText: 'Balanced diet.' })).toBeVisible();
 
-    await expect(page.getByText("Patient hasn't opted in to WhatsApp messages yet.")).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Send via WhatsApp' })).toBeDisabled();
+    await expect(page.getByText("The patient hasn't opted in to WhatsApp messages.")).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send on WhatsApp' })).toBeDisabled();
   });
 });

@@ -93,6 +93,7 @@ catalogueRouter.get(
       if (same) same.brands = cleanBrands([...same.brands, ...m.brands]);
       else medicines.push(m);
     }
+
     const names = (kind: PrismaCatalogKind, extra: { name: string }[]) => {
       const seen = new Map<string, string>();
       for (const n of [...items.filter((i) => i.kind === kind), ...extra].map((i) => i.name)) {
@@ -100,10 +101,26 @@ catalogueRouter.get(
       }
       return [...seen.values()].sort((a, b) => a.localeCompare(b));
     };
+    const labTests = names('LAB_TEST', lab);
+    const radiologyTests = names('RADIOLOGY', radiology);
+    // The standard list backs up the clinic's own, so typing "C" offers CBC
+    // and "X" the X-rays even before any list is loaded; only what the
+    // clinic doesn't already have, offered after the clinic's own.
+    const missing = (own: string[], kind: PrismaCatalogKind) => {
+      const have = new Set(own.map((n) => n.toLowerCase()));
+      return STARTER_CATALOG.filter((i) => i.kind === kind && !have.has(i.name.toLowerCase())).map((i) => i.name);
+    };
     const response: CatalogSuggestions = {
       medicines: medicines.sort((a, b) => a.name.localeCompare(b.name)),
-      labTests: names('LAB_TEST', lab),
-      radiology: names('RADIOLOGY', radiology),
+      labTests,
+      radiology: radiologyTests,
+      standard: {
+        medicines: STARTER_CATALOG.filter((i) => i.kind === 'MEDICINE')
+          .map((i) => ({ name: i.name, strength: i.strength ?? null, brands: i.brands ?? [] }))
+          .filter((m) => !medicines.some((x) => sameKey(x, m))),
+        labTests: missing(labTests, 'LAB_TEST'),
+        radiology: missing(radiologyTests, 'RADIOLOGY'),
+      },
     };
     res.json(response);
   }),

@@ -77,7 +77,7 @@ test.describe('Tier 3 IPD', () => {
     await request('POST', `/ipd/admissions/${admission.id}/procedures`, { name: 'Dressing', consentSigned: false, fee: 700 }, admin.token);
     await applySession(page, admin);
     await page.goto('/admin/reports');
-    await page.getByRole('tab', { name: 'In-house revenue' }).click();
+    await page.getByRole('tab', { name: 'Revenue summary' }).click();
     await expect(page.getByTestId('orders-by-department')).toContainText('OPD — ordered vs done in-house');
     await expect(page.getByTestId('orders-dept-PROCEDURE').getByTestId('dept-ipd')).toHaveText('₹700');
     await expect(page.getByTestId('orders-dept-PROCEDURE').getByTestId('dept-total')).toHaveText('₹700');

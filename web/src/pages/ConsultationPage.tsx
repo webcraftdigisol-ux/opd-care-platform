@@ -14,9 +14,9 @@ import { getConsultation, saveConsultation, sendVisitSummaryWhatsApp } from '../
 import { getAppointment } from '../api/appointments';
 import { getPatient, getPatientRecords } from '../api/patients';
 import { getCatalogSuggestions } from '../api/catalogue';
-import { AttachmentPanel } from '../components/AttachmentPanel';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { DietPlanSection } from '../components/DietPlanSection';
+import { PreviousVisitSummary } from '../components/PreviousVisitSummary';
 import { SuggestInput } from '../components/SuggestInput';
 import { Card, Field, btnPrimary, btnSecondary, inputClass } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -93,21 +93,21 @@ export function ConsultationPage() {
   // Paracetamol 650 mg") is a suggestion, so typing either finds the
   // medicine; picking a brand also fills the brand box.
   type MedicineOption = { name: string; strength: string | null; brands: string[]; brand?: string };
-  const medicineOptions = useMemo(() => {
+  const optionsOf = (meds: MedicineOption[]) => {
     const map = new Map<string, MedicineOption>();
-    const meds = suggestions?.medicines ?? [];
     for (const m of meds) map.set(m.strength ? `${m.name} (${m.strength})` : m.name, m);
     for (const m of meds) {
       for (const b of m.brands) map.set(`${b} — ${m.name}${m.strength ? ` ${m.strength}` : ''}`, { ...m, brand: b });
     }
     return map;
-  }, [suggestions]);
-  const brandsFor = (name: string, strength?: string | null) =>
-    suggestions?.medicines.find(
-      (m) => m.name.toLowerCase() === name.trim().toLowerCase() && (m.strength ?? '').toLowerCase() === (strength ?? '').trim().toLowerCase(),
-    )?.brands ??
-    // No exact strength match: the brands of any strength of this medicine.
-    [...new Set((suggestions?.medicines ?? []).filter((m) => m.name.toLowerCase() === name.trim().toLowerCase()).flatMap((m) => m.brands))];
+  };
+  // The clinic's own medicines, then the standard list's behind them.
+  const medicineOptions = useMemo(() => optionsOf(suggestions?.medicines ?? []), [suggestions]);
+  const standardOptions = useMemo(() => optionsOf(suggestions?.standard?.medicines ?? []), [suggestions]);
+  const brandsFor = (name: string, strength?: string | null) => {
+    const own = brandsIn(suggestions?.medicines ?? [], name, strength);
+    return own.length ? own : brandsIn(suggestions?.standard?.medicines ?? [], name, strength);
+  };
 
   const [fee, setFee] = useState('');
   const [vitals, setVitals] = useState<Vitals>({});
@@ -273,6 +273,8 @@ export function ConsultationPage() {
         )}
       </section>
 
+      {!showHistory && patientId && <PreviousVisitSummary patientId={patientId} currentAppointmentId={appointmentId!} />}
+
       {showHistory && patientId && (
         <PatientHistoryPanel patientId={patientId} currentAppointmentId={appointmentId!} currentConsultationId={existing?.id} />
       )}
@@ -341,20 +343,14 @@ export function ConsultationPage() {
 
         <Card title="Clinical notes">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Chief complaint" className="sm:col-span-2">
+            <Field label="Chief Complaint / Symptoms" className="sm:col-span-2">
               <textarea rows={2} value={chiefComplaint} onChange={(e) => setChiefComplaint(e.target.value)} className={inputClass} data-testid="chief-complaint" />
             </Field>
             <Field label="History of present illness">
               <textarea rows={2} value={presentIllness} onChange={(e) => setPresentIllness(e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Relevant history">
-              <textarea rows={2} value={relevantHistory} onChange={(e) => setRelevantHistory(e.target.value)} className={inputClass} />
-            </Field>
             <Field label="Diagnosis">
-              <input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} className={inputClass} data-testid="diagnosis" />
-            </Field>
-            <Field label="Differential diagnosis">
-              <input value={differentialDiagnosis} onChange={(e) => setDifferentialDiagnosis(e.target.value)} className={inputClass} />
+              <textarea rows={2} value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} className={inputClass} data-testid="diagnosis" />
             </Field>
           </div>
         </Card>
@@ -393,7 +389,7 @@ export function ConsultationPage() {
                           placeholder="Medicine or brand"
                           value={r.medicine}
                           onChange={(v) => {
-                            const picked = medicineOptions.get(v);
+                            const picked = medicineOptions.get(v) ?? standardOptions.get(v);
                             updateRow(
                               r.key,
                               picked
@@ -408,6 +404,7 @@ export function ConsultationPage() {
                             );
                           }}
                           suggestions={[...medicineOptions.keys()]}
+                          fallback={[...standardOptions.keys()]}
                           testId={`prescription-medicine-${i}`}
                           className={small}
                         />
@@ -509,6 +506,7 @@ export function ConsultationPage() {
           orders={labTests}
           setOrders={setLabTests}
           suggestions={suggestions?.labTests ?? []}
+          fallback={suggestions?.standard?.labTests ?? []}
           testIdPrefix="lab-test-name"
         />
         <OrdersCard
@@ -518,6 +516,7 @@ export function ConsultationPage() {
           orders={radiology}
           setOrders={setRadiology}
           suggestions={suggestions?.radiology ?? []}
+          fallback={suggestions?.standard?.radiology ?? []}
           testIdPrefix="radiology-test-name"
         />
 
@@ -560,20 +559,7 @@ export function ConsultationPage() {
           </div>
         </Card>
 
-        <details className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <summary className="cursor-pointer font-semibold text-gray-900">Prescription scan &amp; diet plan</summary>
-          <div className="mt-4 space-y-5">
-            <div>
-              <h3 className="font-medium text-gray-800">Prescription scan</h3>
-              {existing?.id ? (
-                <AttachmentPanel category="PRESCRIPTION_SCAN" entityId={existing.id} label="Attached scans (e.g. a prescription the patient brought in)" />
-              ) : (
-                <p className="mt-2 text-sm text-gray-500">Save first to attach a file.</p>
-              )}
-            </div>
-          </div>
-        </details>
-        <DietPlanSection patient={appointment.patient} consultationId={existing?.id} />
+        <DietPlanSection patient={appointment.patient} consultationId={existing?.id} context={`${chiefComplaint}\n${diagnosis}`} />
       </div>
 
       {/* Sticky actions */}
@@ -612,6 +598,16 @@ export function ConsultationPage() {
   );
 }
 
+type Med = { name: string; strength: string | null; brands: string[] };
+
+// A medicine's brands at this strength, or failing an exact strength
+// match, the brands of any strength of it.
+function brandsIn(meds: Med[], name: string, strength?: string | null): string[] {
+  const n = name.trim().toLowerCase();
+  const exact = meds.find((m) => m.name.toLowerCase() === n && (m.strength ?? '').toLowerCase() === (strength ?? '').trim().toLowerCase());
+  return exact ? exact.brands : [...new Set(meds.filter((m) => m.name.toLowerCase() === n).flatMap((m) => m.brands))];
+}
+
 function OrdersCard({
   title,
   empty,
@@ -619,6 +615,7 @@ function OrdersCard({
   orders,
   setOrders,
   suggestions,
+  fallback,
   testIdPrefix,
 }: {
   title: string;
@@ -627,6 +624,7 @@ function OrdersCard({
   orders: LabTestOrderInput[];
   setOrders: React.Dispatch<React.SetStateAction<LabTestOrderInput[]>>;
   suggestions: string[];
+  fallback: string[];
   testIdPrefix: string;
 }) {
   const update = (i: number, patch: Partial<LabTestOrderInput>) => setOrders((os) => os.map((o, j) => (j === i ? { ...o, ...patch } : o)));
@@ -651,6 +649,7 @@ function OrdersCard({
                   value={o.testName}
                   onChange={(v) => update(i, { testName: v })}
                   suggestions={suggestions}
+                  fallback={fallback}
                   testId={`${testIdPrefix}-${i}`}
                   className={small}
                 />

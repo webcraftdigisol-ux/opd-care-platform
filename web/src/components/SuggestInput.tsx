@@ -4,6 +4,9 @@ interface SuggestInputProps {
   value: string;
   onChange: (value: string) => void;
   suggestions: string[];
+  // Offered only after every match in `suggestions` (e.g. the standard
+  // list behind the clinic's own).
+  fallback?: string[];
   placeholder?: string;
   className?: string;
   required?: boolean;
@@ -20,17 +23,20 @@ const MAX_SUGGESTIONS = 8;
 // entries) -- not a remote-search autocomplete. Matching the smallness of
 // what it searches, there's no debounce or server round-trip: every
 // keystroke just re-filters the array already sitting in memory.
-export function SuggestInput({ value, onChange, suggestions, placeholder, className, required, testId, showAllOnFocus }: SuggestInputProps) {
+export function SuggestInput({ value, onChange, suggestions, fallback, placeholder, className, required, testId, showAllOnFocus }: SuggestInputProps) {
   const [open, setOpen] = useState(false);
 
   const matches = useMemo(() => {
     const query = value.trim().toLowerCase();
     if (!query) return showAllOnFocus ? suggestions.slice(0, MAX_SUGGESTIONS) : [];
-    const hits = suggestions.filter((s) => s.toLowerCase().includes(query) && s.toLowerCase() !== query);
-    // Names that start with what was typed come first.
-    const starts = hits.filter((s) => s.toLowerCase().startsWith(query));
-    return [...starts, ...hits.filter((s) => !s.toLowerCase().startsWith(query))].slice(0, MAX_SUGGESTIONS);
-  }, [value, suggestions, showAllOnFocus]);
+    const rank = (list: string[]) => {
+      const hits = list.filter((s) => s.toLowerCase().includes(query) && s.toLowerCase() !== query);
+      // Names that start with what was typed come first.
+      const starts = hits.filter((s) => s.toLowerCase().startsWith(query));
+      return [...starts, ...hits.filter((s) => !s.toLowerCase().startsWith(query))];
+    };
+    return [...rank(suggestions), ...rank(fallback ?? [])].slice(0, MAX_SUGGESTIONS);
+  }, [value, suggestions, fallback, showAllOnFocus]);
 
   function selectSuggestion(s: string) {
     onChange(s);

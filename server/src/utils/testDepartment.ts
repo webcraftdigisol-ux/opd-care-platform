@@ -51,7 +51,11 @@ export function testDepartmentRouter(cfg: TestDepartmentConfig): Router {
   );
 
   // Price 0 = not priced yet (the standard list comes in unpriced).
-  const upsertSchema = z.object({ name: z.string().trim().min(1, 'Test name is required').max(200), price: z.number().nonnegative() });
+  const upsertSchema = z.object({
+    name: z.string().trim().min(1, 'Test name is required').max(200),
+    price: z.number().nonnegative(),
+    cost: z.number().nonnegative().optional(),
+  });
 
   async function assertNewName(clinicId: string, name: string, exceptId?: string) {
     const same: LabTestCatalog | null = await cfg.catalog.findFirst({
@@ -324,6 +328,7 @@ export function testDepartmentRouter(cfg: TestDepartmentConfig): Router {
                   catalogItemId: item.catalogItemId,
                   testName: item.testName,
                   substitutedFor: ordered && lower(ordered.testName) !== lower(item.testName) ? ordered.testName : null,
+                  cost: catalog.find((c) => c.id === item.catalogItemId)?.cost ?? null,
                   resultText: item.resultText,
                   price: item.price,
                 };

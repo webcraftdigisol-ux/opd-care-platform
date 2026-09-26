@@ -356,6 +356,7 @@ pharmacyRouter.post(
         medicineName: item.medicineName,
         substitutedFor: substituted && prescribed ? medicineLabel(prescribed) : null,
         quantity: item.quantity,
+        unitCost: product?.costPricePerUnit ?? null,
         unitPrice: item.unitPrice,
         lineTotal: item.quantity * item.unitPrice,
       };

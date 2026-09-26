@@ -15,10 +15,11 @@ test.describe('Medicine catalog management', () => {
     const pharmSession = await login({ clinicSlug, email: pharmacist.email });
 
     await applySession(page, pharmSession);
-    await page.goto('/pharmacy');
-    // Reachable via the nav link, not just a direct URL -- this is the
-    // widened role access, not just a route that happens to accept the role.
-    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.goto('/');
+    // Reachable from the sidebar's Pharmacy entry and its Medicine list tab,
+    // not just a direct URL.
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Pharmacy' }).click();
+    await page.getByTestId('dept-tab-medicine-list').click();
     await expect(page).toHaveURL('/pharmacy/settings');
 
     await page.getByTestId('toggle-add').click();

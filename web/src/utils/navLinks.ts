@@ -28,6 +28,11 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
   const wards: NavLink = { to: '/admin/ipd/wards', label: 'Wards', icon: 'building' };
   const reports: NavLink = { to: '/admin/reports', label: 'Reports', icon: 'chart' };
   const appointments: NavLink = { to: '/appointments', label: 'Appointments', icon: 'calendar' };
+  // One entry per department; its page has Counter / List / Report tabs.
+  const pharmacy: NavLink = { to: '/pharmacy', label: 'Pharmacy', icon: 'pill' };
+  const lab: NavLink = { to: '/lab', label: 'Laboratory', icon: 'flask' };
+  const radiology: NavLink = { to: '/radiology', label: 'Radiology', icon: 'scan' };
+  const departments = [pharmacy, lab, radiology];
   const catalogue: NavLink[] = tier2 ? [] : [{ to: '/catalogue', label: "Doctor's Catalogue", icon: 'book' }];
 
   switch (role) {
@@ -41,31 +46,15 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
             findPatient,
             { to: '/reception', label: "Today's queue", icon: 'queue' },
             walkIn,
+            reports,
             ...catalogue,
           ],
         },
         ...(tier2
           ? [
               {
-                title: 'Pharmacy',
-                links: [
-                  { to: '/pharmacy', label: 'Pharmacy counter', icon: 'pill' as const },
-                  { to: '/pharmacy/settings', label: 'Medicine list', icon: 'book' as const },
-                ],
-              },
-              {
-                title: 'Laboratory',
-                links: [
-                  { to: '/lab', label: 'Lab counter', icon: 'flask' as const },
-                  { to: '/lab/settings', label: 'Lab test list', icon: 'book' as const },
-                ],
-              },
-              {
-                title: 'Radiology',
-                links: [
-                  { to: '/radiology', label: 'Radiology counter', icon: 'scan' as const },
-                  { to: '/radiology/settings', label: 'Radiology list', icon: 'book' as const },
-                ],
+                title: 'Departments',
+                links: departments,
               },
             ]
           : []),
@@ -82,7 +71,6 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
           links: [
             { to: '/admin/doctors', label: 'Doctors', icon: 'doctor' },
             { to: '/admin/staff', label: 'Staff', icon: 'shield' },
-            reports,
             { to: '/admin/notifications', label: 'Notifications', icon: 'bell' },
             { to: '/admin/settings', label: 'Clinic settings', icon: 'building' },
             { to: '/admin/billing', label: 'Subscription', icon: 'card' },
@@ -116,35 +104,11 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
         },
       ];
     case 'PHARMACIST':
-      return [
-        {
-          links: [
-            { to: '/pharmacy', label: 'Patients', icon: 'pill' },
-            { to: '/pharmacy/settings', label: 'Settings', icon: 'book' },
-            reports,
-          ],
-        },
-      ];
+      return [{ links: [pharmacy] }];
     case 'LAB_TECHNICIAN':
-      return [
-        {
-          links: [
-            { to: '/lab', label: 'Patients', icon: 'flask' },
-            { to: '/lab/settings', label: 'Settings', icon: 'book' },
-            reports,
-          ],
-        },
-      ];
+      return [{ links: [lab] }];
     case 'RADIOLOGY_TECHNICIAN':
-      return [
-        {
-          links: [
-            { to: '/radiology', label: 'Patients', icon: 'scan' },
-            { to: '/radiology/settings', label: 'Settings', icon: 'book' },
-            reports,
-          ],
-        },
-      ];
+      return [{ links: [radiology] }];
     case 'NURSE':
       return [{ links: [inPatients] }];
     case 'HEAD_NURSE':

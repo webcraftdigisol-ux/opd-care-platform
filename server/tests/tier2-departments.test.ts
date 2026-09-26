@@ -275,10 +275,11 @@ describe('Tier 2 reports: in-house revenue by department', () => {
     expect((await request(app).get('/api/reports/follow-ups').set(auth(labTech))).status).toBe(403);
   });
 
-  it('is a Tier 2 report', async () => {
+  it('in Tier 1 covers consultation only', async () => {
     const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
     void clinic;
     const res = await request(app).get(`/api/reports/orders?from=${ymd(today())}&to=${ymd(today())}`).set(auth(adminToken));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.departments).toEqual(['CONSULTATION']);
   });
 });

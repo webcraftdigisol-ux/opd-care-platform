@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Role } from '@opd/shared';
-import { navLinksFor } from './navLinks';
+import { navLinksFor, navSectionsFor } from './navLinks';
 
 const labels = (role: Role, tier: number) => navLinksFor(role, tier).map((l) => l.label);
 const destinations = (role: Role, tier: number) => navLinksFor(role, tier).map((l) => l.to);
@@ -19,9 +19,9 @@ describe('navLinksFor', () => {
   });
 
   it('gates admin services on Tier 2 and IPD on Tier 3', () => {
-    expect(labels('ADMIN', 1)).not.toContain('Pharmacy counter');
+    expect(labels('ADMIN', 1)).not.toContain('Pharmacy');
     expect(labels('ADMIN', 1)).not.toContain('In-Patients');
-    expect(labels('ADMIN', 2)).toEqual(expect.arrayContaining(['Pharmacy counter', 'Lab counter', 'Radiology counter']));
+    expect(labels('ADMIN', 2)).toEqual(expect.arrayContaining(['Pharmacy', 'Laboratory', 'Radiology']));
     expect(labels('ADMIN', 2)).not.toContain('Wards');
     expect(labels('ADMIN', 3)).toEqual(expect.arrayContaining(['In-Patients', 'Wards', 'Admit patient']));
   });
@@ -60,12 +60,18 @@ describe('navLinksFor', () => {
       expect(labels(role, 1)).toContain("Doctor's Catalogue");
       expect(labels(role, 2)).not.toContain("Doctor's Catalogue");
     }
-    expect(destinations('ADMIN', 2)).toEqual(expect.arrayContaining(['/pharmacy/settings', '/lab/settings', '/radiology/settings']));
+    expect(destinations('ADMIN', 2)).toEqual(expect.arrayContaining(['/pharmacy', '/lab', '/radiology']));
   });
 
-  it('gives each department counter its patients, its settings and its reports', () => {
-    expect(destinations('PHARMACIST', 2)).toEqual(['/pharmacy', '/pharmacy/settings', '/admin/reports']);
-    expect(destinations('LAB_TECHNICIAN', 2)).toEqual(['/lab', '/lab/settings', '/admin/reports']);
-    expect(destinations('RADIOLOGY_TECHNICIAN', 2)).toEqual(['/radiology', '/radiology/settings', '/admin/reports']);
+  it('gives each department one sidebar entry (its page has Counter / List / Report tabs)', () => {
+    expect(destinations('PHARMACIST', 2)).toEqual(['/pharmacy']);
+    expect(destinations('LAB_TECHNICIAN', 2)).toEqual(['/lab']);
+    expect(destinations('RADIOLOGY_TECHNICIAN', 2)).toEqual(['/radiology']);
+    // One entry per department for admin too, not a counter and a list each.
+    expect(destinations('ADMIN', 3).filter((d) => /^\/(pharmacy|lab|radiology)/.test(d))).toEqual(['/pharmacy', '/lab', '/radiology']);
+  });
+
+  it('puts Reports in the main section, where it is always in view', () => {
+    for (const tier of [1, 2, 3]) expect(navSectionsFor('ADMIN', tier)[0]!.links.map((l) => l.label)).toContain('Reports');
   });
 });

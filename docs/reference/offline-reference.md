@@ -335,6 +335,56 @@ are recorded per bill (cash/card/UPI/Razorpay), and pharmacy/lab/radiology
 bills exist in Tier 2+. There's no per-patient billing history view for
 staff.
 
+### T1-11. Appointments
+
+**Page:** title "Appointments", subtitle "Book and track patient
+appointments.", **+ Schedule appointment** (top-right). A **day navigator**
+bar: ◀ · "Today · Saturday 26 Sept, 2026" · date picker · ▶. Below, that
+day's appointments (empty state "No appointments scheduled for this day.").
+
+**Schedule appointment (modal)**
+1. Search box: "Search patient by name, mobile, or Patient ID". Results as
+   you type -- name on the first line, "PatientID · mobile" underneath.
+   Link below: **"Not registered yet? Book by name and mobile instead"**
+   (book without registering first).
+2. After picking: the patient shown as a chip (name + Patient ID) with
+   **Change**; **Date*** (defaults to today), **Time** (optional, any time
+   -- no slot grid), **Doctor** (a free-text box, placeholder "Dr. Sanap"),
+   **Reason (optional)** ("Follow-up, new consultation…"); button
+   **Schedule appointment**.
+
+**Day list row:** time chip (15:00), patient name (link to profile), doctor
+name, status pill **Scheduled**; actions **✓ Completed · No-show · Cancel**.
+
+**Important finding -- shared mobile numbers:** searching "79" returned
+**two different patients with the same mobile number** (PT000001 and
+PT000002). In Indian clinics a family often shares one mobile, so **mobile
+must NOT be unique per patient**. The web app currently enforces a unique
+phone per clinic (and walk-in registration *reuses* the existing patient
+for a known phone -- which would merge family members into one record).
+The redesign needs: patient identity = Patient ID; mobile = lookup key
+that can match several patients ("which family member?" picker).
+(The web's phone sign-in/OTP already treats an ambiguous phone as no match,
+falling back to email -- that needs rethinking with family numbers.)
+
+**Current web app:** patient self-booking picks a doctor, date and a fixed
+**time slot** from the doctor's schedule; the admin/reception side has a
+walk-in form (doctor, name, phone, reason) that issues a **token number**
+and marks the patient checked-in; statuses Booked → Checked-in → In
+consultation → Completed / Cancelled / No-show; the doctor's dashboard is a
+queue and "Consult" opens the consultation for that appointment.
+
+**Best of both for the redesign**
+- Offline: one modal that starts with patient search, "book without
+  registering", optional time, a simple day navigator, one-click
+  Completed / No-show / Cancel.
+- Web: a real doctor list (not free text -- the doctor drives fee,
+  schedule and the doctor's own queue), token numbers for walk-ins, slots
+  when a doctor works by appointment, the live queue with statuses, and
+  **start the consultation straight from the appointment row** (so
+  "Completed" happens automatically when the visit is saved).
+- Add: filter by doctor, week view, search within the day, reschedule.
+
 ### Open questions (Tier 1 so far)
 - Patient ID format: `PT` + 6 digits, per clinic, sequential? Can it be
   customised per clinic (prefix)?
@@ -356,6 +406,12 @@ staff.
   mode (cash/UPI/card) recorded? Can a receipt be printed?
 - Can a visit be edited any time later, or only the same day? Is there a
   record of who changed what?
+- Is **Time** optional on purpose (walk-in style) -- do any clinics use
+  fixed time slots or token numbers?
+- Is the Doctor field free text on purpose (visiting doctors not set up in
+  the system), or would a doctor list be fine?
+- Does marking an appointment **Completed** do anything else (open a
+  consultation, create a bill)?
 - Which specialities are the main customers (the imaging example is
   obstetric -- gynaecology/ANC, general physician, paediatrics …)?
 - Can the same form be saved as a draft and completed later (e.g. vitals

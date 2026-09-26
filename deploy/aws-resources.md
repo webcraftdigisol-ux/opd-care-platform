@@ -130,6 +130,12 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   (2026-09-26; additive: medicine strength, substitution and "not done
   here" columns, indexes). Safe to delete once that release has proven
   itself.
+- **Pre-consents-certificates snapshot**: RDS snapshot
+  `opd-care-db-pre-consents-certificates-20260926-1300` was taken just
+  before migration `20260926112022_consents_certificates` ran in production
+  (2026-09-26; additive: consent forms, medical certificates, a procedure's
+  consent link, the CONSENT_FORM attachment category). Safe to delete once
+  that release has proven itself.
 - **`PUBLIC_API_URL`** in `server/.env` is `https://api.ohmscare.in/api`: the
   base of the signed visit-summary PDF links sent on WhatsApp.
 - **WhatsApp isn't connected yet**: no `WHATSAPP_PROVIDER`/`META_*`/`TWILIO_*`

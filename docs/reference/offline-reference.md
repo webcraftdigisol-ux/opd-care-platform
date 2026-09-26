@@ -199,6 +199,68 @@ relevant history or differential diagnosis.
 - Both flows are needed: consult from the queue (token) and consult
   directly from the profile (e.g. a quick review with no appointment).
 
+### T1-5. Prescription, lab and radiology rows (inside Record consultation)
+
+Clicking a section's add link adds a row (each row has a red **Remove**).
+
+**Prescription row**
+- Medicine name -- **type-ahead from the Doctor's Catalogue**: typing "p"
+  lists "Paracetamol (250)", "Paracetamol (500)" (name + strength); picking
+  one fills name and strength.
+- Strength (e.g. 250), Days (e.g. 10), Food timing (select: Before / After
+  food …).
+- Timing checkboxes **Morning · Afternoon · Night** (the Indian 1-0-1
+  pattern as ticks).
+- Instructions (optional, free text).
+- Live line under the row: **"Total to dispense: 20 × Paracetamol"**
+  (ticked times per day × days).
+
+**Lab tests ordered row** -- Test name (type-ahead from catalogue; free
+text allowed -- the example saved "CDC") + Notes (e.g. "Before food").
+**Radiology work prescribed row** -- Test (type-ahead, e.g. "X-Ray") +
+Notes.
+
+**Current web app:** prescription rows are medicine (autocomplete from the
+clinic's medicine catalogue), free-text dosage, free-text frequency, days,
+notes; a "suggested quantity" is computed only at the pharmacy counter.
+Lab/radiology rows are name + notes, Tier 2+ only.
+
+**Take from offline:** tick-box M/A/N timing and food-timing select (much
+faster than typing "1-0-1 after food"), picking name+strength in one go,
+"total to dispense" shown right on the row.
+**Improve on both:** dose per time (1 tab / ½ tab / 5 ml), form (tab,
+syrup, drops, injection…), an "SOS / as needed" and "once a week" option,
+strength with unit (250 **mg**), bedtime; one-click "repeat last
+prescription"; saved prescription templates per diagnosis (e.g. "Viral
+fever" → 3 medicines); keyboard-only entry for speed.
+
+### T1-6. After "Save consultation" → profile, Consultations tab
+
+Timeline of visits, newest first. Each visit is a collapsible card:
+- Header: stethoscope icon, **"Visit 1"**, date · time, diagnosis as
+  subtitle, chevron.
+- Left column: Chief complaint, Present illness, History, Diagnosis,
+  Differential diagnosis, Advice, Follow-up (date), Fee (₹), Notes.
+- Right column: **VITALS** as chips (98°F · 98 bpm · 80/120 mmHg · SpO2
+  99% · 93 kg · **BMI 36.3**), **PRESCRIPTION** cards ("Paracetamol · 250",
+  "Morning, Night · 10 · After food"), **LAB TESTS ORDERED** ("CDC · Before
+  food"), **RADIOLOGY WORK PRESCRIBED** ("X-Ray").
+- Actions: **Edit this visit** · **Print summary**.
+
+**Observations**
+- BMI is auto-computed (93 kg / 1.60 m² = 36.3 ✓).
+- **Respiratory rate (78) and blood sugar (210) were entered but are not
+  shown** in the visit's vitals chips -- looks like an offline bug; the web
+  version should show every vital recorded.
+- Visits are numbered per patient ("Visit 1") -- nice touch to keep.
+- The follow-up date entered here is what drives follow-up reminders in the
+  web app (already built: Reports → Follow-ups + automatic WhatsApp/email).
+
+**Current web app:** the doctor's consultation page shows past visits in
+the new Patient History panel; there's no per-patient visit timeline for
+reception/admin, no "Edit this visit" from history, and no printable
+visit summary / prescription.
+
 ### Open questions (Tier 1 so far)
 - Patient ID format: `PT` + 6 digits, per clinic, sequential? Can it be
   customised per clinic (prefix)?
@@ -211,6 +273,11 @@ relevant history or differential diagnosis.
   it -- ₹1000 appeared) and editable per visit (discount, free follow-up)?
 - Does a visit's height/weight update the patient's baseline on the
   profile (baseline said 92 kg, the visit recorded 93)?
+- What does **Print summary** print -- a prescription for the patient
+  (letterhead, Rx, advice, follow-up) or a full visit summary? (Sample
+  printout would help.)
+- Can a visit be edited any time later, or only the same day? Is there a
+  record of who changed what?
 - Which specialities are the main customers (the imaging example is
   obstetric -- gynaecology/ANC, general physician, paediatrics …)?
 - Can the same form be saved as a draft and completed later (e.g. vitals

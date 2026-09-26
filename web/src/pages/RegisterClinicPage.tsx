@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { MedicineSystem } from '@opd/shared';
 import { registerClinic } from '../api/clinics';
+import { MEDICINE_SYSTEMS } from '../utils/medicineSystem';
 import { useAuth } from '../context/AuthContext';
 
 function slugify(value: string) {
@@ -19,6 +21,8 @@ export function RegisterClinicPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [tier, setTier] = useState<1 | 2 | 3>(1);
+  const [medicineSystem, setMedicineSystem] = useState<MedicineSystem>('ALLOPATHIC');
+  const [loadLists, setLoadLists] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { setSession } = useAuth();
@@ -41,6 +45,8 @@ export function RegisterClinicPage() {
         adminEmail,
         adminPassword,
         tier,
+        medicineSystem,
+        loadStandardLists: loadLists,
       });
       setSession(token, user, clinic);
       navigate('/admin');
@@ -96,6 +102,36 @@ export function RegisterClinicPage() {
             <option value={3}>Tier 3 — OPD + Pharmacy + Lab + In-Patient</option>
           </select>
         </div>
+        <fieldset>
+          <legend className="mb-1 block text-sm font-medium text-gray-700">Type of clinic / hospital</legend>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup">
+            {MEDICINE_SYSTEMS.map((m) => (
+              <label
+                key={m.value}
+                className={`cursor-pointer rounded-md border px-3 py-2 text-sm ${medicineSystem === m.value ? 'border-teal bg-teal-light text-teal' : 'border-gray-300 text-gray-700'}`}
+              >
+                <input
+                  type="radio"
+                  name="medicineSystem"
+                  value={m.value}
+                  checked={medicineSystem === m.value}
+                  onChange={() => setMedicineSystem(m.value)}
+                  className="sr-only"
+                  data-testid={`system-${m.value}`}
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">{MEDICINE_SYSTEMS.find((m) => m.value === medicineSystem)!.hint}</p>
+          <label className="mt-2 flex items-start gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={loadLists} onChange={(e) => setLoadLists(e.target.checked)} className="mt-0.5 accent-teal" data-testid="load-lists" />
+            <span>
+              Load the standard {medicineSystem === 'MIXED' ? '' : `${MEDICINE_SYSTEMS.find((m) => m.value === medicineSystem)!.label} `}medicine list and
+              lab / radiology tests now {tier >= 2 ? '(the departments set prices later)' : "(into the Doctor's Catalogue)"}
+            </span>
+          </label>
+        </fieldset>
         <hr className="border-gray-200" />
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Your name (clinic admin)</label>

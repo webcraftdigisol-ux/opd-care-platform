@@ -1,4 +1,5 @@
-import type { CatalogKind } from '@opd/shared';
+import type { CatalogKind, MedicineSystem } from '@opd/shared';
+import { AYURVEDIC, HOMEOPATHIC } from './starterSystems';
 
 // The ready-made Doctor's Catalogue a clinic can add in one click ("Add
 // common items"): the generics Indian OPDs prescribe most, in their usual
@@ -485,6 +486,25 @@ const RADIOLOGY: string[] = [
   'PET-CT',
 ];
 
+const toItems = (meds: Med[]): StarterItem[] => meds.map(([name, strength, ...brands]) => ({ kind: 'MEDICINE' as const, name, strength, brands }));
+
+// The standard list for a clinic's system of medicine: its medicines (all
+// three systems for a mixed clinic), and the same lab tests and imaging
+// for every system.
+export function starterFor(system: MedicineSystem): StarterItem[] {
+  const medicines =
+    system === 'AYURVEDIC' ? toItems(AYURVEDIC)
+    : system === 'HOMEOPATHIC' ? toItems(HOMEOPATHIC)
+    : system === 'MIXED' ? [...toItems(MEDICINES), ...toItems(AYURVEDIC), ...toItems(HOMEOPATHIC)]
+    : toItems(MEDICINES);
+  return [
+    ...medicines,
+    ...LAB_TESTS.map((name) => ({ kind: 'LAB_TEST' as const, name })),
+    ...RADIOLOGY.map((name) => ({ kind: 'RADIOLOGY' as const, name })),
+  ];
+}
+
+// The allopathic list (the default system).
 export const STARTER_CATALOG: StarterItem[] = [
   ...MEDICINES.map(([name, strength, ...brands]) => ({ kind: 'MEDICINE' as const, name, strength, brands })),
   ...LAB_TESTS.map((name) => ({ kind: 'LAB_TEST' as const, name })),

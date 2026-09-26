@@ -123,10 +123,29 @@ radiology tests — at `/pharmacy/settings`, `/lab/settings`, `/radiology/settin
 cost as well as a price, and each sale records its cost at the time, for
 the department report and the doctors' profit share. From Tier 2
 these lists replace the Doctor's Catalogue: doctors prescribe and order
-from what the departments actually offer. The standard list always backs
-up the suggestions, so typing "C" offers CBC and "X" the X-rays even
-before a department has loaded its list (the clinic's own entry wins
-where both have one). **Load standard list** adds the
+**only** from what the departments offer, so every prescription and order
+matches an entry that can be billed and counted in the revenue reports.
+When a medicine or test isn't there, the consultation marks it "Not in
+the pharmacy list" and saving is held until the doctor picks it from the
+list or clicks **Add to list**: a small window (medicine, strength / pack,
+brand, optional price; or test name and price) adds it straight to the
+pharmacy's, lab's or radiology's list (`POST /api/catalogue/add-to-list`,
+unpriced unless given — flagged at the counter until the department sets
+it), and it's suggested from then on. In Tier 1 the same window adds to
+the Doctor's Catalogue (optional, nothing is held), and the standard list
+backs up the doctor's own suggestions.
+
+**Type of clinic.** Registration asks whether the clinic is Allopathic,
+Ayurvedic, Homeopathic or a mix (`Clinic.medicineSystem`, changeable in
+Clinic settings). The standard medicine list follows it — allopathic
+generics and brands; Ayurvedic churna, vati, guggulu, asava/arishta,
+avaleha, bhasma, kashaya, taila/ghrita and proprietary brands (Dabur,
+Baidyanath, Himalaya, Patanjali, Kottakkal…); homeopathic dilutions in
+30C/200C/1M, mother tinctures, biochemic salts and patent remedies (SBL,
+Dr. Reckeweg, Schwabe, Bakson); a mixed clinic gets all three
+(`server/src/utils/starterSystems.ts`). Registration can load the lists
+straight away: the Doctor's Catalogue in Tier 1, the pharmacy, lab and
+radiology lists (unpriced) from Tier 2. **Load standard list** adds the
 Doctor's Catalogue's generics/brands, lab tests and imaging (plus anything
 the clinic's doctors added there) unpriced, skipping what's already listed;
 a price of 0 means "not priced yet" and is flagged at the counter.

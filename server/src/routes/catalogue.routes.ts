@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { CatalogKind as PrismaCatalogKind, DoctorCatalogItem as PrismaItem } from '@prisma/client';
-import type { CatalogSuggestions, DoctorCatalogItem } from '@opd/shared';
+import type { AddToListResult, CatalogSuggestions, DoctorCatalogItem } from '@opd/shared';
 import { prisma } from '../prisma';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
-import { STARTER_CATALOG } from '../utils/starterCatalog';
+import { starterFor } from '../utils/starterCatalog';
+import { loadStandardCatalogue } from '../utils/standardLists';
 
 // The Doctor's Catalogue: plain name lists the consultation screen
 // suggests from, in every tier (see the DoctorCatalogItem model).
@@ -67,55 +68,68 @@ catalogueRouter.get(
   }),
 );
 
-// Everything the consultation screen should suggest: the Doctor's
-// Catalogue, plus the Tier 2+ department catalogues (medicine names, lab
-// and radiology tests) so a clinic that upgrades keeps one list to type from.
+// What the consultation screen suggests. From Tier 2 only the pharmacy's,
+// lab's and radiology's own lists -- what the clinic actually sells and
+// bills -- so every prescription and order matches a billable entry; a
+// missing one is added to that list from the consultation (below). In
+// Tier 1 the Doctor's Catalogue, backed by the standard list for the
+// clinic's system of medicine (offered after the doctor's own).
 catalogueRouter.get(
   '/suggestions',
   requireRole(...STAFF),
   asyncHandler(async (req: AuthedRequest, res) => {
     const clinicId = req.auth!.clinicId;
-    const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { tier: true } });
-    const withDepartments = clinic.tier >= 2;
-    const [items, pharmacy, lab, radiology] = await Promise.all([
-      prisma.doctorCatalogItem.findMany({ where: { clinicId }, orderBy: [{ name: 'asc' }, { strength: 'asc' }] }),
-      withDepartments ? prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true, strength: true, brand: true } }) : [],
-      withDepartments ? prisma.labTestCatalog.findMany({ where: { clinicId }, select: { name: true } }) : [],
-      withDepartments ? prisma.radiologyCatalog.findMany({ where: { clinicId }, select: { name: true } }) : [],
-    ]);
-
-    const medicines: CatalogSuggestions['medicines'] = [];
-    for (const m of [
-      ...items.filter((i) => i.kind === 'MEDICINE').map((i) => ({ name: i.name, strength: i.strength, brands: i.brands })),
-      ...pharmacy.map((p) => ({ name: p.name, strength: p.strength, brands: p.brand ? [p.brand] : [] })),
-    ]) {
-      const same = medicines.find((x) => sameKey(x, m));
-      if (same) same.brands = cleanBrands([...same.brands, ...m.brands]);
-      else medicines.push(m);
-    }
-
-    const names = (kind: PrismaCatalogKind, extra: { name: string }[]) => {
+    const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { tier: true, medicineSystem: true } });
+    const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
+    const uniqueNames = (names: string[]) => {
       const seen = new Map<string, string>();
-      for (const n of [...items.filter((i) => i.kind === kind), ...extra].map((i) => i.name)) {
-        if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
-      }
+      for (const n of names) if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
       return [...seen.values()].sort((a, b) => a.localeCompare(b));
     };
-    const labTests = names('LAB_TEST', lab);
-    const radiologyTests = names('RADIOLOGY', radiology);
-    // The standard list backs up the clinic's own, so typing "C" offers CBC
-    // and "X" the X-rays even before any list is loaded; only what the
-    // clinic doesn't already have, offered after the clinic's own.
+    const group = (rows: { name: string; strength: string | null; brands: string[] }[]) => {
+      const out: CatalogSuggestions['medicines'] = [];
+      for (const m of rows) {
+        const same = out.find((x) => sameKey(x, m));
+        if (same) same.brands = cleanBrands([...same.brands, ...m.brands]);
+        else out.push({ ...m, brands: cleanBrands(m.brands) });
+      }
+      return out.sort(byName);
+    };
+
+    if (clinic.tier >= 2) {
+      const [pharmacy, lab, radiology] = await Promise.all([
+        prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true, strength: true, brand: true } }),
+        prisma.labTestCatalog.findMany({ where: { clinicId }, select: { name: true } }),
+        prisma.radiologyCatalog.findMany({ where: { clinicId }, select: { name: true } }),
+      ]);
+      const response: CatalogSuggestions = {
+        source: 'DEPARTMENTS',
+        medicines: group(pharmacy.map((p) => ({ name: p.name, strength: p.strength, brands: p.brand ? [p.brand] : [] }))),
+        labTests: uniqueNames(lab.map((l) => l.name)),
+        radiology: uniqueNames(radiology.map((r) => r.name)),
+        standard: { medicines: [], labTests: [], radiology: [] },
+      };
+      res.json(response);
+      return;
+    }
+
+    const items = await prisma.doctorCatalogItem.findMany({ where: { clinicId } });
+    const medicines = group(items.filter((i) => i.kind === 'MEDICINE').map((i) => ({ name: i.name, strength: i.strength, brands: i.brands })));
+    const labTests = uniqueNames(items.filter((i) => i.kind === 'LAB_TEST').map((i) => i.name));
+    const radiologyTests = uniqueNames(items.filter((i) => i.kind === 'RADIOLOGY').map((i) => i.name));
+    const starter = starterFor(clinic.medicineSystem);
     const missing = (own: string[], kind: PrismaCatalogKind) => {
       const have = new Set(own.map((n) => n.toLowerCase()));
-      return STARTER_CATALOG.filter((i) => i.kind === kind && !have.has(i.name.toLowerCase())).map((i) => i.name);
+      return starter.filter((i) => i.kind === kind && !have.has(i.name.toLowerCase())).map((i) => i.name);
     };
     const response: CatalogSuggestions = {
-      medicines: medicines.sort((a, b) => a.name.localeCompare(b.name)),
+      source: 'CATALOGUE',
+      medicines,
       labTests,
       radiology: radiologyTests,
       standard: {
-        medicines: STARTER_CATALOG.filter((i) => i.kind === 'MEDICINE')
+        medicines: starter
+          .filter((i) => i.kind === 'MEDICINE')
           .map((i) => ({ name: i.name, strength: i.strength ?? null, brands: i.brands ?? [] }))
           .filter((m) => !medicines.some((x) => sameKey(x, m))),
         labTests: missing(labTests, 'LAB_TEST'),
@@ -123,6 +137,73 @@ catalogueRouter.get(
       },
     };
     res.json(response);
+  }),
+);
+
+const addToListSchema = z.object({
+  kind: kindSchema,
+  name: z.string().trim().min(1, 'Name is required').max(200),
+  strength: z.string().max(50).nullish().transform((v) => v?.trim() || null),
+  brand: z.string().max(80).nullish().transform((v) => v?.trim() || null),
+  // Optional: the department fills in or corrects the price later.
+  price: z.number().nonnegative().optional(),
+});
+
+// A doctor adds a medicine or test that isn't in the list, from the
+// consultation: from Tier 2 straight into the pharmacy's, lab's or
+// radiology's own list (unpriced unless a price is given, and flagged at
+// the counter until priced), so it's billable and suggested from then on;
+// in Tier 1 into the Doctor's Catalogue. Already there -> returned as is.
+catalogueRouter.post(
+  '/add-to-list',
+  requireRole(...EDITORS),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = addToListSchema.parse(req.body);
+    const clinicId = req.auth!.clinicId;
+    const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { tier: true } });
+    const strength = data.kind === 'MEDICINE' ? data.strength : null;
+    const brand = data.kind === 'MEDICINE' ? data.brand : null;
+    const lower = (v: string | null) => (v ?? '').toLowerCase();
+    const result: AddToListResult = { kind: data.kind, name: data.name, strength, brand, added: true, list: 'CATALOGUE' };
+
+    if (clinic.tier < 2) {
+      const same = (await prisma.doctorCatalogItem.findMany({ where: { clinicId, kind: data.kind, name: { equals: data.name, mode: 'insensitive' } } })).find((e) =>
+        sameKey(e, { name: data.name, strength }),
+      );
+      if (same) {
+        const brands = cleanBrands([...same.brands, ...(brand ? [brand] : [])]);
+        result.added = brands.length > same.brands.length;
+        if (result.added) await prisma.doctorCatalogItem.update({ where: { id: same.id }, data: { brands } });
+        res.status(result.added ? 201 : 200).json({ ...result, name: same.name, strength: same.strength });
+        return;
+      }
+      await prisma.doctorCatalogItem.create({ data: { clinicId, kind: data.kind, name: data.name, strength, brands: brand ? [brand] : [] } });
+      res.status(201).json(result);
+      return;
+    }
+
+    if (data.kind === 'MEDICINE') {
+      result.list = 'PHARMACY';
+      const same = (await prisma.pharmacyItem.findMany({ where: { clinicId, name: { equals: data.name, mode: 'insensitive' } } })).find(
+        (p) => lower(p.strength) === lower(strength) && lower(p.brand) === lower(brand),
+      );
+      if (same) {
+        res.json({ ...result, name: same.name, strength: same.strength, brand: same.brand, added: false });
+        return;
+      }
+      await prisma.pharmacyItem.create({ data: { clinicId, name: data.name, strength, brand, pricePerUnit: data.price ?? 0, costPricePerUnit: 0, stockUnits: 0 } });
+      res.status(201).json(result);
+      return;
+    }
+    result.list = data.kind === 'LAB_TEST' ? 'LAB' : 'RADIOLOGY';
+    const catalog = (data.kind === 'LAB_TEST' ? prisma.labTestCatalog : prisma.radiologyCatalog) as typeof prisma.labTestCatalog;
+    const same = await catalog.findFirst({ where: { clinicId, name: { equals: data.name, mode: 'insensitive' } } });
+    if (same) {
+      res.json({ ...result, name: same.name, added: false });
+      return;
+    }
+    await catalog.create({ data: { clinicId, name: data.name, price: data.price ?? 0 } });
+    res.status(201).json(result);
   }),
 );
 
@@ -145,31 +226,7 @@ catalogueRouter.post(
   '/starter',
   requireRole(...EDITORS),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const clinicId = req.auth!.clinicId;
-    const existing = await prisma.doctorCatalogItem.findMany({ where: { clinicId } });
-    const toAdd: typeof STARTER_CATALOG = [];
-    let brandsAdded = 0;
-    const updates: { id: string; brands: string[] }[] = [];
-    for (const s of STARTER_CATALOG) {
-      const match = existing.find((e) => e.kind === s.kind && sameKey(e, { name: s.name, strength: s.strength ?? null }));
-      if (!match) {
-        toAdd.push(s);
-        continue;
-      }
-      // Already there: just fill in brands it doesn't have yet.
-      const merged = cleanBrands([...match.brands, ...(s.brands ?? [])]);
-      if (merged.length > match.brands.length) {
-        brandsAdded += merged.length - match.brands.length;
-        updates.push({ id: match.id, brands: merged });
-      }
-    }
-    await prisma.$transaction([
-      prisma.doctorCatalogItem.createMany({
-        data: toAdd.map((s) => ({ clinicId, kind: s.kind, name: s.name, strength: s.strength ?? null, brands: s.brands ?? [] })),
-      }),
-      ...updates.map((u) => prisma.doctorCatalogItem.update({ where: { id: u.id }, data: { brands: u.brands } })),
-    ]);
-    res.json({ added: toAdd.length, brandsAdded });
+    res.json(await loadStandardCatalogue(req.auth!.clinicId));
   }),
 );
 

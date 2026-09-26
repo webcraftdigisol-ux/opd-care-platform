@@ -91,21 +91,30 @@ enum AttachmentCategory {
 
 // A clinic is a tenant. Every clinic-owned record is scoped by clinicId so
 // one deployment can serve many clinics with isolated data.
+// Which standard medicine list the clinic gets; MIXED gets all three.
+enum MedicineSystem {
+  ALLOPATHIC
+  AYURVEDIC
+  HOMEOPATHIC
+  MIXED
+}
+
 model Clinic {
-  id                        String   @id @default(uuid())
+  id                        String         @id @default(uuid())
   name                      String
-  slug                      String   @unique
-  tier                      Int      @default(1) // 1 = OPD, 2 = +Pharmacy/Lab/Radiology, 3 = +IPD
+  slug                      String         @unique
+  tier                      Int            @default(1) // 1 = OPD, 2 = +Pharmacy/Lab/Radiology, 3 = +IPD
+  medicineSystem            MedicineSystem @default(ALLOPATHIC)
   logoUrl                   String?
   // Letterhead on printed visit summaries.
   address                   String?
   phone                     String?
-  taxPercent                Float    @default(0)
-  doctorRevenueSharePercent Float    @default(0)
+  taxPercent                Float          @default(0)
+  doctorRevenueSharePercent Float          @default(0)
   // Last Patient ID number handed out (PT000001, PT000002, ...), bumped
   // atomically by nextPatientCode() in utils/patients.ts.
-  lastPatientNumber         Int      @default(0)
-  createdAt                 DateTime @default(now())
+  lastPatientNumber         Int            @default(0)
+  createdAt                 DateTime       @default(now())
 
   users             User[]
   appointments      Appointment[]
@@ -131,27 +140,27 @@ model Clinic {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  clinicId  String
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  email     String
-  phone     String?
+  id                        String    @id @default(uuid())
+  clinicId                  String
+  clinic                    Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  email                     String
+  phone                     String?
   // Staff sign-in name (lowercase, no spaces) -- many receptionists have
   // no email. Unique per clinic when set.
-  username  String?
+  username                  String?
   // A deactivated account keeps its history but can't sign in.
-  active    Boolean  @default(true)
-  password  String
-  name      String
-  role      Role
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active                    Boolean   @default(true)
+  password                  String
+  name                      String
+  role                      Role
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
   // WhatsApp Business messaging requires the recipient's own opt-in consent
   // before a business can send them template messages (Meta policy, not
   // just good practice) -- unset by default, a patient turns it on
   // themself. `phone` doubles as the WhatsApp number; no separate field,
   // to avoid the two silently drifting apart.
-  whatsappOptIn Boolean @default(false)
+  whatsappOptIn             Boolean   @default(false)
   // When consent was last given, and by whom: null recordedById means the
   // patient opted in themself; otherwise it's the staff member who recorded
   // the patient's in-person consent at walk-in registration. Kept as a plain
@@ -162,26 +171,26 @@ model User {
   doctorProfile            DoctorProfile?
   patientProfile           PatientProfile?
   passwordResetOtps        PasswordResetOtp[]
-  appointments             Appointment[]      @relation("PatientAppointments")
-  pharmacyPurchases        PharmacySale[]     @relation("PharmacySalePatient")
-  pharmacySalesHandled     PharmacySale[]     @relation("PharmacySaleSeller")
-  labResultsOrdered        LabInvoice[]       @relation("LabInvoicePatient")
-  labResultsRecorded       LabInvoice[]       @relation("LabInvoiceRecorder")
-  radiologyResultsOrdered  RadiologyInvoice[] @relation("RadiologyInvoicePatient")
-  radiologyResultsRecorded RadiologyInvoice[] @relation("RadiologyInvoiceRecorder")
+  appointments             Appointment[]         @relation("PatientAppointments")
+  pharmacyPurchases        PharmacySale[]        @relation("PharmacySalePatient")
+  pharmacySalesHandled     PharmacySale[]        @relation("PharmacySaleSeller")
+  labResultsOrdered        LabInvoice[]          @relation("LabInvoicePatient")
+  labResultsRecorded       LabInvoice[]          @relation("LabInvoiceRecorder")
+  radiologyResultsOrdered  RadiologyInvoice[]    @relation("RadiologyInvoicePatient")
+  radiologyResultsRecorded RadiologyInvoice[]    @relation("RadiologyInvoiceRecorder")
   admissions               Admission[]
   vitalsRecorded           IpdVitals[]
-  paymentsMade             Payment[]      @relation("PatientPayments")
-  paymentsRecorded         Payment[]      @relation("PaymentsRecorded")
-  paymentOrdersInitiated   PaymentOrder[] @relation("PaymentOrdersInitiated")
+  paymentsMade             Payment[]             @relation("PatientPayments")
+  paymentsRecorded         Payment[]             @relation("PaymentsRecorded")
+  paymentOrdersInitiated   PaymentOrder[]        @relation("PaymentOrdersInitiated")
   subscriptionPaymentsPaid SubscriptionPayment[] @relation("SubscriptionPaymentsPaid")
-  notificationsReceived    Notification[] @relation("PatientNotifications")
-  attachmentsOwned         Attachment[]   @relation("PatientAttachments")
-  attachmentsUploaded      Attachment[]   @relation("AttachmentsUploaded")
-  dietPlansOwned           DietPlan[]     @relation("PatientDietPlans")
-  dietPlansCreated         DietPlan[]     @relation("DietPlansAuthored")
-  certificatesReceived     MedicalCertificate[] @relation("CertificatePatient")
-  consentFormsCreated      ConsentForm[]  @relation("ConsentCreator")
+  notificationsReceived    Notification[]        @relation("PatientNotifications")
+  attachmentsOwned         Attachment[]          @relation("PatientAttachments")
+  attachmentsUploaded      Attachment[]          @relation("AttachmentsUploaded")
+  dietPlansOwned           DietPlan[]            @relation("PatientDietPlans")
+  dietPlansCreated         DietPlan[]            @relation("DietPlansAuthored")
+  certificatesReceived     MedicalCertificate[]  @relation("CertificatePatient")
+  consentFormsCreated      ConsentForm[]         @relation("ConsentCreator")
 
   @@unique([clinicId, email])
   @@unique([clinicId, username])
@@ -221,11 +230,11 @@ model DoctorCatalogItem {
 }
 
 model PatientProfile {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String @id @default(uuid())
+  userId      String @unique
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   clinicId    String
-  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  clinic      Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   // Human-readable, per clinic, never reused: PT000001.
   patientCode String
 
@@ -252,12 +261,12 @@ model PatientProfile {
   state   String?
   pincode String?
 
-  heightCm         Float?
-  weightKg         Float?
-  allergies        String?
-  chronicDiseases  String?
-  pastSurgeries    String?
-  familyHistory    String?
+  heightCm        Float?
+  weightKg        Float?
+  allergies       String?
+  chronicDiseases String?
+  pastSurgeries   String?
+  familyHistory   String?
 
   insuranceDetails String?
   tpa              String?
@@ -271,20 +280,20 @@ model PatientProfile {
 }
 
 model DoctorProfile {
-  id              String @id @default(uuid())
-  userId          String @unique
-  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  specialization  String
-  department      String
-  slotMinutes     Int    @default(15)
-  consultationFee Float  @default(0)
+  id                 String  @id @default(uuid())
+  userId             String  @unique
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization     String
+  department         String
+  slotMinutes        Int     @default(15)
+  consultationFee    Float   @default(0)
   // Printed under the doctor's name on a visit summary, e.g. "MBBS, MD" and
   // the medical council registration number.
   qualification      String?
   registrationNumber String?
 
   schedules    Schedule[]
-  appointments Appointment[]    @relation("DoctorAppointments")
+  appointments Appointment[]        @relation("DoctorAppointments")
   admissions   Admission[]
   ipdVisits    IpdDoctorVisit[]
   consentForms ConsentForm[]
@@ -304,21 +313,21 @@ model Schedule {
 }
 
 model Appointment {
-  id          String            @id @default(uuid())
-  clinicId    String
-  clinic      Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  id              String            @id @default(uuid())
+  clinicId        String
+  clinic          Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   // Null for a booking made for someone not registered yet (a phone
   // booking): guestName/guestPhone hold who it's for until the desk
   // registers them on arrival. Such a booking can only be BOOKED,
   // CANCELLED or NO_SHOW -- checking in needs a real patient.
-  patientId   String?
-  patient     User?             @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Restrict)
-  guestName   String?
-  guestPhone  String?
-  doctorId    String
-  doctor      DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
-  date        DateTime
-  tokenNumber Int
+  patientId       String?
+  patient         User?             @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Restrict)
+  guestName       String?
+  guestPhone      String?
+  doctorId        String
+  doctor          DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  date            DateTime
+  tokenNumber     Int
   // "HH:mm", 24h. Set for a patient-booked, fixed-slot appointment; null for
   // a walk-in, which is queued in as-they-arrive rather than pre-slotted.
   // Deliberately not a DB unique constraint: a CANCELLED appointment must
@@ -356,29 +365,29 @@ model Appointment {
 }
 
 model Consultation {
-  id                String      @id @default(uuid())
-  appointmentId     String      @unique
-  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  vitals            Json?
-  chiefComplaint        String?
-  presentIllness        String?
-  relevantHistory       String?
-  diagnosis             String?
-  differentialDiagnosis String?
+  id                        String      @id @default(uuid())
+  appointmentId             String      @unique
+  appointment               Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  vitals                    Json?
+  chiefComplaint            String?
+  presentIllness            String?
+  relevantHistory           String?
+  diagnosis                 String?
+  differentialDiagnosis     String?
   // The doctor's advice to the patient (printed and shared).
-  notes                 String?
-  imagingAdvice         String?
+  notes                     String?
+  imagingAdvice             String?
   // Private to clinic staff: never printed, shared or shown to the patient.
-  doctorNotes           String?
-  followUpDate      DateTime?
-  followUpContacted Boolean     @default(false)
+  doctorNotes               String?
+  followUpDate              DateTime?
+  followUpContacted         Boolean     @default(false)
   // Set when the automatic day-before follow-up reminder was attempted
   // (whatever its outcome), so the hourly job sends it at most once.
-  followUpReminderSentAt DateTime?
+  followUpReminderSentAt    DateTime?
   // The same, for the reminder sent on the follow-up day itself.
   followUpDayReminderSentAt DateTime?
-  updatedAt         DateTime    @default(now()) @updatedAt
-  createdAt         DateTime    @default(now())
+  updatedAt                 DateTime    @default(now()) @updatedAt
+  createdAt                 DateTime    @default(now())
 
   prescriptions    Prescription[]
   labTestsOrdered  LabTestOrder[]
@@ -558,7 +567,7 @@ model LabTestCatalog {
   name        String
   price       Float
   // What the test costs the clinic (reagents, film, reporting fee...).
-  cost        Float @default(0)
+  cost        Float           @default(0)
   resultItems LabResultItem[]
 
   @@index([clinicId])
@@ -590,20 +599,20 @@ model LabInvoice {
 }
 
 model LabResultItem {
-  id            String          @id @default(uuid())
-  invoiceId     String
-  invoice       LabInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  orderId       String?
-  order         LabTestOrder?   @relation(fields: [orderId], references: [id])
-  catalogItemId String?
-  catalogItem   LabTestCatalog? @relation(fields: [catalogItemId], references: [id])
-  testName      String
+  id             String          @id @default(uuid())
+  invoiceId      String
+  invoice        LabInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderId        String?
+  order          LabTestOrder?   @relation(fields: [orderId], references: [id])
+  catalogItemId  String?
+  catalogItem    LabTestCatalog? @relation(fields: [catalogItemId], references: [id])
+  testName       String
   // What the doctor ordered, when a different test was done instead.
   substitutedFor String?
-  resultText    String?
-  price         Float
+  resultText     String?
+  price          Float
   // Cost when done (from the test list), for profit.
-  cost          Float?
+  cost           Float?
 
   @@index([invoiceId])
   @@index([orderId])
@@ -637,7 +646,7 @@ model RadiologyCatalog {
   name        String
   price       Float
   // What the test costs the clinic (reagents, film, reporting fee...).
-  cost        Float @default(0)
+  cost        Float                 @default(0)
   resultItems RadiologyResultItem[]
 
   @@index([clinicId])
@@ -669,20 +678,20 @@ model RadiologyInvoice {
 }
 
 model RadiologyResultItem {
-  id            String              @id @default(uuid())
-  invoiceId     String
-  invoice       RadiologyInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  orderId       String?
-  order         RadiologyTestOrder? @relation(fields: [orderId], references: [id])
-  catalogItemId String?
-  catalogItem   RadiologyCatalog?   @relation(fields: [catalogItemId], references: [id])
-  testName      String
+  id             String              @id @default(uuid())
+  invoiceId      String
+  invoice        RadiologyInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderId        String?
+  order          RadiologyTestOrder? @relation(fields: [orderId], references: [id])
+  catalogItemId  String?
+  catalogItem    RadiologyCatalog?   @relation(fields: [catalogItemId], references: [id])
+  testName       String
   // What the doctor ordered, when a different test was done instead.
   substitutedFor String?
-  resultText    String?
-  price         Float
+  resultText     String?
+  price          Float
   // Cost when done (from the test list), for profit.
-  cost          Float?
+  cost           Float?
 
   @@index([invoiceId])
   @@index([orderId])
@@ -797,17 +806,17 @@ model IpdDoctorVisit {
 }
 
 model IpdProcedure {
-  id            String    @id @default(uuid())
+  id            String       @id @default(uuid())
   admissionId   String
-  admission     Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  admission     Admission    @relation(fields: [admissionId], references: [id], onDelete: Cascade)
   name          String
   notes         String?
-  consentSigned Boolean   @default(false)
+  consentSigned Boolean      @default(false)
   // The signed consent form this procedure was done under, if recorded.
   consentFormId String?
   consentForm   ConsentForm? @relation(fields: [consentFormId], references: [id], onDelete: SetNull)
-  fee           Float     @default(0)
-  performedAt   DateTime  @default(now())
+  fee           Float        @default(0)
+  performedAt   DateTime     @default(now())
 
   @@index([admissionId])
 }
@@ -920,19 +929,19 @@ model Payment {
 // razorpayOrderId instead. Exactly one of (billType+billId) or
 // subscriptionId is set, matching `kind`.
 model PaymentOrder {
-  id                 String            @id @default(uuid())
-  clinicId           String
-  clinic             Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  razorpayOrderId    String            @unique
-  kind               PaymentOrderKind
-  billType           BillType?
-  billId             String?
-  subscriptionId     String?
-  patientId          String? // set when kind = BILL; who the payment is for
-  initiatedByUserId  String // who clicked "Pay" -- the patient for a bill, a clinic ADMIN for a subscription renewal
-  initiatedBy        User              @relation("PaymentOrdersInitiated", fields: [initiatedByUserId], references: [id])
-  amount             Float // rupees, snapshotted at order-creation time -- what was actually authorized, regardless of any later change to the bill's balance
-  createdAt          DateTime          @default(now())
+  id                String           @id @default(uuid())
+  clinicId          String
+  clinic            Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  razorpayOrderId   String           @unique
+  kind              PaymentOrderKind
+  billType          BillType?
+  billId            String?
+  subscriptionId    String?
+  patientId         String? // set when kind = BILL; who the payment is for
+  initiatedByUserId String // who clicked "Pay" -- the patient for a bill, a clinic ADMIN for a subscription renewal
+  initiatedBy       User             @relation("PaymentOrdersInitiated", fields: [initiatedByUserId], references: [id])
+  amount            Float // rupees, snapshotted at order-creation time -- what was actually authorized, regardless of any later change to the bill's balance
+  createdAt         DateTime         @default(now())
 
   @@index([clinicId])
   @@index([billType, billId])
@@ -951,24 +960,24 @@ enum PaymentOrderKind {
 // stay testable and auditable even in an environment with no real email
 // provider wired up.
 model Notification {
-  id        String               @id @default(uuid())
-  clinicId  String
-  clinic    Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  patientId String?
-  patient   User?                @relation("PatientNotifications", fields: [patientId], references: [id])
-  channel   NotificationChannel
-  type      NotificationType
-  recipient String
-  subject   String?
-  body      String
-  status    NotificationStatus
-  error     String?
+  id                String              @id @default(uuid())
+  clinicId          String
+  clinic            Clinic              @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId         String?
+  patient           User?               @relation("PatientNotifications", fields: [patientId], references: [id])
+  channel           NotificationChannel
+  type              NotificationType
+  recipient         String
+  subject           String?
+  body              String
+  status            NotificationStatus
+  error             String?
   // Set only for channel WHATSAPP (or a future channel with its own
   // provider-assigned id) -- the id the provider's API returned for this
   // send, kept for correlating a future delivery-status webhook back to
   // this row. Null for EMAIL/SMS today.
   providerMessageId String?
-  createdAt DateTime             @default(now())
+  createdAt         DateTime            @default(now())
 
   @@index([clinicId])
   @@index([patientId])
@@ -1074,24 +1083,24 @@ model SubscriptionExtension {
 // never change retroactively just because the subscription's current state
 // moved on.
 model SubscriptionPayment {
-  id                 String         @id @default(uuid())
-  subscriptionId     String
-  subscription       Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  amount             Float
-  billingCycle       BillingCycle
-  periodStart        DateTime
-  periodEnd          DateTime
-  recordedAt         DateTime       @default(now())
-  recordedByAdminId  String?
-  recordedByAdmin    PlatformAdmin? @relation(fields: [recordedByAdminId], references: [id])
+  id                String         @id @default(uuid())
+  subscriptionId    String
+  subscription      Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount            Float
+  billingCycle      BillingCycle
+  periodStart       DateTime
+  periodEnd         DateTime
+  recordedAt        DateTime       @default(now())
+  recordedByAdminId String?
+  recordedByAdmin   PlatformAdmin? @relation(fields: [recordedByAdminId], references: [id])
   // Set instead of recordedByAdminId when a clinic ADMIN pays their own
   // renewal online (self-serve) rather than a platform admin recording a
   // manual payment -- exactly one of the two is set, never both.
-  paidByUserId       String?
-  paidByUser         User?          @relation("SubscriptionPaymentsPaid", fields: [paidByUserId], references: [id])
-  razorpayOrderId    String?
-  razorpayPaymentId  String?        @unique
-  notes              String?
+  paidByUserId      String?
+  paidByUser        User?          @relation("SubscriptionPaymentsPaid", fields: [paidByUserId], references: [id])
+  razorpayOrderId   String?
+  razorpayPaymentId String?        @unique
+  notes             String?
 
   @@index([subscriptionId])
 }
@@ -1137,31 +1146,31 @@ enum ConsentKind {
 // then marked signed here -- with the scanned copy attached
 // (AttachmentCategory CONSENT_FORM).
 model ConsentForm {
-  id            String        @id @default(uuid())
-  clinicId      String
-  clinic        Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  admissionId   String
-  admission     Admission     @relation(fields: [admissionId], references: [id], onDelete: Cascade)
-  kind          ConsentKind
-  procedureName String
+  id             String        @id @default(uuid())
+  clinicId       String
+  clinic         Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  admissionId    String
+  admission      Admission     @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  kind           ConsentKind
+  procedureName  String
   // Who will perform it.
-  doctorId      String
-  doctor        DoctorProfile @relation(fields: [doctorId], references: [id])
-  plannedAt     DateTime?
-  anaesthesia   String?
+  doctorId       String
+  doctor         DoctorProfile @relation(fields: [doctorId], references: [id])
+  plannedAt      DateTime?
+  anaesthesia    String?
   // What was explained: nature and purpose, risks, alternatives.
-  purpose       String?
-  risks         String?
-  alternatives  String?
+  purpose        String?
+  risks          String?
+  alternatives   String?
   // Filled in when marked signed.
-  signedAt      DateTime?
-  signedByName  String?
+  signedAt       DateTime?
+  signedByName   String?
   // "Self", or the guardian's relationship to the patient.
   signerRelation String?
-  witnessName   String?
-  createdById   String
-  createdBy     User          @relation("ConsentCreator", fields: [createdById], references: [id])
-  createdAt     DateTime      @default(now())
+  witnessName    String?
+  createdById    String
+  createdBy      User          @relation("ConsentCreator", fields: [createdById], references: [id])
+  createdAt      DateTime      @default(now())
 
   procedures IpdProcedure[]
 
@@ -1181,20 +1190,20 @@ enum CertificateType {
 // printed on the clinic's letterhead. `body` is the final wording the
 // doctor approved; the structured fields are kept for search and reprints.
 model MedicalCertificate {
-  id           String          @id @default(uuid())
-  clinicId     String
-  clinic       Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  patientId    String
-  patient      User            @relation("CertificatePatient", fields: [patientId], references: [id])
-  doctorId     String
-  doctor       DoctorProfile   @relation(fields: [doctorId], references: [id])
-  type         CertificateType
-  diagnosis    String?
-  fromDate     DateTime?       @db.Date
-  toDate       DateTime?       @db.Date
-  purpose      String?
-  body         String
-  issuedAt     DateTime        @default(now())
+  id        String          @id @default(uuid())
+  clinicId  String
+  clinic    Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User            @relation("CertificatePatient", fields: [patientId], references: [id])
+  doctorId  String
+  doctor    DoctorProfile   @relation(fields: [doctorId], references: [id])
+  type      CertificateType
+  diagnosis String?
+  fromDate  DateTime?       @db.Date
+  toDate    DateTime?       @db.Date
+  purpose   String?
+  body      String
+  issuedAt  DateTime        @default(now())
 
   @@index([clinicId])
   @@index([patientId])

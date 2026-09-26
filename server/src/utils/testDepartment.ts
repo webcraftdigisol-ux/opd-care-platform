@@ -5,7 +5,7 @@ import type { DeptQueueEntry, DeptVisit, TestOrderLine, TestPatientOrders } from
 import { prisma } from '../prisma';
 import { toLabInvoice, toLabTestCatalogEntry } from './serialize';
 import { findBestNameMatch } from './match';
-import { STARTER_CATALOG } from './starterCatalog';
+import { loadStandardTests } from './standardLists';
 import { patientForCounter, queueSince, toDeptPatient } from './departments';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
@@ -81,20 +81,7 @@ export function testDepartmentRouter(cfg: TestDepartmentConfig): Router {
     '/catalog/starter',
     requireRole(...COUNTER),
     asyncHandler(async (req: AuthedRequest, res) => {
-      const clinicId = req.auth!.clinicId;
-      const [existing, doctorItems]: [LabTestCatalog[], { name: string }[]] = await Promise.all([
-        cfg.catalog.findMany({ where: { clinicId } }),
-        prisma.doctorCatalogItem.findMany({ where: { clinicId, kind: cfg.starterKind }, select: { name: true } }),
-      ]);
-      const seen = new Set(existing.map((e) => lower(e.name)));
-      const toAdd: string[] = [];
-      for (const name of [...STARTER_CATALOG.filter((s) => s.kind === cfg.starterKind).map((s) => s.name), ...doctorItems.map((d) => d.name)]) {
-        if (seen.has(lower(name))) continue;
-        seen.add(lower(name));
-        toAdd.push(name);
-      }
-      await cfg.catalog.createMany({ data: toAdd.map((name) => ({ clinicId, name, price: 0 })) });
-      res.json({ added: toAdd.length });
+      res.json({ added: await loadStandardTests(req.auth!.clinicId, cfg.starterKind) });
     }),
   );
 

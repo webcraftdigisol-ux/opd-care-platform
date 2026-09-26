@@ -33,6 +33,6 @@ describe('revenue CSV export', () => {
     expect(lines[1]).toContain(`"'=HYPERLINK(""x"")"`);
     expect(lines[1]).toContain('"Asha ""Doc"" Rao"');
     expect(lines[1]).toContain('"OPD consultation, Viral fever","Part paid","500","200","300"');
-    expect(lines[2]).toBe('"Total","","","","","","1 record(s)","","500","200","300"');
+    expect(lines[2]).toBe('"Total","","","","","","","","500","200","300"');
   });
 });

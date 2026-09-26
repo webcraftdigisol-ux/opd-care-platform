@@ -790,61 +790,34 @@ export interface Receipt {
   payments: { method: PaymentMethod; amount: number; paidAt: string }[];
 }
 
-// ---- Orders vs in-house report ----
+// ---- In-house revenue report ----
+//
+// Department level, in rupees: what the doctors prescribed or ordered in a
+// date range (by visit day) and how much of it the clinic's own pharmacy,
+// lab and radiology earned. Consultation fees are listed alongside.
 
-export type OrderReportStatus = 'IN_HOUSE' | 'SUBSTITUTED' | 'NOT_DONE' | 'PENDING';
+export type RevenueDepartment = 'CONSULTATION' | Department;
 
-export interface OrdersReportRow {
-  date: string; // visit day, "YYYY-MM-DD"
-  department: Department;
-  patientId: string | null;
-  patientName: string;
-  patientCode: string | null;
-  doctorId: string;
-  doctorName: string;
-  ordered: string;
-  status: OrderReportStatus;
-  // What was actually dispensed or done, when in-house.
-  doneAs: string | null;
-  quantity: number | null;
-  amount: number;
-  note: string | null;
-}
-
-export interface OrdersReportSummary {
-  department: Department;
-  ordered: number;
-  inHouse: number; // includes substituted
-  substituted: number;
-  notDone: number;
-  pending: number;
-  revenue: number;
-}
-
-export interface OrdersReportItem {
-  department: Department;
-  name: string;
+export interface DeptRevenue {
+  department: RevenueDepartment;
+  // Value of what was prescribed/ordered: the actual charge for what was
+  // done in-house, the list price for what wasn't. For consultation, the
+  // fees billed.
   ordered: number;
   inHouse: number;
-  revenue: number;
-}
-
-export interface OrdersReportDoctor {
-  doctorId: string;
-  doctorName: string;
-  department: Department;
-  ordered: number;
-  inHouse: number;
-  revenue: number;
+  notInHouse: number;
+  // Something not done in-house had no price in the list, so its value
+  // is missing from `ordered` and `notInHouse`.
+  hasUnpriced: boolean;
 }
 
 export interface OrdersReport {
   from: string;
   to: string;
-  summary: OrdersReportSummary[];
-  byItem: OrdersReportItem[];
-  byDoctor: OrdersReportDoctor[];
-  rows: OrdersReportRow[];
+  departments: RevenueDepartment[];
+  summary: DeptRevenue[];
+  byDay: { date: string; cells: DeptRevenue[] }[];
+  byDoctor: { doctorId: string; doctorName: string; cells: DeptRevenue[] }[];
 }
 
 // ---- Patient record ----

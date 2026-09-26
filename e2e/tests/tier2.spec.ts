@@ -28,7 +28,7 @@ async function setMrp(page: Page, filter: string, brand: string, mrp: string) {
 }
 
 test.describe('Tier 2 departments', () => {
-  test('pharmacy: the doctor prescribes from the pharmacy list, the pharmacist substitutes a brand, dispenses and prints the receipt; the doctor sees it in-house', async ({ page, context }) => {
+  test('pharmacy: the doctor prescribes from the pharmacy list, the pharmacist substitutes a brand, dispenses and prints the receipt; the doctor sees the in-house revenue', async ({ page, context }) => {
     const { doctor, pharmacist } = await tier2Clinic();
 
     // Pharmacist loads the standard list and prices two brands of Paracetamol 650.
@@ -94,12 +94,13 @@ test.describe('Tier 2 departments', () => {
     // Doctor: 1 of 1 medicine done in-house (as a substitute), the CBC pending.
     await applySession(page, doctor);
     await page.goto('/admin/reports');
-    await page.getByRole('tab', { name: 'Prescribed vs in-house' }).click();
-    await expect(page.getByTestId('orders-summary-PHARMACY').getByTestId('summary-inhouse')).toHaveText('1');
-    await expect(page.getByTestId('orders-summary-LAB')).toContainText('1 pending');
-    await expect(page.getByTestId('orders-rows')).toContainText('In-house (substitute)');
+    await page.getByRole('tab', { name: 'In-house revenue' }).click();
+    await expect(page.getByTestId('orders-dept-CONSULTATION').getByTestId('dept-inhouse')).toHaveText('₹500');
+    await expect(page.getByTestId('orders-dept-PHARMACY').getByTestId('dept-inhouse')).toHaveText('₹20');
+    await expect(page.getByTestId('orders-dept-LAB').getByTestId('dept-inhouse')).toHaveText('₹0');
+    await expect(page.getByTestId('orders-total')).toContainText('₹520');
     const [csv] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-orders').click()]);
-    expect(csv.suggestedFilename()).toMatch(/^orders_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv.suggestedFilename()).toMatch(/^inhouse_revenue_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.csv$/);
   });
 
   test('lab: the technician does the ordered test under the lab’s own name, enters the result later, and prices come from the test list', async ({ page }) => {

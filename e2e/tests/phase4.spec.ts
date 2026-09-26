@@ -120,7 +120,6 @@ test.describe('Phase 4', () => {
     await expect(page.getByText(/200/).first()).toBeVisible();
 
     await page.goto('/admin/reports');
-    await expect(page.getByTestId('report-records')).toHaveText('1');
     await expect(page.getByTestId('report-billed')).toHaveText('₹600');
     await expect(page.getByTestId('report-collected')).toHaveText('₹200');
     await expect(page.getByTestId('report-outstanding')).toHaveText('₹400');

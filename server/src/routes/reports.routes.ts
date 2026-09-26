@@ -127,12 +127,14 @@ const ordersQuerySchema = z.object({
   departments: z
     .string()
     .optional()
-    .transform((v) => (v ? v.split(',') : ['PHARMACY', 'LAB', 'RADIOLOGY']))
-    .pipe(z.array(z.enum(['PHARMACY', 'LAB', 'RADIOLOGY']))),
+    .transform((v) => (v ? v.split(',') : ['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY']))
+    .pipe(z.array(z.enum(['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY']))),
 });
 
-// What doctors prescribed and ordered vs what was done in-house. A doctor
-// sees their own orders; a department counter, its own department.
+// In-house revenue by department: consultation fees, and what doctors
+// prescribed/ordered vs what the pharmacy, lab and radiology earned from
+// it. A doctor sees their own patients; a department counter, its own
+// department.
 reportsRouter.get(
   '/orders',
   requireTier(2),

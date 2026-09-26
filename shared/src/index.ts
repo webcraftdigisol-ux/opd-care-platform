@@ -974,6 +974,13 @@ export interface PlatformAdminAuthResponse {
   admin: { id: string; name: string; email: string };
 }
 
+// Push the end date out by `days` with no payment recorded -- e.g. extending
+// a trial. Counted from today if the subscription has already lapsed.
+export interface ExtendSubscriptionRequest {
+  days: number;
+  reason: string;
+}
+
 export interface RenewSubscriptionRequest {
   tier: ClinicTier;
   billingCycle: BillingCycle;

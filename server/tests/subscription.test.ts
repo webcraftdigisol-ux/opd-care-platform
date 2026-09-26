@@ -278,3 +278,67 @@ describe('Platform admin: subscription management', () => {
     expect((await request(app).get(`/api/platform/clinics/${fakeId}/subscription/payments`).set(auth(token))).status).toBe(404);
   });
 });
+
+describe('Platform admin: extend a subscription without payment', () => {
+  async function extend(token: string, clinicId: string, body: object) {
+    return request(app).post(`/api/platform/clinics/${clinicId}/subscription/extend`).set(auth(token)).send(body);
+  }
+
+  it('moves the end date out by N days, records who/why, and records no payment', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    const { admin, password } = await createPlatformAdmin();
+    const { token } = await platformLoginAs(admin.email, password);
+    const before = await prisma.subscription.findUniqueOrThrow({ where: { clinicId: clinic.id } });
+
+    const res = await extend(token, clinic.id, { days: 30, reason: 'Trial extension' });
+    expect(res.status).toBe(200);
+
+    const after = await prisma.subscription.findUniqueOrThrow({ where: { clinicId: clinic.id } });
+    expect(after.currentPeriodEnd.getTime() - before.currentPeriodEnd.getTime()).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(await prisma.subscriptionPayment.count({ where: { subscriptionId: after.id } })).toBe(0);
+    const ext = await prisma.subscriptionExtension.findFirstOrThrow({ where: { subscriptionId: after.id } });
+    expect(ext).toMatchObject({ days: 30, reason: 'Trial extension', extendedByAdminId: admin.id });
+    expect(ext.previousPeriodEnd.getTime()).toBe(before.currentPeriodEnd.getTime());
+  });
+
+  it('counts from today for a lapsed subscription, which then works again', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
+    await prisma.subscription.update({
+      where: { clinicId: clinic.id },
+      data: { currentPeriodEnd: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
+    });
+    expect((await request(app).get('/api/auth/me').set(auth(adminToken))).status).toBe(403);
+
+    const { admin, password } = await createPlatformAdmin();
+    const { token } = await platformLoginAs(admin.email, password);
+    const res = await extend(token, clinic.id, { days: 7, reason: 'Goodwill' });
+    expect(res.status).toBe(200);
+    expect(res.body.isActive).toBe(true);
+
+    const end = new Date(res.body.currentPeriodEnd).getTime();
+    expect(end).toBeGreaterThan(Date.now() + 6.9 * 24 * 60 * 60 * 1000);
+    expect(end).toBeLessThan(Date.now() + 7.1 * 24 * 60 * 60 * 1000);
+    expect((await request(app).get('/api/auth/me').set(auth(adminToken))).status).toBe(200);
+  });
+
+  it('leaves a suspended clinic suspended', async () => {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    await prisma.subscription.update({ where: { clinicId: clinic.id }, data: { status: 'SUSPENDED' } });
+    const { admin, password } = await createPlatformAdmin();
+    const { token } = await platformLoginAs(admin.email, password);
+
+    const res = await extend(token, clinic.id, { days: 30, reason: 'Trial extension' });
+    expect(res.body.status).toBe('SUSPENDED');
+  });
+
+  it('validates days and reason, and requires a platform admin', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
+    const { admin, password } = await createPlatformAdmin();
+    const { token } = await platformLoginAs(admin.email, password);
+
+    expect((await extend(token, clinic.id, { days: 0, reason: 'x trial' })).status).toBe(400);
+    expect((await extend(token, clinic.id, { days: 366, reason: 'x trial' })).status).toBe(400);
+    expect((await extend(token, clinic.id, { days: 30, reason: '  ' })).status).toBe(400);
+    expect((await extend(adminToken, clinic.id, { days: 30, reason: 'clinic admin tries' })).status).toBe(401);
+  });
+});

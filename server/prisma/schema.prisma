@@ -854,9 +854,29 @@ model Subscription {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
-  payments SubscriptionPayment[]
+  payments   SubscriptionPayment[]
+  extensions SubscriptionExtension[]
 
   @@index([currentPeriodEnd])
+}
+
+// A platform admin pushing a subscription's end date out without any payment
+// (a trial extension, goodwill days). Kept apart from SubscriptionPayment so
+// revenue records only ever hold money that was actually received, and so
+// every free extension has a who/why/when trail.
+model SubscriptionExtension {
+  id                String        @id @default(uuid())
+  subscriptionId    String
+  subscription      Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  days              Int
+  reason            String
+  previousPeriodEnd DateTime
+  newPeriodEnd      DateTime
+  extendedByAdminId String
+  extendedByAdmin   PlatformAdmin @relation(fields: [extendedByAdminId], references: [id])
+  createdAt         DateTime      @default(now())
+
+  @@index([subscriptionId])
 }
 
 // A renewal's own permanent record, independent of Subscription's single
@@ -894,7 +914,8 @@ model PlatformAdmin {
   name      String
   createdAt DateTime @default(now())
 
-  subscriptionPayments SubscriptionPayment[]
+  subscriptionPayments   SubscriptionPayment[]
+  subscriptionExtensions SubscriptionExtension[]
 }
 
 // One-time code for resetting a forgotten password, sent to the user's phone

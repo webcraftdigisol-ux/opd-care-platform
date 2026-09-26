@@ -96,3 +96,28 @@ export function Detail({ label, value }: { label: string; value?: React.ReactNod
 export function EmptyState({ children }: { children: React.ReactNode }) {
   return <p className="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">{children}</p>;
 }
+
+// A centred dialog over a dimmed page (a sheet from the bottom on phones).
+// Escape or the backdrop closes it.
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <button type="button" aria-label="Close" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:max-w-lg sm:rounded-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="Close dialog" className="rounded-md p-1 text-gray-400 hover:text-gray-700">
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}

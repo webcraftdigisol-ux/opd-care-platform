@@ -3,6 +3,7 @@ import { pipeline } from 'stream';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
+import { withPatient } from '../utils/patients';
 import { toAttachment } from '../utils/serialize';
 import { upload, UPLOADS_ROOT, fileStorage, deleteUploadedFile } from '../utils/uploads';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
@@ -48,7 +49,7 @@ async function loadOwnerPatientId(clinicId: string, category: AttachmentCategory
         include: { appointment: true },
       });
       if (!consultation) throw new HttpError(404, 'Consultation not found');
-      return consultation.appointment.patientId;
+      return withPatient(consultation.appointment).patientId;
     }
   }
 }

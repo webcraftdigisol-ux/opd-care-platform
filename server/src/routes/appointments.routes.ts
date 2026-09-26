@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { toAppointment, patientWithCode } from '../utils/serialize';
-import { createPatient, splitName } from '../utils/patients';
+import { createPatient, normalizePhone, splitName, withPatient } from '../utils/patients';
 import { notifyPatientEmail } from '../utils/notify';
 import { parseDateOnly } from '../utils/dates';
 import { getAvailableSlots } from '../utils/availableSlots';
@@ -103,13 +103,14 @@ appointmentsRouter.post(
       });
     });
 
+    const booked = withPatient(appointment);
     await notifyPatientEmail({
       clinicId,
-      patientId: appointment.patientId,
+      patientId: booked.patientId,
       type: 'APPOINTMENT_CONFIRMED',
-      to: appointment.patient.email,
+      to: booked.patient.email,
       subject: `Appointment confirmed — Token #${appointment.tokenNumber}`,
-      body: `Hi ${appointment.patient.name}, your appointment with Dr. ${appointment.doctor.user.name} on ${appointment.date.toISOString().slice(0, 10)} at ${appointment.startTime} is confirmed. Your token number is #${appointment.tokenNumber}.`,
+      body: `Hi ${booked.patient.name}, your appointment with Dr. ${appointment.doctor.user.name} on ${appointment.date.toISOString().slice(0, 10)} at ${appointment.startTime} is confirmed. Your token number is #${appointment.tokenNumber}.`,
     });
 
     res.status(201).json(toAppointment(appointment));
@@ -215,6 +216,8 @@ appointmentsRouter.patch(
         throw new HttpError(403, 'Not your appointment');
       }
     }
+    // Arriving (and anything after) needs a real patient record.
+    if (['CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED'].includes(status)) withPatient(appointment);
 
     const updated = await prisma.appointment.update({
       where: { id: req.params.id },
@@ -245,6 +248,209 @@ appointmentsRouter.post(
       where: { id: req.params.id },
       data: { status: 'CANCELLED' },
       include: { patient: patientWithCode, doctor: { include: { user: true } } },
+    });
+    res.json(toAppointment(updated));
+  }),
+);
+
+const withDetails = {
+  patient: patientWithCode,
+  doctor: { include: { user: true } },
+  consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
+} as const;
+
+const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:mm');
+
+// The Appointments page's day list: every booking and visit that day,
+// optionally for one doctor. A doctor sees their own unless they ask for
+// another doctor's.
+appointmentsRouter.get(
+  '/',
+  requireRole('ADMIN', 'RECEPTIONIST', 'DOCTOR'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const query = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), doctorId: z.string().optional() }).parse(req.query);
+    const appointments = await prisma.appointment.findMany({
+      where: { clinicId: req.auth!.clinicId, date: parseDateOnly(query.date), ...(query.doctorId ? { doctorId: query.doctorId } : {}) },
+      include: withDetails,
+      // Timed bookings in time order first, then the rest by token.
+      orderBy: [{ startTime: 'asc' }, { tokenNumber: 'asc' }],
+    });
+    res.json(appointments.map(toAppointment));
+  }),
+);
+
+const scheduleSchema = z
+  .object({
+    doctorId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    time: TIME.nullish(),
+    reason: z.string().trim().max(500).optional(),
+    patientId: z.string().min(1).optional(),
+    guestName: z.string().trim().min(2).max(100).optional(),
+    guestPhone: z.string().trim().min(6).max(20).optional(),
+  })
+  .refine((d) => d.patientId || d.guestName, { message: 'Pick a patient, or give the name of the person to book for' });
+
+async function assertCanUseDoctor(req: AuthedRequest, doctorId: string) {
+  const doctor = await prisma.doctorProfile.findFirst({ where: { id: doctorId, user: { clinicId: req.auth!.clinicId } } });
+  if (!doctor) throw new HttpError(404, 'Doctor not found');
+  if (req.auth!.role === 'DOCTOR' && doctor.userId !== req.auth!.userId) {
+    throw new HttpError(403, 'A doctor can only book their own appointments');
+  }
+  return doctor;
+}
+
+function assertNotPast(date: Date) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  // A day's grace: the clinic's "today" (IST) can be yesterday in UTC.
+  today.setUTCDate(today.getUTCDate() - 1);
+  if (date < today) throw new HttpError(400, 'Cannot book an appointment in the past');
+}
+
+// Staff booking: any day, an optional time (no slot grid -- the desk
+// knows the doctor's day), a registered patient or a name for a phone
+// booking. Gets the doctor's next token for that day, like every visit.
+appointmentsRouter.post(
+  '/schedule',
+  requireRole('ADMIN', 'RECEPTIONIST', 'DOCTOR'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = scheduleSchema.parse(req.body);
+    const clinicId = req.auth!.clinicId;
+    const date = parseDateOnly(data.date);
+    assertNotPast(date);
+    const doctor = await assertCanUseDoctor(req, data.doctorId);
+    if (data.patientId) {
+      const patient = await prisma.user.findFirst({ where: { id: data.patientId, clinicId, role: 'PATIENT' } });
+      if (!patient) throw new HttpError(404, 'Patient not found');
+    }
+
+    const appointment = await prisma.$transaction(async (tx) => {
+      await lockDoctorDay(tx, doctor.id, date);
+      const tokenNumber = await nextTokenNumber(tx, doctor.id, date);
+      return tx.appointment.create({
+        data: {
+          clinicId,
+          doctorId: doctor.id,
+          date,
+          tokenNumber,
+          startTime: data.time ?? null,
+          reason: data.reason || null,
+          consultationFee: doctor.consultationFee,
+          ...(data.patientId
+            ? { patientId: data.patientId }
+            : { guestName: data.guestName!, guestPhone: data.guestPhone ? normalizePhone(data.guestPhone) : null }),
+        },
+        include: withDetails,
+      });
+    });
+
+    if (appointment.patient) {
+      await notifyPatientEmail({
+        clinicId,
+        patientId: appointment.patient.id,
+        type: 'APPOINTMENT_CONFIRMED',
+        to: appointment.patient.email,
+        subject: `Appointment confirmed — Token #${appointment.tokenNumber}`,
+        body: `Hi ${appointment.patient.name}, your appointment with Dr. ${appointment.doctor.user.name} on ${data.date}${
+          data.time ? ` at ${data.time}` : ''
+        } is confirmed. Your token number is #${appointment.tokenNumber}.`,
+      });
+    }
+    res.status(201).json(toAppointment(appointment));
+  }),
+);
+
+const rescheduleSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  time: TIME.nullish(),
+  doctorId: z.string().min(1).optional(),
+  reason: z.string().trim().max(500).nullish(),
+});
+
+// Move a booking to another day, time or doctor. Only while it's still a
+// booking; a new day or doctor means a new token in that queue, and a new
+// doctor brings their own fee.
+appointmentsRouter.patch(
+  '/:id',
+  requireRole('ADMIN', 'RECEPTIONIST', 'DOCTOR'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = rescheduleSchema.parse(req.body);
+    const existing = await prisma.appointment.findFirst({ where: { id: req.params.id, clinicId: req.auth!.clinicId } });
+    if (!existing) throw new HttpError(404, 'Appointment not found');
+    await assertCanUseDoctor(req, existing.doctorId);
+    if (existing.status !== 'BOOKED') throw new HttpError(400, 'Only a booked appointment can be rescheduled');
+
+    const doctor = data.doctorId ? await assertCanUseDoctor(req, data.doctorId) : null;
+    const date = data.date ? parseDateOnly(data.date) : existing.date;
+    if (data.date) assertNotPast(date);
+    const doctorId = doctor?.id ?? existing.doctorId;
+    const moved = doctorId !== existing.doctorId || date.getTime() !== existing.date.getTime();
+
+    const updated = await prisma.$transaction(async (tx) => {
+      let tokenNumber = existing.tokenNumber;
+      if (moved) {
+        await lockDoctorDay(tx, doctorId, date);
+        tokenNumber = await nextTokenNumber(tx, doctorId, date);
+      }
+      return tx.appointment.update({
+        where: { id: existing.id },
+        data: {
+          date,
+          doctorId,
+          tokenNumber,
+          ...(data.time !== undefined ? { startTime: data.time } : {}),
+          ...(data.reason !== undefined ? { reason: data.reason || null } : {}),
+          ...(doctor ? { consultationFee: doctor.consultationFee } : {}),
+          // Remind again for the new day.
+          ...(moved ? { reminderSentAt: null } : {}),
+        },
+        include: withDetails,
+      });
+    });
+    res.json(toAppointment(updated));
+  }),
+);
+
+const registerBookingSchema = z.object({
+  patientId: z.string().min(1).optional(),
+  name: z.string().trim().min(2).max(100).optional(),
+  phone: z.string().trim().min(6).max(20).optional(),
+  checkIn: z.boolean().optional(),
+});
+
+// On arrival, a booking made for someone not registered yet becomes a real
+// patient: either a registered one the desk picked (e.g. a family member
+// found by mobile) or a new registration from the booking's name and
+// mobile. Optionally checks them in at the same time.
+appointmentsRouter.post(
+  '/:id/register',
+  requireRole('ADMIN', 'RECEPTIONIST'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = registerBookingSchema.parse(req.body);
+    const clinicId = req.auth!.clinicId;
+    const booking = await prisma.appointment.findFirst({ where: { id: req.params.id, clinicId } });
+    if (!booking) throw new HttpError(404, 'Appointment not found');
+    if (booking.patientId) throw new HttpError(400, 'This booking already belongs to a registered patient');
+    if (['CANCELLED', 'NO_SHOW'].includes(booking.status)) throw new HttpError(400, 'This booking was cancelled or missed');
+
+    let patientId = data.patientId;
+    if (patientId) {
+      const patient = await prisma.user.findFirst({ where: { id: patientId, clinicId, role: 'PATIENT' } });
+      if (!patient) throw new HttpError(404, 'Patient not found');
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      if (!patientId) {
+        const phone = data.phone ?? booking.guestPhone;
+        if (!phone) throw new HttpError(400, 'A mobile number is needed to register the patient');
+        const { user } = await createPatient(tx, clinicId, { ...splitName(data.name ?? booking.guestName ?? ''), phone });
+        patientId = user.id;
+      }
+      return tx.appointment.update({
+        where: { id: booking.id },
+        data: { patientId, guestName: null, guestPhone: null, ...(data.checkIn ? { status: 'CHECKED_IN' } : {}) },
+        include: withDetails,
+      });
     });
     res.json(toAppointment(updated));
   }),
@@ -378,13 +584,14 @@ appointmentsRouter.post(
     // @opd.local email), so this correctly ends up SKIPPED for most of them
     // -- notifyPatientEmail filters that placeholder out rather than
     // sending to it.
+    const booked = withPatient(appointment);
     await notifyPatientEmail({
       clinicId,
-      patientId: appointment.patientId,
+      patientId: booked.patientId,
       type: 'APPOINTMENT_CONFIRMED',
-      to: appointment.patient.email,
+      to: booked.patient.email,
       subject: `Appointment confirmed — Token #${appointment.tokenNumber}`,
-      body: `Hi ${appointment.patient.name}, you're checked in with Dr. ${appointment.doctor.user.name}. Your token number is #${appointment.tokenNumber}.`,
+      body: `Hi ${booked.patient.name}, you're checked in with Dr. ${appointment.doctor.user.name}. Your token number is #${appointment.tokenNumber}.`,
     });
 
     res.status(201).json(toAppointment(appointment));

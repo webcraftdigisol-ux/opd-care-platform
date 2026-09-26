@@ -93,11 +93,11 @@ reportsRouter.get(
     const todayEnd = endOfDay(today);
 
     for (const c of consultations) {
-      if (!c.followUpDate) continue;
+      if (!c.followUpDate || !c.appointment.patient) continue;
       const item: FollowUpItem = {
         consultationId: c.id,
         appointmentId: c.appointmentId,
-        patientId: c.appointment.patientId,
+        patientId: c.appointment.patient.id,
         patientName: c.appointment.patient.name,
         patientPhone: c.appointment.patient.phone,
         doctorName: c.appointment.doctor.user.name,

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import type { Prisma, PatientProfile, User } from '@prisma/client';
+import { HttpError } from '../middleware/errorHandler';
 import type { Gender, Patient, PatientDetailsInput, PatientSearchResult } from '@opd/shared';
 
 type Tx = Prisma.TransactionClient;
@@ -260,4 +261,18 @@ export async function ensurePatientProfile(prisma: { $transaction: <T>(fn: (tx: 
       },
     });
   });
+}
+
+export const NOT_REGISTERED_MESSAGE = 'This booking is for someone not registered yet — register them first';
+
+// Narrows an appointment to one with a registered patient. Everything past
+// booking (check-in, consultation, billing, reminders) needs one; a
+// booking for someone not registered yet is refused with a clear message.
+export function withPatient<A extends { patientId: string | null; patient?: unknown }>(
+  appointment: A,
+): A & { patientId: string; patient: NonNullable<A['patient']> } {
+  if (!appointment.patientId || ('patient' in appointment && !appointment.patient)) {
+    throw new HttpError(400, NOT_REGISTERED_MESSAGE);
+  }
+  return appointment as A & { patientId: string; patient: NonNullable<A['patient']> };
 }

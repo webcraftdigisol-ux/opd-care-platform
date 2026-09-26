@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { Prisma, type PaymentOrder } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../prisma';
+import { withPatient } from '../utils/patients';
 import { toPayment, toSubscriptionPayment } from '../utils/serialize';
 import { notifyPatientEmail } from '../utils/notify';
 import {
@@ -64,8 +65,9 @@ interface BillInfo {
 async function loadBill(clinicId: string, billType: BillType, billId: string): Promise<BillInfo> {
   switch (billType) {
     case 'CONSULTATION': {
-      const appt = await prisma.appointment.findFirst({ where: { id: billId, clinicId }, include: { patient: true } });
-      if (!appt) throw new HttpError(404, 'Appointment not found');
+      const found = await prisma.appointment.findFirst({ where: { id: billId, clinicId }, include: { patient: true } });
+      if (!found) throw new HttpError(404, 'Appointment not found');
+      const appt = withPatient(found);
       return { total: appt.consultationFee, patientId: appt.patientId, patientEmail: appt.patient.email, patientName: appt.patient.name };
     }
     case 'PHARMACY': {

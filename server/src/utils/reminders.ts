@@ -2,6 +2,7 @@ import type { AppointmentStatus, Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { notifyPatientEmail } from './notify';
 import { notifyPatientWhatsApp } from './whatsapp';
+import { withPatient } from './patients';
 
 // The one background job in this app that isn't triggered by a user
 // action or an HTTP request -- see scheduler.ts for what calls this on a
@@ -25,11 +26,14 @@ export async function sendDueAppointmentReminders(): Promise<{ sent: number }> {
       status: 'BOOKED',
       isWalkIn: false,
       reminderSentAt: null,
+      // A booking for someone not registered yet has nobody to remind.
+      patientId: { not: null },
     },
     include: { patient: true, doctor: { include: { user: true } } },
   });
 
-  for (const appointment of due) {
+  for (const found of due) {
+    const appointment = withPatient(found);
     const reminderBody = `Hi ${appointment.patient.name}, this is a reminder that you have an appointment with Dr. ${appointment.doctor.user.name} tomorrow (${appointment.date.toISOString().slice(0, 10)})${appointment.startTime ? ` at ${appointment.startTime}` : ''}. Your token number is #${appointment.tokenNumber}.`;
 
     await notifyPatientEmail({
@@ -83,7 +87,7 @@ type FollowUpConsultation = Prisma.ConsultationGetPayload<{
 // Follow-ups report and the automatic jobs below, so they all say the same
 // thing. `onTheDay` is the reminder sent on the follow-up date itself.
 export async function sendFollowUpReminder(consultation: FollowUpConsultation, opts: { onTheDay?: boolean } = {}) {
-  const { appointment } = consultation;
+  const appointment = withPatient(consultation.appointment);
   const due = consultation.followUpDate!.toISOString().slice(0, 10);
   const doctor = /^dr\.?\s/i.test(appointment.doctor.user.name) ? appointment.doctor.user.name : `Dr. ${appointment.doctor.user.name}`;
   const body = opts.onTheDay

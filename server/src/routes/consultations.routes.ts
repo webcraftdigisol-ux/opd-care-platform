@@ -6,6 +6,7 @@ import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { notifyPatientWhatsApp } from '../utils/whatsapp';
 import { frequencyFromTicks } from '../utils/dosage';
+import { withPatient } from '../utils/patients';
 import {
   createSummaryToken,
   doctorTitle,
@@ -109,6 +110,7 @@ async function assertOwnsAppointment(req: AuthedRequest, appointmentId: string) 
     where: { id: appointmentId, clinicId: req.auth!.clinicId },
   });
   if (!appointment) throw new HttpError(404, 'Appointment not found');
+  withPatient(appointment);
   if (req.auth!.role === 'DOCTOR') {
     const doctor = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
     if (!doctor || doctor.id !== appointment.doctorId) {
@@ -246,10 +248,12 @@ consultationsRouter.post(
   requireRole('DOCTOR', 'ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const owned = await assertOwnsAppointment(req, req.params.appointmentId);
-    const appointment = await prisma.appointment.findUniqueOrThrow({
-      where: { id: owned.id },
-      include: { patient: patientWithCode, doctor: { include: { user: true } } },
-    });
+    const appointment = withPatient(
+      await prisma.appointment.findUniqueOrThrow({
+        where: { id: owned.id },
+        include: { patient: patientWithCode, doctor: { include: { user: true } } },
+      }),
+    );
     const consultation = await prisma.consultation.findUnique({
       where: { appointmentId: appointment.id },
       include: { prescriptions: true },
@@ -329,12 +333,12 @@ consultationsRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const owned = await assertOwnsAppointment(req, req.params.appointmentId);
     const summary = await loadVisitSummary(req.auth!.clinicId, owned.id);
-    const patient = await prisma.user.findUniqueOrThrow({ where: { id: owned.patientId } });
+    const patient = await prisma.user.findUniqueOrThrow({ where: { id: withPatient(owned).patientId } });
     const link = `${publicApiBase(req)}/public/visit-summary/${createSummaryToken(owned.id)}`;
     const date = formatDisplayDate(summary.date);
     const notification = await notifyPatientWhatsApp({
       clinicId: req.auth!.clinicId,
-      patientId: owned.patientId,
+      patientId: patient.id,
       type: 'VISIT_SUMMARY_SHARED',
       to: patient.phone,
       optedIn: patient.whatsappOptIn,

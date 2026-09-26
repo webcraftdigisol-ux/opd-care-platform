@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listAllAppointments } from '../api/admin';
 import { StatusBadge } from '../components/StatusBadge';
-import { PatientLink } from '../components/PatientLink';
+import { AppointmentPerson } from '../components/AppointmentPerson';
 import { PatientSearch } from '../components/PatientSearch';
 import { PageHeader, btnPrimary, btnSecondary } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -68,7 +68,7 @@ export function ReceptionDashboardPage() {
                   <td className="px-4 py-2 font-medium">#{a.tokenNumber}</td>
                   <td className="px-4 py-2 text-gray-500">{a.startTime ?? '—'}</td>
                   <td className="px-4 py-2">
-                    <PatientLink patient={a.patient} />
+                    <AppointmentPerson appointment={a} />
                   </td>
                   <td className="px-4 py-2">{a.doctor?.user.name}</td>
                   <td className="px-4 py-2 text-gray-500">{a.isWalkIn ? 'Walk-in' : 'Booked'}</td>
@@ -76,7 +76,7 @@ export function ReceptionDashboardPage() {
                     <StatusBadge status={a.status} />
                   </td>
                   <td className="px-4 py-2">
-                    {a.consultationFee > 0 ? (
+                    {a.consultationFee > 0 && a.patientId ? (
                       <button
                         onClick={() => setExpandedFee(expandedFee === a.id ? null : a.id)}
                         className="text-teal hover:underline"

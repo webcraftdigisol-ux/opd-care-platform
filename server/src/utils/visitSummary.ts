@@ -4,14 +4,14 @@ import type { FoodTiming, Gender, Prescription, VisitSummary, Vitals } from '@op
 import { prisma } from '../prisma';
 import { HttpError } from '../middleware/errorHandler';
 import { toPrescription } from './serialize';
-import { currentAge } from './patients';
+import { currentAge, withPatient } from './patients';
 
 // The clinic's local time for "when was this visit"; every clinic so far is
 // in India.
 const CLINIC_TZ = 'Asia/Kolkata';
 
 export async function loadVisitSummary(clinicId: string, appointmentId: string): Promise<VisitSummary> {
-  const appointment = await prisma.appointment.findFirst({
+  const found = await prisma.appointment.findFirst({
     where: { id: appointmentId, clinicId },
     include: {
       clinic: true,
@@ -20,7 +20,8 @@ export async function loadVisitSummary(clinicId: string, appointmentId: string):
       consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
     },
   });
-  if (!appointment) throw new HttpError(404, 'Visit not found');
+  if (!found) throw new HttpError(404, 'Visit not found');
+  const appointment = withPatient(found);
   const c = appointment.consultation;
   if (!c) throw new HttpError(404, 'No consultation recorded for this visit yet');
 

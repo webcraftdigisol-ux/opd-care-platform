@@ -26,6 +26,7 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
   const inPatients: NavLink = { to: '/admin/ipd/admissions', label: 'In-Patients', icon: 'bed' };
   const wards: NavLink = { to: '/admin/ipd/wards', label: 'Wards', icon: 'building' };
   const reports: NavLink = { to: '/admin/reports', label: 'Reports', icon: 'chart' };
+  const appointments: NavLink = { to: '/appointments', label: 'Appointments', icon: 'calendar' };
   const catalogue: NavLink = { to: '/catalogue', label: "Doctor's Catalogue", icon: 'book' };
 
   switch (role) {
@@ -35,6 +36,7 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
           links: [
             { to: '/admin', label: 'Dashboard', icon: 'dashboard' },
             newPatient,
+            appointments,
             findPatient,
             { to: '/reception', label: "Today's queue", icon: 'queue' },
             walkIn,
@@ -81,6 +83,7 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
         {
           links: [
             { to: '/doctor', label: 'My queue', icon: 'stethoscope' },
+            appointments,
             findPatient,
             newPatient,
             catalogue,
@@ -94,6 +97,7 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
         {
           links: [
             { to: '/reception', label: "Today's queue", icon: 'queue' },
+            appointments,
             newPatient,
             findPatient,
             walkIn,

@@ -139,8 +139,44 @@ sections:
    Pulse (bpm), BP systolic, BP diastolic, Respiratory rate, SpO2 (%),
    Height (cm), Weight (kg), Blood sugar.
 3. **Clinical notes** -- Chief complaint, History of present illness,
-   Relevant history, Diagnosis, Differential diagnosis, … *(continues --
-   more snaps to follow)*
+   Relevant history (multi-line); Diagnosis, Differential diagnosis
+   (single-line, side by side).
+4. **Prescription** -- empty state "No medicines added yet." + **Add
+   medicine** (row fields: to see in the next snaps).
+5. **Lab tests ordered** -- "No tests ordered for this visit." + **Add test**.
+6. **Radiology work prescribed** -- "No radiology work prescribed for this
+   visit." + **Add radiology work**.
+7. **Advice & follow-up** -- Advice (multi-line), Ultrasound / imaging
+   advice (optional, single line; placeholder "USG Pelvis recommended to
+   confirm intrauterine pregnancy"), Follow-up date, Doctor notes.
+8. Bottom actions: **Save consultation** (primary) · **Cancel**.
+
+**Filled example (dummy data):** choosing the doctor ("Dr. Demo — General
+Physician", name + speciality in the dropdown) showed a fee of ₹1000 --
+looks pre-filled from the doctor (to confirm). Vitals entered: temp 98 °F,
+pulse 98, BP systolic 80 / diastolic 120, RR 78, SpO2 99, height 160,
+weight 93, blood sugar 210. Chief complaint "Fever", HPI "Travel",
+relevant history "NA", diagnosis "Viral Fever", differential "NA".
+*(continues -- prescription etc. in the next snaps)*
+
+**Observations**
+- **Lab tests and radiology can be ordered in Tier 1** in the offline app.
+  The web app hides lab/radiology ordering below Tier 2 -- in the offline
+  model Tier 2 seems to add the in-house lab/radiology *departments*, not
+  the ability to *order* tests (a Tier 1 doctor still sends patients to an
+  outside lab). To confirm with the Tier 2 walkthrough.
+- **No vitals validation**: the example saved BP 80/120 (systolic below
+  diastolic) and RR 78 (normal adult 12-20). The web version should keep
+  entry fast but flag implausible values inline (soft warning, not a
+  block), e.g. systolic < diastolic, SpO2 > 100, RR outside ~6-60.
+- **Blood sugar has no type/unit** (fasting / post-prandial / random,
+  mg/dL). Worth a small selector.
+- **"Ultrasound / imaging advice"** is separate from "Radiology work
+  prescribed" -- the example is obstetric, suggesting gynaecology/ANC
+  clinics are a key audience. Ask which specialities matter most.
+- Web app today: Diet plan and prescription-scan upload live on the
+  consultation page too (offline doesn't show them here) -- keep, but
+  collapsible/secondary.
 
 **How the visit starts:** a consultation is created directly from the
 patient's profile, with the date/time/doctor/fee chosen on the form -- no
@@ -171,8 +207,12 @@ relevant history or differential diagnosis.
 - Are Appointments and Revenue charts per clinic or per doctor?
 - Who uses the registration form -- reception only, or doctors too?
 - ~~After Save patient, where does it go?~~ → the new patient's profile.
-- Is the consultation fee typed per visit, or pre-filled from the chosen
-  doctor's fee (editable)?
+- Is the consultation fee pre-filled from the chosen doctor (looks like
+  it -- ₹1000 appeared) and editable per visit (discount, free follow-up)?
+- Does a visit's height/weight update the patient's baseline on the
+  profile (baseline said 92 kg, the visit recorded 93)?
+- Which specialities are the main customers (the imaging example is
+  obstetric -- gynaecology/ANC, general physician, paediatrics …)?
 - Can the same form be saved as a draft and completed later (e.g. vitals
   by an assistant, notes by the doctor)?
 

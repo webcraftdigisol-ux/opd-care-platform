@@ -95,6 +95,74 @@ the rest collapsible or fillable later; DOB ↔ age auto-calculation; mobile
 duplicate check as you type ("already registered -- open record?");
 allergies surfaced prominently in the doctor's consultation view.
 
+### T1-3. Patient profile (opens right after "Save patient")
+
+**Header card** (always on top of every profile tab): initials avatar,
+full name, Patient ID chip, then one line of key facts with icons --
+gender, age (derived from DOB), blood group, mobile, email, city/state --
+and the patient's record folder path (`Patients/<PatientID>_<First>_<Last>/`).
+
+**Tabs:** Summary · Consultations · Vitals · Reports · Images · Billing.
+
+**Summary tab** -- "Edit details" link top-right, then read-only cards in a
+two-column grid:
+- Personal: DOB, marital status, occupation, nationality, referred by,
+  **registration date**.
+- Contact: mobile, alternate mobile, email, emergency contact
+  ("Name (number)").
+- Address: address, city, state, pincode.
+- Vitals baseline: height, weight, blood group.
+- Medical history (full width): known allergies, chronic diseases, past
+  surgeries, family history.
+- Additional (full width): insurance details, TPA, doctor notes.
+
+**Consultations tab** -- "Consultation history" heading, **+ New
+consultation** button, empty state "No visits recorded yet. Start the first
+consultation to build this patient's timeline."
+
+**Current web app:** there is no patient profile page at all. Staff can't
+open "a patient" -- only an appointment. The closest things are the
+patient's own My Records page and the Patient History panel on the doctor's
+consultation screen.
+
+**Take from offline:** a patient-centric profile as the hub (header + tabs),
+reached from search, registration, the queue, anywhere a patient name
+appears. This should become the centre of the redesign.
+
+### T1-4. Record consultation (from the profile's "+ New consultation")
+
+Page title "Record consultation", subtitle "Patient <PatientID>". Card
+sections:
+1. **Visit details** -- Visit date* (defaults to today), Visit time
+   (defaults to now), Doctor (select), Consultation fee (₹).
+2. **Vitals** -- "Height and weight auto-calculate BMI." Temperature (°F),
+   Pulse (bpm), BP systolic, BP diastolic, Respiratory rate, SpO2 (%),
+   Height (cm), Weight (kg), Blood sugar.
+3. **Clinical notes** -- Chief complaint, History of present illness,
+   Relevant history, Diagnosis, Differential diagnosis, … *(continues --
+   more snaps to follow)*
+
+**How the visit starts:** a consultation is created directly from the
+patient's profile, with the date/time/doctor/fee chosen on the form -- no
+appointment or token needed first. (The web app is the opposite: a
+consultation only exists for an appointment/walk-in token, and the fee is
+set at booking from the doctor's profile.)
+
+**Current web app vitals:** BP sys/dia, pulse, temp **°C**, weight, height,
+SpO2. Missing: respiratory rate, blood sugar, BMI. Clinical notes are just
+Diagnosis + Notes -- no chief complaint, history of present illness,
+relevant history or differential diagnosis.
+
+**Notes for the redesign:**
+- Temperature unit: offline uses °F; web uses °C. Indian clinics commonly
+  record °F -- make it a clinic setting or default to °F.
+- The consultation page only shows the Patient ID, not the name, age or
+  allergies -- the web version should keep a compact patient banner
+  (name, age/sex, allergies, chronic conditions) pinned on the consultation
+  screen, plus the history panel we already have.
+- Both flows are needed: consult from the queue (token) and consult
+  directly from the profile (e.g. a quick review with no appointment).
+
 ### Open questions (Tier 1 so far)
 - Patient ID format: `PT` + 6 digits, per clinic, sequential? Can it be
   customised per clinic (prefix)?
@@ -102,6 +170,9 @@ allergies surfaced prominently in the doctor's consultation view.
 - Is "Doctor notes" at registration a standing note shown on every visit?
 - Are Appointments and Revenue charts per clinic or per doctor?
 - Who uses the registration form -- reception only, or doctors too?
-- After **Save patient**, where does it go -- the new patient's profile,
-  back to the dashboard, or straight into booking/billing a visit?
+- ~~After Save patient, where does it go?~~ → the new patient's profile.
+- Is the consultation fee typed per visit, or pre-filled from the chosen
+  doctor's fee (editable)?
+- Can the same form be saved as a draft and completed later (e.g. vitals
+  by an assistant, notes by the doctor)?
 

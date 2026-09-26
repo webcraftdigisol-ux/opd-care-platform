@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../prisma';
-import { toAppointment, toDoctorProfile, toNotification, toPublicUser, toSchedule } from '../utils/serialize';
+import { toAppointment, toDoctorProfile, toNotification, toPublicUser, toSchedule, patientWithCode } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
@@ -192,7 +192,7 @@ adminRouter.get(
     const appointments = await prisma.appointment.findMany({
       where: { clinicId: req.auth!.clinicId, date },
       include: {
-        patient: true,
+        patient: patientWithCode,
         doctor: { include: { user: true } },
         consultation: { include: { prescriptions: true, labTestsOrdered: true, radiologyOrdered: true } },
       },
@@ -209,7 +209,7 @@ adminRouter.get(
     const patientId = typeof req.query.patientId === 'string' ? req.query.patientId : undefined;
     const notifications = await prisma.notification.findMany({
       where: { clinicId: req.auth!.clinicId, ...(patientId ? { patientId } : {}) },
-      include: { patient: true },
+      include: { patient: patientWithCode },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });

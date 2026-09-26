@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../prisma';
+import { createPatient, splitName } from '../utils/patients';
 import { signToken } from '../utils/jwt';
 import { toClinicSummary, toPublicUser } from '../utils/serialize';
 import { isWhatsAppDeliveryAvailable, sendWhatsAppOtp, toWhatsAppNumber } from '../utils/whatsapp';
@@ -20,10 +21,10 @@ async function findClinicBySlug(slug: string) {
 
 // An account by email, or by phone number however it was typed at
 // registration ("98765 43210", "+91 98765 43210", ...). Phones are compared
-// in normalized E.164 form; the contains-filter just narrows the scan. The
-// DB only keeps the raw phone unique, so two accounts can share a number
-// typed differently (say a doctor also registered as a patient) -- that
-// counts as no match, and the person signs in with their email instead.
+// in normalized E.164 form; the contains-filter just narrows the scan. A
+// number can belong to several accounts (family members share a mobile, a
+// doctor may also be registered as a patient) -- that counts as no match,
+// and the person signs in with their email instead.
 async function findUserByIdentifier(clinicId: string, identifier: string) {
   const value = identifier.trim();
   if (value.includes('@')) {
@@ -63,17 +64,16 @@ authRouter.post(
     if (existing) {
       throw new HttpError(409, 'An account with this email already exists at this clinic');
     }
-    const password = await bcrypt.hash(data.password, 10);
-    const user = await prisma.user.create({
-      data: {
-        clinicId: clinic.id,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        password,
-        role: 'PATIENT',
-      },
-    });
+    // Self-signup gets a Patient ID and profile like a desk registration;
+    // the one name field is split best-effort and can be corrected later.
+    const { user } = await prisma.$transaction((tx) =>
+      createPatient(
+        tx,
+        clinic.id,
+        { ...splitName(data.name), email: data.email, phone: data.phone ?? '' },
+        { password: data.password },
+      ),
+    );
     const token = signToken({ sub: user.id, role: user.role, clinicId: clinic.id });
     const response: AuthResponse = { token, user: toPublicUser(user), clinic: toClinicSummary(clinic) };
     res.status(201).json(response);

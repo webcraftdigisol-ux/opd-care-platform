@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { ensurePatientProfile } from '../src/utils/patients';
 
 const prisma = new PrismaClient();
 
@@ -95,7 +96,7 @@ async function main() {
   }
 
   const patientPassword = await bcrypt.hash('patient123', 10);
-  await prisma.user.upsert({
+  const patient = await prisma.user.upsert({
     where: { clinicId_email: { clinicId: clinic.id, email: 'patient@opdcare.test' } },
     update: {},
     create: {
@@ -107,6 +108,7 @@ async function main() {
       role: 'PATIENT',
     },
   });
+  await ensurePatientProfile(prisma, patient);
 
   const pharmacistPassword = await bcrypt.hash('pharmacist123', 10);
   await prisma.user.upsert({

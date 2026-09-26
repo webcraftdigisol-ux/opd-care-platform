@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
-import { toConsultation, toNotification } from '../utils/serialize';
+import { toConsultation, toNotification, patientWithCode } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { notifyPatientWhatsApp } from '../utils/whatsapp';
@@ -67,7 +67,7 @@ async function assertOwnsAppointment(req: AuthedRequest, appointmentId: string) 
 
 consultationsRouter.put(
   '/:appointmentId',
-  requireRole('DOCTOR'),
+  requireRole('DOCTOR', 'ADMIN'), // admin can do everything (clinic owner is often the doctor)
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = saveSchema.parse(req.body);
     const appointment = await assertOwnsAppointment(req, req.params.appointmentId);
@@ -172,7 +172,7 @@ consultationsRouter.post(
     const owned = await assertOwnsAppointment(req, req.params.appointmentId);
     const appointment = await prisma.appointment.findUniqueOrThrow({
       where: { id: owned.id },
-      include: { patient: true, doctor: { include: { user: true } } },
+      include: { patient: patientWithCode, doctor: { include: { user: true } } },
     });
     const consultation = await prisma.consultation.findUnique({
       where: { appointmentId: appointment.id },

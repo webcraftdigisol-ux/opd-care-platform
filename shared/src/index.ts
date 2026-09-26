@@ -41,6 +41,9 @@ export interface PublicUser {
   role: Role;
   createdAt: string;
   whatsappOptIn: boolean;
+  // A patient's Patient ID (PT000001); set on patients when the record was
+  // loaded with its profile, otherwise absent.
+  patientCode?: string | null;
 }
 
 export interface DoctorProfile {
@@ -206,8 +209,12 @@ export interface BookAppointmentRequest {
 
 export interface WalkInRequest {
   doctorId: string;
-  patientName: string;
-  patientPhone: string;
+  // An already-registered patient (from the search). Without it a new
+  // patient is registered from patientName + patientPhone -- a shared
+  // family number never silently reuses someone else's record.
+  patientId?: string;
+  patientName?: string;
+  patientPhone?: string;
   reason?: string;
   // The patient agreed, at the desk, to receive WhatsApp messages. Only
   // ever turns consent on -- leaving it unset never revokes it.
@@ -498,6 +505,112 @@ export interface RadiologyInvoice {
   total: number;
   createdAt: string;
   items: RadiologyResultItem[];
+}
+
+// ---- Patient record ----
+
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+
+// Everything the registration form collects. Only firstName and phone are
+// required; the rest can be filled in later from the profile.
+export interface PatientDetailsInput {
+  firstName: string;
+  middleName?: string | null;
+  lastName?: string | null;
+  gender?: Gender | null;
+  dateOfBirth?: string | null; // "YYYY-MM-DD"
+  ageYears?: number | null; // when the DOB isn't known
+  bloodGroup?: string | null;
+  maritalStatus?: string | null;
+  nationality?: string | null;
+  phone: string;
+  alternatePhone?: string | null;
+  email?: string | null;
+  emergencyContact?: string | null;
+  occupation?: string | null;
+  referredBy?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  allergies?: string | null;
+  chronicDiseases?: string | null;
+  pastSurgeries?: string | null;
+  familyHistory?: string | null;
+  insuranceDetails?: string | null;
+  tpa?: string | null;
+  doctorNotes?: string | null;
+  whatsappOptIn?: boolean;
+}
+
+export interface Patient {
+  id: string; // the patient's user id -- what every other record points at
+  patientCode: string;
+  name: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string | null;
+  gender: Gender | null;
+  dateOfBirth: string | null;
+  // Current age in whole years, from the DOB, or from the age given at
+  // registration moved on by the time since; null when neither is known.
+  age: number | null;
+  bloodGroup: string | null;
+  maritalStatus: string | null;
+  nationality: string | null;
+  phone: string | null;
+  alternatePhone: string | null;
+  // Null for staff-registered patients without a real email.
+  email: string | null;
+  emergencyContact: string | null;
+  occupation: string | null;
+  referredBy: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  allergies: string | null;
+  chronicDiseases: string | null;
+  pastSurgeries: string | null;
+  familyHistory: string | null;
+  insuranceDetails: string | null;
+  tpa: string | null;
+  doctorNotes: string | null;
+  whatsappOptIn: boolean;
+  registeredAt: string;
+}
+
+// One row in the as-you-type patient search.
+export interface PatientSearchResult {
+  id: string;
+  patientCode: string;
+  name: string;
+  gender: Gender | null;
+  age: number | null;
+  phone: string | null;
+  lastVisit: string | null; // "YYYY-MM-DD"
+}
+
+// One bill on the patient profile's Billing tab.
+export interface PatientBill {
+  billType: BillType;
+  billId: string;
+  label: string; // "OPD consultation — Visit 2", "Pharmacy sale", ...
+  date: string; // ISO
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+}
+
+export interface PatientBillingResponse {
+  bills: PatientBill[]; // newest first
+  totalBilled: number;
+  totalPaid: number;
+  totalDue: number;
 }
 
 export interface PatientRecordsResponse {

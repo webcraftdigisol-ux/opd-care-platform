@@ -87,7 +87,11 @@ export function toClinicSummary(clinic: Clinic): ClinicSummary {
   };
 }
 
-export function toPublicUser(user: User): PublicUser {
+// Include this in place of `patient: true` wherever the patient's Patient
+// ID should appear alongside their name (queues, lists).
+export const patientWithCode = { include: { patientProfile: { select: { patientCode: true } } } } as const;
+
+export function toPublicUser(user: User & { patientProfile?: { patientCode: string } | null }): PublicUser {
   return {
     id: user.id,
     clinicId: user.clinicId,
@@ -97,6 +101,7 @@ export function toPublicUser(user: User): PublicUser {
     role: user.role,
     createdAt: user.createdAt.toISOString(),
     whatsappOptIn: user.whatsappOptIn,
+    ...(user.patientProfile !== undefined ? { patientCode: user.patientProfile?.patientCode ?? null } : {}),
   };
 }
 

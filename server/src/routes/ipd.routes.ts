@@ -13,6 +13,7 @@ import {
   toProcedure,
   toVitalsRecord,
   toWard,
+  patientWithCode,
 } from '../utils/serialize';
 import { computeIpdBillFigures } from '../utils/ipdBilling';
 import { notifyPatientEmail } from '../utils/notify';
@@ -37,7 +38,7 @@ async function claimVacantBed(tx: Prisma.TransactionClient, bedId: string): Prom
 ipdRouter.use(requireAuth, requireTier(3));
 
 const admissionDetailInclude = {
-  patient: true,
+  patient: patientWithCode,
   bed: { include: { ward: true } },
   admittingDoctor: { include: { user: true } },
   roomTransfers: { include: { fromBed: true, toBed: true }, orderBy: { transferredAt: 'asc' as const } },
@@ -46,9 +47,9 @@ const admissionDetailInclude = {
   medications: { orderBy: { givenAt: 'asc' as const } },
   vitalsLogs: { include: { recordedBy: true }, orderBy: { recordedAt: 'asc' as const } },
   charges: { orderBy: { chargedAt: 'asc' as const } },
-  pharmacySales: { include: { items: true, patient: true }, orderBy: { createdAt: 'asc' as const } },
-  labInvoices: { include: { items: true, patient: true }, orderBy: { createdAt: 'asc' as const } },
-  radiologyInvoices: { include: { items: true, patient: true }, orderBy: { createdAt: 'asc' as const } },
+  pharmacySales: { include: { items: true, patient: patientWithCode }, orderBy: { createdAt: 'asc' as const } },
+  labInvoices: { include: { items: true, patient: patientWithCode }, orderBy: { createdAt: 'asc' as const } },
+  radiologyInvoices: { include: { items: true, patient: patientWithCode }, orderBy: { createdAt: 'asc' as const } },
   bill: true,
 };
 
@@ -210,7 +211,7 @@ ipdRouter.get(
     const admissions = await prisma.admission.findMany({
       where: { clinicId: req.auth!.clinicId, status: query.status },
       include: {
-        patient: true,
+        patient: patientWithCode,
         bed: { include: { ward: true } },
         admittingDoctor: { include: { user: true } },
       },

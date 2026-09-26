@@ -27,7 +27,7 @@ paymentsRouter.use(requireAuth);
 // API (Pharmacist for Pharmacy, Lab Technician for Lab, etc). IPD payments
 // stay Admin/Doctor-only, same as admission/discharge -- Head Nurse's
 // billing access is deliberately read-only (see the granular-roles round).
-const ROLES_BY_BILL_TYPE: Record<BillType, string[]> = {
+export const ROLES_BY_BILL_TYPE: Record<BillType, string[]> = {
   CONSULTATION: ['ADMIN', 'DOCTOR', 'RECEPTIONIST'],
   PHARMACY: ['ADMIN', 'PHARMACIST'],
   LAB: ['ADMIN', 'LAB_TECHNICIAN'],

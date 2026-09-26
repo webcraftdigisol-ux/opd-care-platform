@@ -91,6 +91,9 @@ model Clinic {
   logoUrl                   String?
   taxPercent                Float    @default(0)
   doctorRevenueSharePercent Float    @default(0)
+  // Last Patient ID number handed out (PT000001, PT000002, ...), bumped
+  // atomically by nextPatientCode() in utils/patients.ts.
+  lastPatientNumber         Int      @default(0)
   createdAt                 DateTime @default(now())
 
   users             User[]
@@ -109,6 +112,7 @@ model Clinic {
   attachments       Attachment[]
   subscription      Subscription?
   dietPlans         DietPlan[]
+  patientProfiles   PatientProfile[]
 }
 
 model User {
@@ -136,6 +140,7 @@ model User {
   whatsappOptInRecordedById String?
 
   doctorProfile            DoctorProfile?
+  patientProfile           PatientProfile?
   passwordResetOtps        PasswordResetOtp[]
   appointments             Appointment[]      @relation("PatientAppointments")
   pharmacyPurchases        PharmacySale[]     @relation("PharmacySalePatient")
@@ -157,7 +162,62 @@ model User {
   dietPlansCreated         DietPlan[]     @relation("DietPlansAuthored")
 
   @@unique([clinicId, email])
-  @@unique([clinicId, phone])
+  // Not unique: family members often share one mobile number, so a
+  // patient's identity is their Patient ID, not their phone.
+  @@index([clinicId, phone])
+  @@index([clinicId])
+}
+
+// The clinical/demographic record behind a PATIENT user. Every patient has
+// one (created with the account, backfilled for older ones); `name` on User
+// stays the full display name, kept in step with first/middle/last here.
+model PatientProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // Human-readable, per clinic, never reused: PT000001.
+  patientCode String
+
+  firstName     String
+  middleName    String?
+  lastName      String?
+  gender        String? // MALE | FEMALE | OTHER
+  dateOfBirth   DateTime?
+  // Age in years as told at registration, when the DOB isn't known. The
+  // current age is derived from ageRecordedAt so it stays right over time.
+  ageYears      Int?
+  ageRecordedAt DateTime?
+  bloodGroup    String?
+  maritalStatus String?
+  nationality   String?
+
+  alternatePhone   String?
+  emergencyContact String?
+  occupation       String?
+  referredBy       String?
+
+  address String?
+  city    String?
+  state   String?
+  pincode String?
+
+  heightCm         Float?
+  weightKg         Float?
+  allergies        String?
+  chronicDiseases  String?
+  pastSurgeries    String?
+  familyHistory    String?
+
+  insuranceDetails String?
+  tpa              String?
+  doctorNotes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clinicId, patientCode])
   @@index([clinicId])
 }
 

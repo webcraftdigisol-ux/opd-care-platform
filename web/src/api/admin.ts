@@ -8,6 +8,7 @@ import type {
   PublicUser,
   Schedule,
   UpdateDoctorRequest,
+  UpdateStaffRequest,
   UpsertScheduleRequest,
 } from '@opd/shared';
 
@@ -43,5 +44,15 @@ export async function listStaff(): Promise<PublicUser[]> {
 
 export async function listNotifications(patientId?: string): Promise<Notification[]> {
   const res = await apiClient.get<Notification[]>('/admin/notifications', { params: { patientId } });
+  return res.data;
+}
+
+export async function updateStaff(id: string, data: UpdateStaffRequest): Promise<PublicUser> {
+  const res = await apiClient.patch<PublicUser>(`/admin/staff/${id}`, data);
+  return res.data;
+}
+
+export async function resetStaffPassword(id: string, password: string): Promise<{ message: string }> {
+  const res = await apiClient.post<{ message: string }>(`/admin/staff/${id}/reset-password`, { password });
   return res.data;
 }

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Attachment, Patient, PatientRecordsResponse } from '@opd/shared';
 import { getPatient, getPatientBilling, getPatientRecords } from '../api/patients';
-import { openAttachment } from '../api/attachments';
+import { openAttachment, uploadAttachment } from '../api/attachments';
 import { useAuth } from '../context/AuthContext';
 import { Card, Detail, EmptyState, btnPrimary, btnSecondary } from '../components/ui';
 import { Icon, type IconName } from '../components/Icon';
@@ -12,7 +12,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { VitalsTrendChart } from '../components/VitalsTrendChart';
 import { DicomViewer } from '../components/DicomViewer';
 import { vitalsSeries, type VisitWithConsultation } from '../utils/patientHistory';
-import { doctorName, vitalChips, whenToTake } from '../utils/visitFormat';
+import { doctorName, medicineLabel, vitalChips, whenToTake } from '../utils/visitFormat';
 import { listDoctors } from '../api/doctors';
 import { startVisit } from '../api/appointments';
 import { GENDER_LABEL, formatDate, formatMoney } from '../utils/patientFormat';
@@ -79,8 +79,8 @@ export function PatientProfilePage() {
           <ConsultationsTab records={records} canConsult={canConsult} canBookVisit={canBookVisit} patientId={patient.id} />
         )}
         {tab === 'vitals' && <VitalsTab records={records} />}
-        {tab === 'reports' && <ReportsTab records={records} />}
-        {tab === 'images' && <ImagesTab records={records} />}
+        {tab === 'reports' && <ReportsTab records={records} patientId={patient.id} />}
+        {tab === 'images' && <ImagesTab records={records} patientId={patient.id} />}
         {tab === 'billing' && <BillingTab patientId={patient.id} />}
       </div>
     </div>
@@ -398,8 +398,7 @@ function VisitCard({
                       {c.prescriptions.map((rx) => (
                         <li key={rx.id} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
                           <span className="font-medium text-gray-900">
-                            {rx.medicine}
-                            {rx.strength ? ` · ${rx.strength}` : ''}
+                            {medicineLabel(rx)}
                           </span>
                           <span className="block text-xs text-gray-500">
                             {whenToTake(rx)} · {rx.durationDays} days
@@ -484,7 +483,50 @@ const CATEGORY_LABEL: Record<string, string> = {
   RADIOLOGY_REPORT: 'Radiology report',
   PRESCRIPTION_SCAN: 'Prescription scan',
   RADIOLOGY_DICOM: 'DICOM image',
+  PATIENT_REPORT: 'Report',
+  PATIENT_IMAGE: 'Image',
 };
+
+const UPLOAD_ROLES = ['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE', 'RECEPTIONIST'];
+
+// "Upload report" / "Upload image": files an outside document the patient
+// brings straight to their record (PDF, JPG, PNG or WebP).
+function UploadButton({ patientId, category, label }: { patientId: string; category: 'PATIENT_REPORT' | 'PATIENT_IMAGE'; label: string }) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadAttachment(category, patientId, file),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['patient-records', patientId] });
+    },
+    onError: (err: any) => setError(err.response?.data?.message ?? 'Could not upload the file'),
+    onSettled: () => {
+      if (inputRef.current) inputRef.current.value = '';
+    },
+  });
+  if (!user || !UPLOAD_ROLES.includes(user.role)) return null;
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <input
+        ref={inputRef}
+        type="file"
+        accept={category === 'PATIENT_IMAGE' ? 'image/jpeg,image/png,image/webp,application/pdf' : 'application/pdf,image/jpeg,image/png,image/webp'}
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && upload.mutate(e.target.files[0])}
+        data-testid={`upload-${category}`}
+      />
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={upload.isPending} className={btnSecondary}>
+        <Icon name="plus" className="h-4 w-4" /> {upload.isPending ? 'Uploading…' : label}
+      </button>
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </span>
+  );
+}
+
+const isImageFile = (a: Attachment) => a.category === 'RADIOLOGY_DICOM' || a.category === 'PATIENT_IMAGE' || a.mimeType.startsWith('image/');
 
 function FileRow({ a, onOpen }: { a: Attachment; onOpen: () => void }) {
   return (
@@ -503,13 +545,13 @@ function FileRow({ a, onOpen }: { a: Attachment; onOpen: () => void }) {
   );
 }
 
-function ReportsTab({ records }: { records?: PatientRecordsResponse }) {
+function ReportsTab({ records, patientId }: { records?: PatientRecordsResponse; patientId: string }) {
   if (!records) return <Loading />;
   const results = [
     ...records.labInvoices.flatMap((inv) => inv.items.map((i) => ({ ...i, kind: 'Lab', date: inv.createdAt }))),
     ...records.radiologyInvoices.flatMap((inv) => inv.items.map((i) => ({ ...i, kind: 'Radiology', date: inv.createdAt }))),
   ].sort((a, b) => b.date.localeCompare(a.date));
-  const files = records.attachments.filter((a) => a.category !== 'RADIOLOGY_DICOM' && !a.mimeType.startsWith('image/'));
+  const files = records.attachments.filter((a) => !isImageFile(a));
   return (
     <div className="space-y-5">
       <Card title="Test results">
@@ -530,7 +572,7 @@ function ReportsTab({ records }: { records?: PatientRecordsResponse }) {
           </ul>
         )}
       </Card>
-      <Card title="Report files">
+      <Card title="Report files" actions={<UploadButton patientId={patientId} category="PATIENT_REPORT" label="Upload report" />}>
         {files.length === 0 ? (
           <p className="text-sm text-gray-500">No reports uploaded yet.</p>
         ) : (
@@ -545,12 +587,12 @@ function ReportsTab({ records }: { records?: PatientRecordsResponse }) {
   );
 }
 
-function ImagesTab({ records }: { records?: PatientRecordsResponse }) {
+function ImagesTab({ records, patientId }: { records?: PatientRecordsResponse; patientId: string }) {
   const [dicom, setDicom] = useState<Attachment | null>(null);
   if (!records) return <Loading />;
-  const images = records.attachments.filter((a) => a.category === 'RADIOLOGY_DICOM' || a.mimeType.startsWith('image/'));
+  const images = records.attachments.filter(isImageFile);
   return (
-    <Card title="Images">
+    <Card title="Images" actions={<UploadButton patientId={patientId} category="PATIENT_IMAGE" label="Upload image" />}>
       {images.length === 0 ? (
         <p className="text-sm text-gray-500">No images uploaded yet.</p>
       ) : (

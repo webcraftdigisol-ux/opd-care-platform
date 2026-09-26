@@ -5,7 +5,7 @@ import { openAttachment } from '../api/attachments';
 import { DicomViewer } from './DicomViewer';
 import { VitalsTrendChart } from './VitalsTrendChart';
 import { previousVisits, vitalsSeries } from '../utils/patientHistory';
-import { vitalChips, whenToTake } from '../utils/visitFormat';
+import { medicineLabel, vitalChips, whenToTake } from '../utils/visitFormat';
 import type { Attachment } from '@opd/shared';
 
 const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
@@ -13,6 +13,8 @@ const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
   RADIOLOGY_REPORT: 'Radiology report',
   PRESCRIPTION_SCAN: 'Prescription scan',
   RADIOLOGY_DICOM: 'DICOM image',
+  PATIENT_REPORT: 'Report',
+  PATIENT_IMAGE: 'Image',
 };
 
 const TREND_VITALS = [
@@ -125,8 +127,7 @@ export function PatientHistoryPanel({
                         <ul className="ml-4 list-disc">
                           {c.prescriptions.map((p) => (
                             <li key={p.id}>
-                              {p.medicine}
-                              {p.strength ? ` ${p.strength}` : ''} — {whenToTake(p)}, {p.durationDays} days
+                              {medicineLabel(p)} — {whenToTake(p)}, {p.durationDays} days
                             </li>
                           ))}
                         </ul>

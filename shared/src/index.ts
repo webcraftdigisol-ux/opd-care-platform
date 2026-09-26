@@ -43,6 +43,9 @@ export interface PublicUser {
   role: Role;
   createdAt: string;
   whatsappOptIn: boolean;
+  // Staff only: sign-in name and whether the account can sign in.
+  username?: string | null;
+  active?: boolean;
   // A patient's Patient ID (PT000001); set on patients when the record was
   // loaded with its profile, otherwise absent.
   patientCode?: string | null;
@@ -120,6 +123,7 @@ export interface Prescription {
   consultationId: string;
   medicine: string;
   strength: string | null;
+  brand: string | null;
   dosage: string; // per time, e.g. "1 tab"
   frequency: string; // "1-0-1" or free text such as "SOS"
   morning: boolean;
@@ -306,6 +310,7 @@ export interface UpdateAppointmentStatusRequest {
 export interface PrescriptionInput {
   medicine: string;
   strength?: string | null;
+  brand?: string | null;
   dosage?: string; // defaults to "1"
   // Either tick the times of day, or give a frequency ("1-0-1", "SOS").
   morning?: boolean;
@@ -389,18 +394,20 @@ export interface DoctorCatalogItem {
   kind: CatalogKind;
   name: string;
   strength: string | null;
+  brands: string[]; // medicines only
 }
 
 export interface UpsertCatalogItemRequest {
   kind: CatalogKind;
   name: string;
   strength?: string | null;
+  brands?: string[];
 }
 
 // What the consultation screen suggests while typing: the Doctor's
 // Catalogue plus, in Tier 2+, the department catalogues.
 export interface CatalogSuggestions {
-  medicines: { name: string; strength: string | null }[];
+  medicines: { name: string; strength: string | null; brands: string[] }[];
   labTests: string[];
   radiology: string[];
 }
@@ -440,15 +447,58 @@ export interface UpdateClinicRequest {
   phone?: string | null;
 }
 
+export type StaffRole = Extract<
+  Role,
+  'ADMIN' | 'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN' | 'RECEPTIONIST' | 'NURSE' | 'HEAD_NURSE'
+>;
+
+// A staff account signs in with a username, an email, or both. (Doctors are
+// added on the Doctors page, which also sets up their schedule and fee.)
 export interface CreateStaffRequest {
   name: string;
-  email: string;
+  username?: string;
+  email?: string;
   phone?: string;
   password: string;
-  role: Extract<
-    Role,
-    'PHARMACIST' | 'LAB_TECHNICIAN' | 'RADIOLOGY_TECHNICIAN' | 'RECEPTIONIST' | 'NURSE' | 'HEAD_NURSE'
-  >;
+  role: StaffRole;
+}
+
+export interface UpdateStaffRequest {
+  name?: string;
+  role?: StaffRole;
+  phone?: string | null;
+  active?: boolean;
+}
+
+export interface ResetStaffPasswordRequest {
+  password: string;
+}
+
+// ---- Revenue report (the offline-style transactions view) ----
+
+export interface TransactionRow {
+  billType: BillType;
+  billId: string;
+  date: string; // ISO timestamp
+  patientId: string | null;
+  patientName: string;
+  patientCode: string | null;
+  doctorName: string | null;
+  description: string;
+  billed: number;
+  collected: number;
+  outstanding: number;
+  status: 'PAID' | 'PARTLY_PAID' | 'UNPAID' | 'NO_CHARGE';
+}
+
+export interface TransactionsReport {
+  from: string;
+  to: string;
+  rows: TransactionRow[]; // oldest first
+  byDay: { date: string; count: number; billed: number; collected: number }[];
+  byType: { billType: BillType; count: number; billed: number; collected: number }[];
+  byMethod: { method: PaymentMethod; amount: number }[];
+  totals: { count: number; billed: number; collected: number; outstanding: number };
 }
 
 export interface UpsertScheduleRequest {
@@ -1165,7 +1215,7 @@ export interface FollowUpReminderResult {
 // DICOM export attaches to the same invoice a written report does), a
 // Consultation id for PRESCRIPTION_SCAN. See
 // server/src/routes/attachments.routes.ts.
-export type AttachmentCategory = 'LAB_REPORT' | 'RADIOLOGY_REPORT' | 'PRESCRIPTION_SCAN' | 'RADIOLOGY_DICOM';
+export type AttachmentCategory = 'LAB_REPORT' | 'RADIOLOGY_REPORT' | 'PRESCRIPTION_SCAN' | 'RADIOLOGY_DICOM' | 'PATIENT_REPORT' | 'PATIENT_IMAGE';
 
 export interface Attachment {
   id: string;

@@ -7,9 +7,12 @@ import {
   markFollowUpContacted,
   sendFollowUpReminder,
 } from '../api/reports';
+import { useAuth } from '../context/AuthContext';
+import { RevenueReport } from '../components/RevenueReport';
+import { PageHeader } from '../components/ui';
 import type { FollowUpItem, FollowUpReminderResult, Notification, RevenueSection } from '@opd/shared';
 
-type Tab = 'financial' | 'activity' | 'follow-ups';
+type Tab = 'revenue' | 'financial' | 'activity' | 'follow-ups';
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -304,30 +307,36 @@ function FollowUpsTab() {
 }
 
 export function ReportsPage() {
-  const [tab, setTab] = useState<Tab>('financial');
+  const { clinic } = useAuth();
+  const [tab, setTab] = useState<Tab>('revenue');
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'financial', label: 'Financial' },
+    { key: 'revenue', label: 'Revenue' },
+    // Department revenue vs orders needs the Tier 2 departments.
+    ...((clinic?.tier ?? 1) >= 2 ? [{ key: 'financial' as const, label: 'Pharmacy, Lab & Radiology' }] : []),
     { key: 'activity', label: 'Daily Activity' },
     { key: 'follow-ups', label: 'Follow-ups Due' },
   ];
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-semibold text-teal">Reports</h1>
-      <div className="mb-6 flex gap-2 border-b border-gray-200">
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <PageHeader title="Reports" subtitle="Revenue, activity and follow-ups." />
+      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium ${
-              tab === t.key ? 'border-b-2 border-teal text-teal' : 'text-gray-500 hover:text-teal'
+            className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium ${
+              tab === t.key ? 'border-teal text-teal' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
             {t.label}
           </button>
         ))}
       </div>
+      {tab === 'revenue' && <RevenueReport />}
       {tab === 'financial' && <FinancialTab />}
       {tab === 'activity' && <ActivityTab />}
       {tab === 'follow-ups' && <FollowUpsTab />}

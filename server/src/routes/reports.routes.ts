@@ -12,7 +12,8 @@ import { sendFollowUpReminder } from '../utils/reminders';
 import { toNotification } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
-import type { FinancialReport, FollowUpItem, FollowUpReminderResult, FollowUpsReport } from '@opd/shared';
+import type { FinancialReport, FollowUpItem, FollowUpReminderResult, FollowUpsReport, TransactionsReport } from '@opd/shared';
+import { computeTransactions } from '../utils/transactions';
 
 export const reportsRouter = Router();
 
@@ -54,6 +55,45 @@ reportsRouter.get(
       radiology,
     };
     res.json(response);
+  }),
+);
+
+const transactionsQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  doctorId: z.string().optional(),
+  types: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',') : ['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY', 'IPD']))
+    .pipe(z.array(z.enum(['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY', 'IPD']))),
+});
+
+// Every bill in a date range with billed vs collected -- the main Reports
+// view. A doctor sees only their own patients' bills.
+reportsRouter.get(
+  '/transactions',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const q = transactionsQuerySchema.parse(req.query);
+    if (q.from > q.to) throw new HttpError(400, 'The start date is after the end date');
+    const days = (Date.parse(q.to) - Date.parse(q.from)) / 86_400_000;
+    if (days > 366) throw new HttpError(400, 'Pick a range of a year or less');
+    let doctorId = q.doctorId;
+    if (req.auth!.role === 'DOCTOR') {
+      const me = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
+      if (!me) throw new HttpError(404, 'Doctor profile not found');
+      doctorId = me.id;
+    }
+    const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: req.auth!.clinicId }, select: { tier: true } });
+    const report: TransactionsReport = await computeTransactions({
+      clinicId: req.auth!.clinicId,
+      tier: clinic.tier,
+      from: q.from,
+      to: q.to,
+      doctorId,
+      types: q.types,
+    });
+    res.json(report);
   }),
 );
 

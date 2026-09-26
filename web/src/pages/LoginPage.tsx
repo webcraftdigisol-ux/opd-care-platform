@@ -58,7 +58,7 @@ export function LoginPage() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Email or phone</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Email, phone or username</label>
           <input
             required
             autoComplete="username"

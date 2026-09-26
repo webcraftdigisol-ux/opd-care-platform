@@ -218,8 +218,8 @@ describe("Doctor's Catalogue", () => {
 
     const s = await request(app).get('/api/catalogue/suggestions').set(auth(doctorToken));
     expect(s.body.medicines).toEqual([
-      { name: 'Paracetamol', strength: '250 mg' },
-      { name: 'Paracetamol', strength: '500 mg' },
+      { name: 'Paracetamol', strength: '250 mg', brands: [] },
+      { name: 'Paracetamol', strength: '500 mg', brands: [] },
     ]);
     expect(s.body.labTests).toEqual(['CBC']);
     expect(s.body.radiology).toEqual(['X-Ray']);
@@ -229,11 +229,39 @@ describe("Doctor's Catalogue", () => {
     expect((await request(app).delete(`/api/catalogue/${xray.body.id}`).set(auth(doctorToken))).status).toBe(204);
   });
 
+  it('keeps several brands per medicine, offers them with the suggestion, and saves the chosen brand on the prescription', async () => {
+    const { doctorToken, visitId } = await setup(1);
+    const add = await request(app)
+      .post('/api/catalogue')
+      .set(auth(doctorToken))
+      .send({ kind: 'MEDICINE', name: 'Paracetamol', strength: '650 mg', brands: ['Dolo 650', ' Calpol 650 ', 'dolo 650', ''] });
+    expect(add.body.brands).toEqual(['Dolo 650', 'Calpol 650']);
+    const edited = await request(app).put(`/api/catalogue/${add.body.id}`).set(auth(doctorToken)).send({ name: 'Paracetamol', strength: '650 mg', brands: ['Dolo 650', 'Calpol 650', 'Crocin 650'] });
+    expect(edited.body.brands).toEqual(['Dolo 650', 'Calpol 650', 'Crocin 650']);
+    const s = await request(app).get('/api/catalogue/suggestions').set(auth(doctorToken));
+    expect(s.body.medicines).toContainEqual({ name: 'Paracetamol', strength: '650 mg', brands: ['Dolo 650', 'Calpol 650', 'Crocin 650'] });
+
+    const saved = await request(app)
+      .put(`/api/consultations/${visitId}`)
+      .set(auth(doctorToken))
+      .send({ prescriptions: [{ medicine: 'Paracetamol', strength: '650 mg', brand: 'Dolo 650', morning: true, durationDays: 3 }] });
+    expect(saved.body.prescriptions[0]).toMatchObject({ medicine: 'Paracetamol', brand: 'Dolo 650' });
+    const summary = await request(app).get(`/api/consultations/${visitId}/summary`).set(auth(doctorToken));
+    expect(summary.body.prescriptions[0].brand).toBe('Dolo 650');
+  });
+
   it('adds the starter list once, skipping what is already there', async () => {
     const { adminToken } = await setup();
     await request(app).post('/api/catalogue').set(auth(adminToken)).send({ kind: 'LAB_TEST', name: 'cbc' });
+    // A medicine the clinic already has gets the starter's brands merged in.
+    await request(app).post('/api/catalogue').set(auth(adminToken)).send({ kind: 'MEDICINE', name: 'paracetamol', strength: '650 MG', brands: ['My brand'] });
     const first = await request(app).post('/api/catalogue/starter').set(auth(adminToken));
-    expect(first.body.added).toBeGreaterThan(40);
+    expect(first.body.added).toBeGreaterThan(500);
+    expect(first.body.brandsAdded).toBeGreaterThan(0);
+    const meds = await request(app).get('/api/catalogue').query({ kind: 'MEDICINE' }).set(auth(adminToken));
+    const para = meds.body.filter((i: any) => i.name.toLowerCase() === 'paracetamol' && i.strength?.toLowerCase() === '650 mg');
+    expect(para).toHaveLength(1);
+    expect(para[0].brands).toEqual(expect.arrayContaining(['My brand', 'Dolo 650']));
     const again = await request(app).post('/api/catalogue/starter').set(auth(adminToken));
     expect(again.body.added).toBe(0);
     const labs = await request(app).get('/api/catalogue').query({ kind: 'LAB_TEST' }).set(auth(adminToken));
@@ -246,7 +274,7 @@ describe("Doctor's Catalogue", () => {
     await prisma.labTestCatalog.create({ data: { clinicId: clinic.id, name: 'Lipid Profile', price: 500 } });
     await request(app).post('/api/catalogue').set(auth(adminToken)).send({ kind: 'LAB_TEST', name: 'lipid profile' });
     const s = await request(app).get('/api/catalogue/suggestions').set(auth(doctorToken));
-    expect(s.body.medicines).toContainEqual({ name: 'Azithromycin 500', strength: null });
+    expect(s.body.medicines).toContainEqual({ name: 'Azithromycin 500', strength: null, brands: [] });
     expect(s.body.labTests.filter((n: string) => n.toLowerCase() === 'lipid profile')).toHaveLength(1);
 
     const email = uniqueEmail('ph');

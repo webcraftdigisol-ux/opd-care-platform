@@ -25,10 +25,16 @@ async function findClinicBySlug(slug: string) {
 // number can belong to several accounts (family members share a mobile, a
 // doctor may also be registered as a patient) -- that counts as no match,
 // and the person signs in with their email instead.
+// A staff username (letters, digits, dot, dash, underscore -- with at least
+// one letter) is tried before reading the text as a phone number.
 async function findUserByIdentifier(clinicId: string, identifier: string) {
   const value = identifier.trim();
   if (value.includes('@')) {
     return prisma.user.findUnique({ where: { clinicId_email: { clinicId, email: value } } });
+  }
+  if (/^[a-z0-9._-]+$/i.test(value) && /[a-z]/i.test(value)) {
+    const byUsername = await prisma.user.findUnique({ where: { clinicId_username: { clinicId, username: value.toLowerCase() } } });
+    if (byUsername) return byUsername;
   }
   const wanted = toWhatsAppNumber(value);
   if (!wanted) return null;
@@ -102,6 +108,11 @@ authRouter.post(
     const valid = await bcrypt.compare(data.password, user.password);
     if (!valid) {
       throw new HttpError(401, 'Invalid email or password');
+    }
+    // Only after the password checks out, so this never reveals whether an
+    // account exists.
+    if (!user.active) {
+      throw new HttpError(403, 'This account has been deactivated. Please contact your clinic admin.');
     }
     // Checked only after credentials are confirmed valid, so an
     // unauthenticated login attempt never leaks a clinic's billing state.
@@ -179,7 +190,7 @@ authRouter.post(
     const data = passwordResetRequestSchema.parse(req.body);
     const clinic = await findClinicBySlug(data.clinicSlug);
     const user = await findUserByIdentifier(clinic.id, data.identifier);
-    if (!user || !toWhatsAppNumber(user.phone)) {
+    if (!user || !user.active || !toWhatsAppNumber(user.phone)) {
       res.json(OTP_REQUEST_REPLY);
       return;
     }

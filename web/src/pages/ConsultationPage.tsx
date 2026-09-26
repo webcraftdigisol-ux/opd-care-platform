@@ -31,6 +31,7 @@ const newRow = (p: Partial<PrescriptionInput> = {}): Row => ({
   key: ++rowKey,
   medicine: '',
   strength: '',
+  brand: '',
   dosage: '1',
   durationDays: 5,
   foodTiming: null,
@@ -45,6 +46,7 @@ const fromSaved = (c: Consultation['prescriptions'][number]): Row =>
   newRow({
     medicine: c.medicine,
     strength: c.strength ?? '',
+    brand: c.brand ?? '',
     dosage: c.dosage,
     durationDays: c.durationDays,
     foodTiming: c.foodTiming,
@@ -87,11 +89,25 @@ export function ConsultationPage() {
   });
   const { data: suggestions } = useQuery({ queryKey: ['catalog-suggestions'], queryFn: getCatalogSuggestions });
 
+  // Every generic ("Paracetamol (650 mg)") and every brand ("Dolo 650 —
+  // Paracetamol 650 mg") is a suggestion, so typing either finds the
+  // medicine; picking a brand also fills the brand box.
+  type MedicineOption = { name: string; strength: string | null; brands: string[]; brand?: string };
   const medicineOptions = useMemo(() => {
-    const map = new Map<string, { name: string; strength: string | null }>();
-    for (const m of suggestions?.medicines ?? []) map.set(m.strength ? `${m.name} (${m.strength})` : m.name, m);
+    const map = new Map<string, MedicineOption>();
+    const meds = suggestions?.medicines ?? [];
+    for (const m of meds) map.set(m.strength ? `${m.name} (${m.strength})` : m.name, m);
+    for (const m of meds) {
+      for (const b of m.brands) map.set(`${b} — ${m.name}${m.strength ? ` ${m.strength}` : ''}`, { ...m, brand: b });
+    }
     return map;
   }, [suggestions]);
+  const brandsFor = (name: string, strength?: string | null) =>
+    suggestions?.medicines.find(
+      (m) => m.name.toLowerCase() === name.trim().toLowerCase() && (m.strength ?? '').toLowerCase() === (strength ?? '').trim().toLowerCase(),
+    )?.brands ??
+    // No exact strength match: the brands of any strength of this medicine.
+    [...new Set((suggestions?.medicines ?? []).filter((m) => m.name.toLowerCase() === name.trim().toLowerCase()).flatMap((m) => m.brands))];
 
   const [fee, setFee] = useState('');
   const [vitals, setVitals] = useState<Vitals>({});
@@ -164,7 +180,7 @@ export function ConsultationPage() {
         consultationFee: fee.trim() === '' ? undefined : Number(fee),
         prescriptions: rows
           .filter((r) => r.medicine.trim())
-          .map(({ key: _key, ...r }) => ({ ...r, strength: r.strength || null, frequency: r.frequency || undefined })),
+          .map(({ key: _key, ...r }) => ({ ...r, strength: r.strength || null, brand: r.brand || null, frequency: r.frequency || undefined })),
         labTestsOrdered: labTests.filter((o) => o.testName.trim()),
         radiologyOrdered: radiology.filter((o) => o.testName.trim()),
         complete,
@@ -372,13 +388,24 @@ export function ConsultationPage() {
                 return (
                   <div key={r.key} className="rounded-xl border border-gray-200 p-3" data-testid="prescription-row">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-12">
-                      <div className="col-span-2 sm:col-span-4">
+                      <div className="col-span-2 sm:col-span-3">
                         <SuggestInput
-                          placeholder="Medicine"
+                          placeholder="Medicine or brand"
                           value={r.medicine}
                           onChange={(v) => {
                             const picked = medicineOptions.get(v);
-                            updateRow(r.key, picked ? { medicine: picked.name, strength: picked.strength ?? r.strength } : { medicine: v });
+                            updateRow(
+                              r.key,
+                              picked
+                                ? {
+                                    medicine: picked.name,
+                                    strength: picked.strength ?? r.strength,
+                                    // A picked brand fills the box; picking the generic
+                                    // keeps a brand only if it belongs to this medicine.
+                                    brand: picked.brand ?? (picked.brands.includes(r.brand ?? '') ? r.brand : ''),
+                                  }
+                                : { medicine: v },
+                            );
                           }}
                           suggestions={[...medicineOptions.keys()]}
                           testId={`prescription-medicine-${i}`}
@@ -386,6 +413,17 @@ export function ConsultationPage() {
                         />
                       </div>
                       <input placeholder="Strength" value={r.strength ?? ''} onChange={(e) => updateRow(r.key, { strength: e.target.value })} className={`${small} sm:col-span-2`} aria-label="Strength" />
+                      <div className="sm:col-span-2">
+                        <SuggestInput
+                          placeholder={brandsFor(r.medicine, r.strength).length ? `Brand (${brandsFor(r.medicine, r.strength).length})` : 'Brand'}
+                          value={r.brand ?? ''}
+                          onChange={(v) => updateRow(r.key, { brand: v })}
+                          suggestions={brandsFor(r.medicine, r.strength)}
+                          showAllOnFocus
+                          testId={`prescription-brand-${i}`}
+                          className={small}
+                        />
+                      </div>
                       <input placeholder="Dose" value={r.dosage} onChange={(e) => updateRow(r.key, { dosage: e.target.value })} className={`${small} sm:col-span-1`} aria-label="Dose per time" title="Dose each time, e.g. 1, ½, 5 ml" />
                       <div className="flex items-center gap-1 sm:col-span-2">
                         <input
@@ -401,7 +439,7 @@ export function ConsultationPage() {
                       <select
                         value={r.foodTiming ?? ''}
                         onChange={(e) => updateRow(r.key, { foodTiming: (e.target.value || null) as FoodTiming | null })}
-                        className={`${small} sm:col-span-3`}
+                        className={`${small} sm:col-span-2`}
                         aria-label="Food timing"
                       >
                         <option value="">Food timing</option>
@@ -449,8 +487,8 @@ export function ConsultationPage() {
                       <p className="mt-2 text-xs text-gray-500" data-testid={`rx-total-${i}`}>
                         {total != null ? (
                           <>
-                            Total to dispense: <span className="font-semibold text-gray-800">{total}</span> × {r.medicine}
-                            {r.strength ? ` ${r.strength}` : ''}
+                            Total to dispense: <span className="font-semibold text-gray-800">{total}</span> × {r.brand || r.medicine}
+                            {!r.brand && r.strength ? ` ${r.strength}` : ''}
                           </>
                         ) : (
                           'Tick morning/afternoon/night, or give a frequency such as SOS.'

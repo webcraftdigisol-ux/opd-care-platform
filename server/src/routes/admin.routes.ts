@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { toAppointment, toDoctorProfile, toNotification, toPublicUser, toSchedule, patientWithCode } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
+import { placeholderEmail } from '../utils/patients';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 
 export const adminRouter = Router();
@@ -123,20 +124,33 @@ adminRouter.put(
   }),
 );
 
-const createStaffSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  phone: z.string().min(6).optional(),
-  password: z.string().min(6),
-  role: z.enum([
-    'PHARMACIST',
-    'LAB_TECHNICIAN',
-    'RADIOLOGY_TECHNICIAN',
-    'RECEPTIONIST',
-    'NURSE',
-    'HEAD_NURSE',
-  ]),
-});
+const STAFF_ROLES = ['ADMIN', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'RECEPTIONIST', 'NURSE', 'HEAD_NURSE'] as const;
+const USERNAME = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9._-]{3,30}$/, 'Username: 3–30 lowercase letters, digits, dot, dash or underscore, no spaces')
+  .refine((u) => /[a-z]/.test(u), 'Username needs at least one letter');
+
+const createStaffSchema = z
+  .object({
+    name: z.string().trim().min(2),
+    username: USERNAME.optional(),
+    email: z.string().trim().email().optional().or(z.literal('').transform(() => undefined)),
+    phone: z.string().trim().min(6).optional().or(z.literal('').transform(() => undefined)),
+    password: z.string().min(6, 'Temporary password: at least 6 characters'),
+    role: z.enum(STAFF_ROLES),
+  })
+  .refine((d) => d.username || d.email, { message: 'Give a username or an email to sign in with' });
+
+async function assertSignInFree(clinicId: string, data: { username?: string; email?: string }) {
+  if (data.username && (await prisma.user.findUnique({ where: { clinicId_username: { clinicId, username: data.username } } }))) {
+    throw new HttpError(409, 'That username is already taken at this clinic');
+  }
+  if (data.email && (await prisma.user.findUnique({ where: { clinicId_email: { clinicId, email: data.email } } }))) {
+    throw new HttpError(409, 'An account with this email already exists');
+  }
+}
 
 adminRouter.post(
   '/staff',
@@ -144,19 +158,16 @@ adminRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createStaffSchema.parse(req.body);
     const clinicId = req.auth!.clinicId;
-    const existing = await prisma.user.findUnique({
-      where: { clinicId_email: { clinicId, email: data.email } },
-    });
-    if (existing) throw new HttpError(409, 'An account with this email already exists');
-
-    const password = await bcrypt.hash(data.password, 10);
+    await assertSignInFree(clinicId, data);
     const staff = await prisma.user.create({
       data: {
         clinicId,
         name: data.name,
-        email: data.email,
+        username: data.username ?? null,
+        // Username-only staff get a placeholder email (never shown or mailed).
+        email: data.email ?? placeholderEmail(),
         phone: data.phone,
-        password,
+        password: await bcrypt.hash(data.password, 10),
         role: data.role,
       },
     });
@@ -164,29 +175,88 @@ adminRouter.post(
   }),
 );
 
+const STAFF_LIST_ROLES = ['DOCTOR', ...STAFF_ROLES] as const;
+
 adminRouter.get(
   '/staff',
   requireRole('ADMIN'),
   asyncHandler(async (req: AuthedRequest, res) => {
     const staff = await prisma.user.findMany({
-      where: {
-        clinicId: req.auth!.clinicId,
-        role: {
-          in: [
-            'DOCTOR',
-            'ADMIN',
-            'PHARMACIST',
-            'LAB_TECHNICIAN',
-            'RADIOLOGY_TECHNICIAN',
-            'RECEPTIONIST',
-            'NURSE',
-            'HEAD_NURSE',
-          ],
-        },
-      },
-      orderBy: { name: 'asc' },
+      where: { clinicId: req.auth!.clinicId, role: { in: [...STAFF_LIST_ROLES] } },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
     });
     res.json(staff.map(toPublicUser));
+  }),
+);
+
+async function findStaff(req: AuthedRequest) {
+  const staff = await prisma.user.findFirst({
+    where: { id: req.params.id, clinicId: req.auth!.clinicId, role: { in: [...STAFF_LIST_ROLES] } },
+  });
+  if (!staff) throw new HttpError(404, 'Staff account not found');
+  return staff;
+}
+
+const updateStaffSchema = z.object({
+  name: z.string().trim().min(2).optional(),
+  role: z.enum(STAFF_ROLES).optional(),
+  phone: z
+    .string()
+    .trim()
+    .nullish()
+    .transform((v) => (v === undefined ? undefined : v || null)),
+  username: USERNAME.nullish(),
+  active: z.boolean().optional(),
+});
+
+// Edit a staff account: name, role, phone, username, or switch it off.
+// Guards keep the clinic from locking itself out: an admin can't
+// deactivate or demote themself, and there's always an active admin left.
+adminRouter.patch(
+  '/staff/:id',
+  requireRole('ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = updateStaffSchema.parse(req.body);
+    const staff = await findStaff(req);
+    const isSelf = staff.id === req.auth!.userId;
+    if (isSelf && data.active === false) throw new HttpError(400, "You can't deactivate your own account");
+    if (isSelf && data.role && data.role !== staff.role) throw new HttpError(400, "You can't change your own role");
+    if (data.role && data.role !== staff.role && staff.role === 'DOCTOR') {
+      throw new HttpError(400, "A doctor's role can't be changed here -- add them again with the new role");
+    }
+    const losingAdmin = staff.role === 'ADMIN' && ((data.role && data.role !== 'ADMIN') || data.active === false);
+    if (losingAdmin) {
+      const otherAdmins = await prisma.user.count({
+        where: { clinicId: staff.clinicId, role: 'ADMIN', active: true, id: { not: staff.id } },
+      });
+      if (otherAdmins === 0) throw new HttpError(400, 'The clinic needs at least one active admin');
+    }
+    if (data.username && data.username !== staff.username) await assertSignInFree(staff.clinicId, { username: data.username });
+
+    const updated = await prisma.user.update({
+      where: { id: staff.id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.role !== undefined ? { role: data.role } : {}),
+        ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.username !== undefined ? { username: data.username } : {}),
+        ...(data.active !== undefined ? { active: data.active } : {}),
+      },
+    });
+    res.json(toPublicUser(updated));
+  }),
+);
+
+// Admin sets a new temporary password for a staff member (who has
+// forgotten theirs, or is starting on a shared desk login).
+adminRouter.post(
+  '/staff/:id/reset-password',
+  requireRole('ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { password } = z.object({ password: z.string().min(6, 'At least 6 characters') }).parse(req.body);
+    const staff = await findStaff(req);
+    await prisma.user.update({ where: { id: staff.id }, data: { password: await bcrypt.hash(password, 10) } });
+    res.json({ message: `Password reset for ${staff.name}` });
   }),
 );
 

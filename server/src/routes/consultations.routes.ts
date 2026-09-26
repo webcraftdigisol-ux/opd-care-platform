@@ -25,6 +25,7 @@ const prescriptionSchema = z
   .object({
     medicine: z.string().trim().min(1),
     strength: z.string().trim().nullish(),
+    brand: z.string().trim().max(80).nullish(),
     dosage: z.string().trim().optional(),
     morning: z.boolean().optional(),
     afternoon: z.boolean().optional(),
@@ -43,6 +44,7 @@ const prescriptionSchema = z
     return {
       medicine: p.medicine,
       strength: p.strength || null,
+      brand: p.brand || null,
       dosage: p.dosage || '1',
       morning: !!p.morning,
       afternoon: !!p.afternoon,

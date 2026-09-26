@@ -8,6 +8,9 @@ interface SuggestInputProps {
   className?: string;
   required?: boolean;
   testId?: string;
+  // List every suggestion when the box is focused and empty (a short list,
+  // like a medicine's brands).
+  showAllOnFocus?: boolean;
 }
 
 const MAX_SUGGESTIONS = 8;
@@ -17,14 +20,17 @@ const MAX_SUGGESTIONS = 8;
 // entries) -- not a remote-search autocomplete. Matching the smallness of
 // what it searches, there's no debounce or server round-trip: every
 // keystroke just re-filters the array already sitting in memory.
-export function SuggestInput({ value, onChange, suggestions, placeholder, className, required, testId }: SuggestInputProps) {
+export function SuggestInput({ value, onChange, suggestions, placeholder, className, required, testId, showAllOnFocus }: SuggestInputProps) {
   const [open, setOpen] = useState(false);
 
   const matches = useMemo(() => {
     const query = value.trim().toLowerCase();
-    if (!query) return [];
-    return suggestions.filter((s) => s.toLowerCase().includes(query) && s.toLowerCase() !== query).slice(0, MAX_SUGGESTIONS);
-  }, [value, suggestions]);
+    if (!query) return showAllOnFocus ? suggestions.slice(0, MAX_SUGGESTIONS) : [];
+    const hits = suggestions.filter((s) => s.toLowerCase().includes(query) && s.toLowerCase() !== query);
+    // Names that start with what was typed come first.
+    const starts = hits.filter((s) => s.toLowerCase().startsWith(query));
+    return [...starts, ...hits.filter((s) => !s.toLowerCase().startsWith(query))].slice(0, MAX_SUGGESTIONS);
+  }, [value, suggestions, showAllOnFocus]);
 
   function selectSuggestion(s: string) {
     onChange(s);
@@ -55,7 +61,7 @@ export function SuggestInput({ value, onChange, suggestions, placeholder, classN
       {open && matches.length > 0 && (
         <ul
           data-testid={testId ? `${testId}-suggestions` : undefined}
-          className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white text-sm shadow-lg"
+          className="absolute z-10 mt-1 max-h-60 w-max min-w-full max-w-[min(28rem,90vw)] overflow-auto rounded-md border border-gray-200 bg-white text-sm shadow-lg"
         >
           {matches.map((s) => (
             <li key={s}>

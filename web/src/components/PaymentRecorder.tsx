@@ -83,7 +83,7 @@ export function PaymentRecorder({ billType, billId }: { billType: BillType; bill
       </div>
       {!isPaid && isPatient && (
         <div className="mt-2">
-          {razorpayStatus?.configured ? (
+          {razorpayStatus?.billPayments ? (
             <button
               onClick={() => payOnlineMutation.mutate()}
               disabled={payOnlineMutation.isPending}
@@ -92,7 +92,7 @@ export function PaymentRecorder({ billType, billId }: { billType: BillType; bill
               {payOnlineMutation.isPending ? 'Opening payment…' : `Pay ₹${data.balanceDue.toFixed(2)} Online`}
             </button>
           ) : (
-            <p className="text-xs text-gray-500">Online payment isn't set up for this clinic yet — please pay at the counter.</p>
+            <p className="text-xs text-gray-500">Please pay this bill at the clinic counter.</p>
           )}
         </div>
       )}

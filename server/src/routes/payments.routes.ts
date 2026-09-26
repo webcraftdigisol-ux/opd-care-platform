@@ -12,12 +12,13 @@ import {
   isRazorpayConfigured,
   verifyPaymentSignature,
   verifyWebhookSignature,
+  billPaymentsEnabled,
 } from '../utils/razorpay';
 import { computeRenewalPeriod } from '../utils/subscriptionRenewal';
 import { defaultSubscriptionAmount } from '../utils/subscriptionPricing';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
-import type { BillType, RazorpayOrderResponse, VerifyRazorpayPaymentRequest } from '@opd/shared';
+import type { BillType, RazorpayConfigStatus, RazorpayOrderResponse, VerifyRazorpayPaymentRequest } from '@opd/shared';
 
 export const paymentsRouter = Router();
 
@@ -219,7 +220,8 @@ paymentsRouter.get(
 paymentsRouter.get(
   '/razorpay/status',
   asyncHandler(async (_req: AuthedRequest, res) => {
-    res.json({ configured: isRazorpayConfigured() });
+    const status: RazorpayConfigStatus = { configured: isRazorpayConfigured(), billPayments: billPaymentsEnabled() };
+    res.json(status);
   }),
 );
 
@@ -234,6 +236,7 @@ paymentsRouter.post(
     const data = createBillOrderSchema.parse(req.body);
     const client = getRazorpayClient();
     if (!client) throw new HttpError(400, 'Online payments are not configured for this clinic yet');
+    if (!billPaymentsEnabled()) throw new HttpError(400, 'Online payment of clinic bills is not available -- please pay at the clinic counter');
     const clinicId = req.auth!.clinicId;
 
     const bill = await loadBill(clinicId, data.billType, data.billId);

@@ -69,6 +69,15 @@ export function isRazorpayConfigured(): boolean {
   return getRazorpayClient() !== null;
 }
 
+// Patients paying their clinic bills online is off unless
+// ONLINE_BILL_PAYMENTS=true: the one platform Razorpay account would
+// otherwise collect clinics' money (see README, "Online Payments"). Clinic
+// subscription renewals -- the platform's own revenue -- work whenever
+// Razorpay is configured.
+export function billPaymentsEnabled(): boolean {
+  return isRazorpayConfigured() && process.env.ONLINE_BILL_PAYMENTS === 'true';
+}
+
 export function getRazorpayKeyId(): string | null {
   return process.env.RAZORPAY_KEY_ID ?? null;
 }

@@ -1474,7 +1474,10 @@ export interface VerifyRazorpayPaymentRequest {
 }
 
 export interface RazorpayConfigStatus {
+  // Razorpay keys are set: clinic subscription renewal online works.
   configured: boolean;
+  // Patients may also pay their clinic bills online (off by default).
+  billPayments: boolean;
 }
 
 // Returned by POST /payments/razorpay/verify -- shape depends on what kind

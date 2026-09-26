@@ -50,7 +50,29 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     return next(err);
   }
   req.auth = { userId: payload.sub, role: payload.role, clinicId: payload.clinicId };
+  if (payload.role === 'PATIENT') hidePrivateFieldsFromPatient(res);
   next();
+}
+
+// Fields written for the clinic's eyes only (the doctor's private notes on a
+// visit). Blanked in every response to a patient's own login, whichever
+// route or nesting they arrive through, rather than trusting each endpoint
+// to remember.
+const PRIVATE_FIELDS = ['doctorNotes'];
+
+export function scrubPrivateFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(scrubPrivateFields);
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, PRIVATE_FIELDS.includes(k) ? null : scrubPrivateFields(v)]),
+    );
+  }
+  return value;
+}
+
+function hidePrivateFieldsFromPatient(res: Response) {
+  const json = res.json.bind(res);
+  res.json = (body?: unknown) => json(scrubPrivateFields(body));
 }
 
 export function requireRole(...roles: Role[]) {

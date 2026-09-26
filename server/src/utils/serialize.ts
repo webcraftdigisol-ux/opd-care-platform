@@ -1,3 +1,4 @@
+import { totalToDispense } from './dosage';
 import type {
   User,
   Clinic,
@@ -84,6 +85,8 @@ export function toClinicSummary(clinic: Clinic): ClinicSummary {
     tier: clinic.tier as ClinicSummary['tier'],
     logoUrl: clinic.logoUrl,
     taxPercent: clinic.taxPercent,
+    address: clinic.address,
+    phone: clinic.phone,
   };
 }
 
@@ -113,6 +116,8 @@ export function toDoctorProfile(doctor: PrismaDoctorProfile & { user: User }): D
     department: doctor.department,
     slotMinutes: doctor.slotMinutes,
     consultationFee: doctor.consultationFee,
+    qualification: doctor.qualification,
+    registrationNumber: doctor.registrationNumber,
     user: toPublicUser(doctor.user),
   };
 }
@@ -132,10 +137,16 @@ export function toPrescription(p: PrismaPrescription): Prescription {
     id: p.id,
     consultationId: p.consultationId,
     medicine: p.medicine,
+    strength: p.strength,
     dosage: p.dosage,
     frequency: p.frequency,
+    morning: p.morning,
+    afternoon: p.afternoon,
+    night: p.night,
+    foodTiming: (p.foodTiming as Prescription['foodTiming']) ?? null,
     durationDays: p.durationDays,
     notes: p.notes,
+    totalToDispense: totalToDispense(p),
   };
 }
 
@@ -184,11 +195,18 @@ export function toConsultation(
     id: c.id,
     appointmentId: c.appointmentId,
     vitals: (c.vitals as Consultation['vitals']) ?? null,
+    chiefComplaint: c.chiefComplaint,
+    presentIllness: c.presentIllness,
+    relevantHistory: c.relevantHistory,
     diagnosis: c.diagnosis,
+    differentialDiagnosis: c.differentialDiagnosis,
     notes: c.notes,
+    imagingAdvice: c.imagingAdvice,
+    doctorNotes: c.doctorNotes,
     followUpDate: c.followUpDate ? c.followUpDate.toISOString().slice(0, 10) : null,
     followUpContacted: c.followUpContacted,
     createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
     prescriptions: (c.prescriptions ?? []).map(toPrescription),
     labTestsOrdered: (c.labTestsOrdered ?? []).map(toLabTestOrder),
     radiologyOrdered: (c.radiologyOrdered ?? []).map(toRadiologyTestOrder),

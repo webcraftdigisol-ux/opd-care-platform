@@ -30,6 +30,8 @@ export interface ClinicSummary {
   tier: ClinicTier;
   logoUrl: string | null;
   taxPercent: number;
+  address: string | null;
+  phone: string | null;
 }
 
 export interface PublicUser {
@@ -53,6 +55,8 @@ export interface DoctorProfile {
   department: string;
   slotMinutes: number;
   consultationFee: number;
+  qualification: string | null;
+  registrationNumber: string | null;
   user: PublicUser;
 }
 
@@ -89,24 +93,40 @@ export interface DoctorSlot {
   available: boolean;
 }
 
+export type BloodSugarType = 'FASTING' | 'PP' | 'RANDOM';
+
 export interface Vitals {
   bpSystolic?: number;
   bpDiastolic?: number;
   pulse?: number;
+  // New visits record °F; older ones have °C. Show whichever is set.
+  tempF?: number;
   tempC?: number;
+  respiratoryRate?: number;
   weightKg?: number;
   heightCm?: number;
   spo2?: number;
+  bloodSugar?: number; // mg/dL
+  bloodSugarType?: BloodSugarType;
 }
+
+export type FoodTiming = 'BEFORE_FOOD' | 'AFTER_FOOD' | 'WITH_FOOD' | 'EMPTY_STOMACH';
 
 export interface Prescription {
   id: string;
   consultationId: string;
   medicine: string;
-  dosage: string;
-  frequency: string;
+  strength: string | null;
+  dosage: string; // per time, e.g. "1 tab"
+  frequency: string; // "1-0-1" or free text such as "SOS"
+  morning: boolean;
+  afternoon: boolean;
+  night: boolean;
+  foodTiming: FoodTiming | null;
   durationDays: number;
-  notes: string | null;
+  notes: string | null; // instructions
+  // Doses per day × days, when the timing is ticks or an "x-x-x" pattern.
+  totalToDispense: number | null;
 }
 
 export type DietaryPreference = 'VEG' | 'NON_VEG' | 'EGGETARIAN' | 'VEGAN';
@@ -143,11 +163,19 @@ export interface Consultation {
   id: string;
   appointmentId: string;
   vitals: Vitals | null;
+  chiefComplaint: string | null;
+  presentIllness: string | null;
+  relevantHistory: string | null;
   diagnosis: string | null;
-  notes: string | null;
+  differentialDiagnosis: string | null;
+  notes: string | null; // the doctor's advice to the patient
+  imagingAdvice: string | null;
+  // Private to clinic staff; always null for the patient.
+  doctorNotes: string | null;
   followUpDate: string | null;
   followUpContacted: boolean;
   createdAt: string;
+  updatedAt: string;
   prescriptions: Prescription[];
   labTestsOrdered: LabTestOrder[];
   radiologyOrdered: RadiologyTestOrder[];
@@ -229,8 +257,14 @@ export interface UpdateAppointmentStatusRequest {
 
 export interface PrescriptionInput {
   medicine: string;
-  dosage: string;
-  frequency: string;
+  strength?: string | null;
+  dosage?: string; // defaults to "1"
+  // Either tick the times of day, or give a frequency ("1-0-1", "SOS").
+  morning?: boolean;
+  afternoon?: boolean;
+  night?: boolean;
+  frequency?: string;
+  foodTiming?: FoodTiming | null;
   durationDays: number;
   notes?: string;
 }
@@ -256,8 +290,17 @@ export interface RadiologyTestOrderInput {
 
 export interface SaveConsultationRequest {
   vitals?: Vitals;
+  chiefComplaint?: string;
+  presentIllness?: string;
+  relevantHistory?: string;
   diagnosis?: string;
+  differentialDiagnosis?: string;
   notes?: string;
+  imagingAdvice?: string;
+  doctorNotes?: string;
+  // Changes this visit's fee (a discount, a free review); can't go below
+  // what has already been paid.
+  consultationFee?: number;
   followUpDate?: string; // "YYYY-MM-DD"
   prescriptions?: PrescriptionInput[];
   labTestsOrdered?: LabTestOrderInput[];
@@ -276,6 +319,8 @@ export interface CreateDoctorRequest {
   department: string;
   slotMinutes?: number;
   consultationFee?: number;
+  qualification?: string;
+  registrationNumber?: string;
 }
 
 export interface UpdateDoctorRequest {
@@ -283,6 +328,68 @@ export interface UpdateDoctorRequest {
   department?: string;
   slotMinutes?: number;
   consultationFee?: number;
+  qualification?: string | null;
+  registrationNumber?: string | null;
+}
+
+// ---- Doctor's Catalogue ----
+
+export type CatalogKind = 'MEDICINE' | 'LAB_TEST' | 'RADIOLOGY';
+
+export interface DoctorCatalogItem {
+  id: string;
+  kind: CatalogKind;
+  name: string;
+  strength: string | null;
+}
+
+export interface UpsertCatalogItemRequest {
+  kind: CatalogKind;
+  name: string;
+  strength?: string | null;
+}
+
+// What the consultation screen suggests while typing: the Doctor's
+// Catalogue plus, in Tier 2+, the department catalogues.
+export interface CatalogSuggestions {
+  medicines: { name: string; strength: string | null }[];
+  labTests: string[];
+  radiology: string[];
+}
+
+// Everything the patient's printed/shared Visit Summary shows -- and
+// deliberately nothing more: no differential diagnosis, relevant history,
+// fee or the doctor's private notes.
+export interface VisitSummary {
+  appointmentId: string;
+  visitNumber: number; // this patient's nth consulted visit at the clinic
+  date: string; // "YYYY-MM-DD"
+  time: string | null; // "HH:mm", when the visit was recorded
+  clinic: { name: string; address: string | null; phone: string | null; logoUrl: string | null };
+  doctor: { name: string; specialization: string; qualification: string | null; registrationNumber: string | null };
+  patient: { id: string; name: string; patientCode: string; age: number | null; gender: Gender | null; phone: string | null };
+  symptoms: string[]; // chief complaint, then present illness
+  diagnosis: string | null;
+  vitals: Vitals | null;
+  prescriptions: Prescription[];
+  labTests: { name: string; notes: string | null }[];
+  radiology: { name: string; notes: string | null }[];
+  advice: string | null;
+  imagingAdvice: string | null;
+  followUpDate: string | null;
+}
+
+// Starting a consultation from the patient's profile (no token first).
+export interface StartVisitRequest {
+  patientId: string;
+  doctorId?: string; // a doctor starts with themself
+  reason?: string;
+}
+
+export interface UpdateClinicRequest {
+  name?: string;
+  address?: string | null;
+  phone?: string | null;
 }
 
 export interface CreateStaffRequest {
@@ -977,7 +1084,8 @@ export type NotificationType =
   | 'APPOINTMENT_REMINDER'
   | 'PRESCRIPTION_SHARED'
   | 'DIET_PLAN_SHARED'
-  | 'PASSWORD_RESET_OTP';
+  | 'PASSWORD_RESET_OTP'
+  | 'VISIT_SUMMARY_SHARED';
 export type NotificationStatus = 'SENT' | 'FAILED' | 'SKIPPED';
 
 export interface Notification {

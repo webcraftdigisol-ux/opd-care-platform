@@ -250,6 +250,59 @@ appointmentsRouter.post(
   }),
 );
 
+const startVisitSchema = z.object({
+  patientId: z.string().min(1),
+  doctorId: z.string().min(1).optional(),
+  reason: z.string().optional(),
+});
+
+// A consultation straight from the patient's profile (a quick review, a
+// patient seen without a token first): today's visit is created already in
+// consultation, with the next token and the doctor's fee. No schedule
+// check -- the doctor is seeing the patient right now.
+appointmentsRouter.post(
+  '/visit',
+  requireRole('DOCTOR', 'ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = startVisitSchema.parse(req.body);
+    const clinicId = req.auth!.clinicId;
+    let doctor;
+    if (req.auth!.role === 'DOCTOR') {
+      doctor = await prisma.doctorProfile.findUnique({ where: { userId: req.auth!.userId } });
+      if (!doctor) throw new HttpError(400, 'Your doctor profile is missing');
+      if (data.doctorId && data.doctorId !== doctor.id) throw new HttpError(403, 'A doctor can only start their own visits');
+    } else {
+      if (!data.doctorId) throw new HttpError(400, 'Choose the doctor for this visit');
+      doctor = await prisma.doctorProfile.findFirst({ where: { id: data.doctorId, user: { clinicId } } });
+      if (!doctor) throw new HttpError(404, 'Doctor not found');
+    }
+    const patient = await prisma.user.findFirst({ where: { id: data.patientId, clinicId, role: 'PATIENT' } });
+    if (!patient) throw new HttpError(404, 'Patient not found');
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const appointment = await prisma.$transaction(async (tx) => {
+      await lockDoctorDay(tx, doctor.id, today);
+      const tokenNumber = await nextTokenNumber(tx, doctor.id, today);
+      return tx.appointment.create({
+        data: {
+          clinicId,
+          patientId: patient.id,
+          doctorId: doctor.id,
+          date: today,
+          tokenNumber,
+          reason: data.reason,
+          isWalkIn: true,
+          status: 'IN_CONSULTATION',
+          consultationFee: doctor.consultationFee,
+        },
+        include: { patient: patientWithCode, doctor: { include: { user: true } } },
+      });
+    });
+    res.status(201).json(toAppointment(appointment));
+  }),
+);
+
 const walkInSchema = z
   .object({
     doctorId: z.string().min(1),

@@ -84,7 +84,46 @@ Message from {{1}}: Hi {{2}}, this is a reminder for your follow-up with Dr. {{3
 | 3 | Doctor name | Pallavi Joshi |
 | 4 | Due date | 2026-10-02 |
 
-## 5. `password_reset_otp`
+## 5. `followup_due_today`
+
+Category: **Utility**. Sent automatically on the follow-up date itself (the
+day-before reminder is `followup_reminder` above), unless staff marked the
+patient contacted or the patient already booked or came in.
+
+```
+Message from {{1}}: Hi {{2}}, your follow-up with Dr. {{3}} is due today, {{4}}. Please visit the clinic or call to fix a time.
+```
+
+| # | Value | Example |
+|---|---|---|
+| 1 | Clinic name | Anandi |
+| 2 | Patient name | Ramesh Patil |
+| 3 | Doctor name | Pallavi Joshi |
+| 4 | Due date | 2026-10-02 |
+
+## 6. `visit_summary`
+
+Category: **Utility**, with a **Document** header. Sent when the doctor taps
+"Send on WhatsApp" on a visit: the header is the Visit Summary PDF (symptoms,
+diagnosis, vitals, prescription, tests, advice, follow-up).
+
+When creating it, choose **Header → Media → Document** and upload any sample
+PDF. The code sends the real one as a link that only works for 30 days
+(set `PUBLIC_API_URL`, e.g. `https://api.ohmscare.in/api`, so the link
+points at the public API address).
+
+```
+Message from {{1}}: Hi {{2}}, here is the summary of your visit with Dr. {{3}} on {{4}}, including your prescription. Please follow the advice and contact the clinic if you have any questions.
+```
+
+| # | Value | Example |
+|---|---|---|
+| 1 | Clinic name | Anandi |
+| 2 | Patient name | Ramesh Patil |
+| 3 | Doctor name | Pallavi Joshi |
+| 4 | Visit date | 26 Sept 2026 |
+
+## 7. `password_reset_otp`
 
 Category: **Authentication**. Sent when someone uses "Forgot password?".
 

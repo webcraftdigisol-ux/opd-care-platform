@@ -60,6 +60,7 @@ enum NotificationType {
   PRESCRIPTION_SHARED
   DIET_PLAN_SHARED
   PASSWORD_RESET_OTP
+  VISIT_SUMMARY_SHARED
 }
 
 enum NotificationStatus {
@@ -89,6 +90,9 @@ model Clinic {
   slug                      String   @unique
   tier                      Int      @default(1) // 1 = OPD, 2 = +Pharmacy/Lab/Radiology, 3 = +IPD
   logoUrl                   String?
+  // Letterhead on printed visit summaries.
+  address                   String?
+  phone                     String?
   taxPercent                Float    @default(0)
   doctorRevenueSharePercent Float    @default(0)
   // Last Patient ID number handed out (PT000001, PT000002, ...), bumped
@@ -113,6 +117,7 @@ model Clinic {
   subscription      Subscription?
   dietPlans         DietPlan[]
   patientProfiles   PatientProfile[]
+  catalogItems      DoctorCatalogItem[]
 }
 
 model User {
@@ -171,6 +176,29 @@ model User {
 // The clinical/demographic record behind a PATIENT user. Every patient has
 // one (created with the account, backfilled for older ones); `name` on User
 // stays the full display name, kept in step with first/middle/last here.
+enum CatalogKind {
+  MEDICINE
+  LAB_TEST
+  RADIOLOGY
+}
+
+// The Doctor's Catalogue: plain name lists (medicines with an optional
+// strength, lab tests, radiology work) the consultation screen suggests as
+// the doctor types. Available in every tier -- ordering doesn't need an
+// in-house department; the Tier 2 department catalogues (with prices and
+// stock) are suggested alongside it.
+model DoctorCatalogItem {
+  id        String      @id @default(uuid())
+  clinicId  String
+  clinic    Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  kind      CatalogKind
+  name      String
+  strength  String?
+  createdAt DateTime    @default(now())
+
+  @@index([clinicId, kind])
+}
+
 model PatientProfile {
   id          String   @id @default(uuid())
   userId      String   @unique
@@ -229,6 +257,10 @@ model DoctorProfile {
   department      String
   slotMinutes     Int    @default(15)
   consultationFee Float  @default(0)
+  // Printed under the doctor's name on a visit summary, e.g. "MBBS, MD" and
+  // the medical council registration number.
+  qualification      String?
+  registrationNumber String?
 
   schedules    Schedule[]
   appointments Appointment[]    @relation("DoctorAppointments")
@@ -298,13 +330,24 @@ model Consultation {
   appointmentId     String      @unique
   appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   vitals            Json?
-  diagnosis         String?
-  notes             String?
+  chiefComplaint        String?
+  presentIllness        String?
+  relevantHistory       String?
+  diagnosis             String?
+  differentialDiagnosis String?
+  // The doctor's advice to the patient (printed and shared).
+  notes                 String?
+  imagingAdvice         String?
+  // Private to clinic staff: never printed, shared or shown to the patient.
+  doctorNotes           String?
   followUpDate      DateTime?
   followUpContacted Boolean     @default(false)
   // Set when the automatic day-before follow-up reminder was attempted
   // (whatever its outcome), so the hourly job sends it at most once.
   followUpReminderSentAt DateTime?
+  // The same, for the reminder sent on the follow-up day itself.
+  followUpDayReminderSentAt DateTime?
+  updatedAt         DateTime    @default(now()) @updatedAt
   createdAt         DateTime    @default(now())
 
   prescriptions    Prescription[]
@@ -320,9 +363,19 @@ model Prescription {
   consultationId String
   consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
   medicine       String
+  strength       String?
+  // Dose per time, e.g. "1 tab", "5 ml".
   dosage         String
+  // "1-0-1" (derived from the Morning/Afternoon/Night ticks when those are
+  // used) or free text such as "SOS"; the pharmacy's quantity suggestion
+  // parses it.
   frequency      String
+  morning        Boolean      @default(false)
+  afternoon      Boolean      @default(false)
+  night          Boolean      @default(false)
+  foodTiming     String? // BEFORE_FOOD | AFTER_FOOD | WITH_FOOD | EMPTY_STOMACH
   durationDays   Int
+  // Instructions for the patient.
   notes          String?
 
   saleItems PharmacySaleItem[]

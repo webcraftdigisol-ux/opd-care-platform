@@ -19,6 +19,8 @@ const createDoctorSchema = z.object({
   department: z.string().min(2),
   slotMinutes: z.number().int().positive().optional(),
   consultationFee: z.number().nonnegative().optional(),
+  qualification: z.string().trim().optional(),
+  registrationNumber: z.string().trim().optional(),
 });
 
 adminRouter.post(
@@ -39,6 +41,8 @@ adminRouter.post(
         department: data.department,
         slotMinutes: data.slotMinutes ?? 15,
         consultationFee: data.consultationFee ?? 0,
+        qualification: data.qualification || null,
+        registrationNumber: data.registrationNumber || null,
         user: {
           create: {
             clinicId,
@@ -56,11 +60,14 @@ adminRouter.post(
   }),
 );
 
+const blankToNull = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() || null);
 const updateDoctorSchema = z.object({
   specialization: z.string().min(2).optional(),
   department: z.string().min(2).optional(),
   slotMinutes: z.number().int().positive().optional(),
   consultationFee: z.number().nonnegative().optional(),
+  qualification: z.string().nullish().transform(blankToNull),
+  registrationNumber: z.string().nullish().transform(blankToNull),
 });
 
 async function assertDoctorInClinic(clinicId: string, doctorId: string) {

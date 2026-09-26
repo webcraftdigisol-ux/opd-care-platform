@@ -1,0 +1,68 @@
+import type { CatalogKind } from '@opd/shared';
+
+// A ready-made starting list so a new clinic isn't typing everything by
+// hand: common generics in the strengths Indian OPDs prescribe most, common
+// lab panels and common imaging. Adding it skips anything already there,
+// and every entry can be deleted.
+export const STARTER_CATALOG: { kind: CatalogKind; name: string; strength?: string }[] = [
+  ...(
+    [
+      ['Paracetamol', '500 mg'],
+      ['Paracetamol', '650 mg'],
+      ['Ibuprofen', '400 mg'],
+      ['Diclofenac', '50 mg'],
+      ['Aceclofenac + Paracetamol', '100/325 mg'],
+      ['Amoxicillin', '500 mg'],
+      ['Amoxicillin + Clavulanic acid', '625 mg'],
+      ['Azithromycin', '500 mg'],
+      ['Cefixime', '200 mg'],
+      ['Ciprofloxacin', '500 mg'],
+      ['Doxycycline', '100 mg'],
+      ['Metronidazole', '400 mg'],
+      ['Cetirizine', '10 mg'],
+      ['Levocetirizine', '5 mg'],
+      ['Montelukast + Levocetirizine', '10/5 mg'],
+      ['Pantoprazole', '40 mg'],
+      ['Omeprazole', '20 mg'],
+      ['Ranitidine', '150 mg'],
+      ['Domperidone', '10 mg'],
+      ['Ondansetron', '4 mg'],
+      ['ORS', '1 sachet'],
+      ['Metformin', '500 mg'],
+      ['Glimepiride', '1 mg'],
+      ['Amlodipine', '5 mg'],
+      ['Telmisartan', '40 mg'],
+      ['Atorvastatin', '10 mg'],
+      ['Aspirin', '75 mg'],
+      ['Levothyroxine', '50 mcg'],
+      ['Vitamin D3', '60000 IU'],
+      ['Calcium + Vitamin D3', '500 mg'],
+      ['Iron + Folic acid', '100 mg'],
+      ['Vitamin B complex', '1 tab'],
+      ['Salbutamol inhaler', '100 mcg'],
+      ['Cough syrup (Dextromethorphan)', '5 ml'],
+    ] as const
+  ).map(([name, strength]) => ({ kind: 'MEDICINE' as const, name, strength })),
+  ...[
+    'CBC',
+    'Blood Sugar (Fasting)',
+    'Blood Sugar (PP)',
+    'HbA1c',
+    'Lipid Profile',
+    'Liver Function Test',
+    'Kidney Function Test',
+    'Thyroid Profile (T3, T4, TSH)',
+    'Urine Routine',
+    'ESR',
+    'CRP',
+    'Dengue NS1',
+    'Widal',
+    'Malaria Antigen',
+    'Vitamin D',
+    'Vitamin B12',
+  ].map((name) => ({ kind: 'LAB_TEST' as const, name })),
+  ...['Chest X-Ray', 'X-Ray', 'USG Abdomen', 'USG Pelvis', 'ECG', '2D Echo', 'CT Scan', 'MRI'].map((name) => ({
+    kind: 'RADIOLOGY' as const,
+    name,
+  })),
+];

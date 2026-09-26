@@ -66,7 +66,12 @@ on save." One long page of card sections:
    surgeries, Family history (all multi-line).
 5. **Additional** -- Insurance details (multi-line), TPA (insurance
    administrator, e.g. MediAssist, Paramount), Doctor notes.
-6. *(continues -- snap 6 to follow)*
+6. Form ends after **Additional**: bottom actions are **Save patient**
+   (primary, check-circle icon) and **Cancel** (text link). No other
+   sections (no visit/appointment/fee step on this page).
+
+Registration is standalone -- saving creates the patient only; booking or
+billing a visit is a separate step (TBC as later screens arrive).
 
 Only two required fields: **first name** and **mobile number**.
 
@@ -97,4 +102,6 @@ allergies surfaced prominently in the doctor's consultation view.
 - Is "Doctor notes" at registration a standing note shown on every visit?
 - Are Appointments and Revenue charts per clinic or per doctor?
 - Who uses the registration form -- reception only, or doctors too?
+- After **Save patient**, where does it go -- the new patient's profile,
+  back to the dashboard, or straight into booking/billing a visit?
 

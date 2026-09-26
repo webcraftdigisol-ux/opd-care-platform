@@ -27,6 +27,7 @@ import {
 } from '../utils/patients';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
+import { computeIpdBillFigures, ipdBillLines } from '../utils/ipdBilling';
 
 export const patientsRouter = Router();
 
@@ -236,18 +237,31 @@ patientsRouter.get(
       canSee('CONSULTATION')
         ? prisma.appointment.findMany({ where, include: { doctor: { include: { user: true } } }, orderBy: { date: 'asc' } })
         : [],
-      canSee('PHARMACY') ? prisma.pharmacySale.findMany({ where }) : [],
-      canSee('LAB') ? prisma.labInvoice.findMany({ where }) : [],
-      canSee('RADIOLOGY') ? prisma.radiologyInvoice.findMany({ where }) : [],
-      canSee('IPD') ? prisma.admission.findMany({ where: { ...where, bill: { isNot: null } }, include: { bill: true } }) : [],
+      // Bills raised during an admission are part of its IPD bill, below.
+      canSee('PHARMACY') ? prisma.pharmacySale.findMany({ where: { ...where, admissionId: null } }) : [],
+      canSee('LAB') ? prisma.labInvoice.findMany({ where: { ...where, admissionId: null } }) : [],
+      canSee('RADIOLOGY') ? prisma.radiologyInvoice.findMany({ where: { ...where, admissionId: null } }) : [],
+      canSee('IPD')
+        ? prisma.admission.findMany({
+            where,
+            include: {
+              bill: true,
+              bed: { include: { ward: true } },
+              pharmacySales: { select: { id: true } },
+              labInvoices: { select: { id: true } },
+              radiologyInvoices: { select: { id: true } },
+            },
+          })
+        : [],
       prisma.payment.groupBy({ by: ['billType', 'billId'], where, _sum: { amount: true } }),
     ]);
     const paid = new Map(payments.map((p) => [`${p.billType}:${p.billId}`, p._sum.amount ?? 0]));
 
     const bills: PatientBill[] = [];
-    const add = (billType: BillType, billId: string, label: string, date: Date, total: number) => {
-      const amountPaid = round2(paid.get(`${billType}:${billId}`) ?? 0);
-      bills.push({ billType, billId, label, date: date.toISOString(), total: round2(total), amountPaid, balanceDue: round2(total - amountPaid) });
+    const add = (billType: BillType, billId: string, label: string, date: Date, total: number, extra: Partial<PatientBill> & { alsoPaid?: number } = {}) => {
+      const { alsoPaid = 0, ...rest } = extra;
+      const amountPaid = round2((paid.get(`${billType}:${billId}`) ?? 0) + alsoPaid);
+      bills.push({ billType, billId, label, date: date.toISOString(), total: round2(total), amountPaid, balanceDue: round2(total - amountPaid), ...rest });
     };
 
     // A visit is a bill once the patient has actually come in (or paid);
@@ -262,7 +276,23 @@ patientsRouter.get(
     for (const s of sales) add('PHARMACY', s.id, 'Pharmacy', s.createdAt, s.total);
     for (const l of labs) add('LAB', l.id, 'Lab tests', l.createdAt, l.total);
     for (const r of rads) add('RADIOLOGY', r.id, 'Radiology', r.createdAt, r.total);
-    for (const a of admissions) add('IPD', a.id, 'IPD admission', a.dischargedAt ?? a.admittedAt, Math.max(0, a.bill!.amountDue));
+    // An admission: its final bill once discharged, else the bill so far.
+    // Paid = the deposit, plus payments against the bill (and any taken
+    // at a counter against a bill raised during the stay).
+    for (const a of admissions) {
+      const figures = a.bill ?? (await computeIpdBillFigures(clinicId, a.id, new Date()));
+      const linkedPaid = [
+        ...a.pharmacySales.map((x) => `PHARMACY:${x.id}`),
+        ...a.labInvoices.map((x) => `LAB:${x.id}`),
+        ...a.radiologyInvoices.map((x) => `RADIOLOGY:${x.id}`),
+      ].reduce((n, k) => n + (paid.get(k) ?? 0), 0);
+      const since = a.admittedAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+      add('IPD', a.id, `IPD admission — ${a.bed.ward.name} · ${a.bed.label}${a.bill ? '' : ` · admitted since ${since}`}`, a.dischargedAt ?? a.admittedAt, figures.total, {
+        alsoPaid: figures.depositAmount + linkedPaid,
+        breakdown: ipdBillLines(figures),
+        inProgress: !a.bill,
+      });
+    }
 
     bills.sort((x, y) => y.date.localeCompare(x.date));
     const response: PatientBillingResponse = {

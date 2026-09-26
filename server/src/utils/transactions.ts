@@ -14,7 +14,14 @@ function nextDay(date: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-type Draft = Omit<TransactionRow, 'collected' | 'outstanding' | 'status'> & { doctorId: string | null };
+// `alsoPaid`: money for this bill not recorded as a payment against it --
+// an admission's deposit, and payments taken at a counter against bills
+// raised during the stay (which are billed within the admission).
+type Draft = Omit<TransactionRow, 'collected' | 'outstanding' | 'status'> & {
+  doctorId: string | null;
+  alsoPaid?: number;
+  linked?: { billType: BillType; billId: string }[];
+};
 
 // Every bill in a date range, with what has been paid against it -- the
 // Reports page's transaction table and its summaries. "Billed" is the fee
@@ -43,18 +50,25 @@ export async function computeTransactions(opts: {
         })
       : [],
     want('PHARMACY')
-      ? prisma.pharmacySale.findMany({ where: { clinicId, createdAt: tsRange }, include: { patient, items: true, appointment: viaAppointment } })
+      ? prisma.pharmacySale.findMany({ where: { clinicId, createdAt: tsRange, admissionId: null }, include: { patient, items: true, appointment: viaAppointment } })
       : [],
     want('LAB')
-      ? prisma.labInvoice.findMany({ where: { clinicId, createdAt: tsRange }, include: { patient, items: true, appointment: viaAppointment } })
+      ? prisma.labInvoice.findMany({ where: { clinicId, createdAt: tsRange, admissionId: null }, include: { patient, items: true, appointment: viaAppointment } })
       : [],
     want('RADIOLOGY')
-      ? prisma.radiologyInvoice.findMany({ where: { clinicId, createdAt: tsRange }, include: { patient, items: true, appointment: viaAppointment } })
+      ? prisma.radiologyInvoice.findMany({ where: { clinicId, createdAt: tsRange, admissionId: null }, include: { patient, items: true, appointment: viaAppointment } })
       : [],
     want('IPD')
       ? prisma.admission.findMany({
           where: { clinicId, dischargedAt: tsRange, bill: { isNot: null } },
-          include: { patient, bill: true, admittingDoctor: { include: { user: true } } },
+          include: {
+            patient,
+            bill: true,
+            admittingDoctor: { include: { user: true } },
+            pharmacySales: { select: { id: true } },
+            labInvoices: { select: { id: true } },
+            radiologyInvoices: { select: { id: true } },
+          },
         })
       : [],
   ]);
@@ -118,14 +132,20 @@ export async function computeTransactions(opts: {
       ...who(a.patient),
       doctorId: a.admittingDoctorId,
       doctorName: a.admittingDoctor.user.name,
-      description: 'IPD admission (final bill after deposit)',
-      billed: Math.max(0, a.bill!.amountDue),
+      description: 'IPD admission (final bill, incl. pharmacy, lab & radiology during the stay)',
+      billed: a.bill!.total,
+      alsoPaid: a.bill!.depositAmount,
+      linked: [
+        ...a.pharmacySales.map((x) => ({ billType: 'PHARMACY' as const, billId: x.id })),
+        ...a.labInvoices.map((x) => ({ billType: 'LAB' as const, billId: x.id })),
+        ...a.radiologyInvoices.map((x) => ({ billType: 'RADIOLOGY' as const, billId: x.id })),
+      ],
     })),
   ].filter((d) => !opts.doctorId || d.doctorId === opts.doctorId);
 
   const payments = drafts.length
     ? await prisma.payment.findMany({
-        where: { clinicId, OR: drafts.map((d) => ({ billType: d.billType, billId: d.billId })) },
+        where: { clinicId, OR: drafts.flatMap((d) => [{ billType: d.billType, billId: d.billId }, ...(d.linked ?? [])]) },
         select: { billType: true, billId: true, amount: true, method: true },
       })
     : [];
@@ -138,9 +158,11 @@ export async function computeTransactions(opts: {
   }
 
   const rows: TransactionRow[] = drafts
-    .map(({ doctorId: _doctorId, ...d }) => {
+    .map(({ doctorId: _doctorId, alsoPaid = 0, linked = [], ...d }) => {
       const billed = round2(d.billed);
-      const collected = round2(paid.get(`${d.billType}:${d.billId}`) ?? 0);
+      const collected = round2(
+        (paid.get(`${d.billType}:${d.billId}`) ?? 0) + alsoPaid + linked.reduce((n, l) => n + (paid.get(`${l.billType}:${l.billId}`) ?? 0), 0),
+      );
       const outstanding = round2(Math.max(0, billed - collected));
       const status: TransactionRow['status'] =
         billed === 0 ? 'NO_CHARGE' : outstanding <= 0.01 ? 'PAID' : collected > 0 ? 'PARTLY_PAID' : 'UNPAID';

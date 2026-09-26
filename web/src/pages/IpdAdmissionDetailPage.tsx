@@ -21,6 +21,8 @@ import { VitalsTrendChart } from '../components/VitalsTrendChart';
 import { PaymentRecorder } from '../components/PaymentRecorder';
 import { SuggestInput } from '../components/SuggestInput';
 import { useAuth } from '../context/AuthContext';
+import { ConsentSection, consentsKey } from '../components/ConsentSection';
+import { listConsents } from '../api/consents';
 import type { MedicationSource } from '@opd/shared';
 
 function AmountLine({ label, value }: { label: string; value: number }) {
@@ -85,18 +87,23 @@ export function IpdAdmissionDetailPage() {
   });
 
   // --- Procedures ---
-  const [procedureForm, setProcedureForm] = useState({ name: '', notes: '', consentSigned: false, fee: '0' });
+  // Consent: '' none, 'paper' taken on paper outside the system, or the id
+  // of a signed consent form.
+  const [procedureForm, setProcedureForm] = useState({ name: '', notes: '', consent: '', fee: '0' });
+  const { data: consents } = useQuery({ queryKey: consentsKey(id!), queryFn: () => listConsents(id!), enabled: !!id });
+  const signedConsents = consents?.filter((c) => c.signedAt) ?? [];
   const procedureMutation = useMutation({
     mutationFn: () =>
       addProcedure(id!, {
         name: procedureForm.name,
         notes: procedureForm.notes || undefined,
-        consentSigned: procedureForm.consentSigned,
+        consentSigned: procedureForm.consent !== '',
+        consentFormId: procedureForm.consent && procedureForm.consent !== 'paper' ? procedureForm.consent : undefined,
         fee: Number(procedureForm.fee) || 0,
       }),
     onSuccess: () => {
       invalidate();
-      setProcedureForm({ name: '', notes: '', consentSigned: false, fee: '0' });
+      setProcedureForm({ name: '', notes: '', consent: '', fee: '0' });
     },
   });
 
@@ -446,12 +453,29 @@ export function IpdAdmissionDetailPage() {
         )}
       </div>
 
+      {(canManageClinical || canDoNursing) && (
+        <ConsentSection
+          admissionId={admission.id}
+          patientName={admission.patient?.name ?? ''}
+          admittingDoctorId={admission.admittingDoctorId}
+          doctors={doctors ?? []}
+          isAdmitted={isAdmitted}
+          canCreate={canManageClinical}
+        />
+      )}
+
       <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">
         <h2 className="mb-3 font-semibold text-gray-700">Procedures</h2>
         <div className="mb-3 space-y-1">
           {admission.procedures.map((p) => (
             <p key={p.id} className="text-sm text-gray-600">
-              {new Date(p.performedAt).toLocaleString()} — {p.name} {p.consentSigned ? '(consent signed)' : '(no consent on file)'} — ₹
+              {new Date(p.performedAt).toLocaleString()} — {p.name}{' '}
+              {p.consentFormId
+                ? `(consent signed by ${consents?.find((c) => c.id === p.consentFormId)?.signedByName ?? '—'})`
+                : p.consentSigned
+                  ? '(consent signed)'
+                  : '(no consent on file)'}{' '}
+              — ₹
               {p.fee.toFixed(2)}
             </p>
           ))}
@@ -463,10 +487,21 @@ export function IpdAdmissionDetailPage() {
             <input placeholder="Notes" value={procedureForm.notes} onChange={(e) => setProcedureForm((f) => ({ ...f, notes: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <input placeholder="Fee" type="number" value={procedureForm.fee} onChange={(e) => setProcedureForm((f) => ({ ...f, fee: e.target.value }))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <div className="flex items-center gap-1">
-              <label className="flex items-center gap-1 text-xs text-gray-500">
-                <input type="checkbox" checked={procedureForm.consentSigned} onChange={(e) => setProcedureForm((f) => ({ ...f, consentSigned: e.target.checked }))} />
-                Consent
-              </label>
+              <select
+                value={procedureForm.consent}
+                onChange={(e) => setProcedureForm((f) => ({ ...f, consent: e.target.value }))}
+                className="min-w-0 flex-1 rounded-md border border-gray-300 px-1 py-1.5 text-xs"
+                aria-label="Consent"
+                data-testid="procedure-consent"
+              >
+                <option value="">No consent</option>
+                {signedConsents.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    Consent: {c.procedureName}
+                  </option>
+                ))}
+                <option value="paper">Consent on paper only</option>
+              </select>
               <button onClick={() => procedureMutation.mutate()} disabled={!procedureForm.name} className="rounded-md bg-teal px-2 text-sm text-white disabled:opacity-60">
                 +
               </button>

@@ -15,15 +15,19 @@ import { vitalsSeries, type VisitWithConsultation } from '../utils/patientHistor
 import { doctorName, medicineLabel, vitalChips, whenToTake } from '../utils/visitFormat';
 import { listDoctors } from '../api/doctors';
 import { startVisit } from '../api/appointments';
+import { CertificatesTab } from '../components/CertificatesTab';
 import { GENDER_LABEL, formatDate, formatMoney } from '../utils/patientFormat';
 
-type Tab = 'summary' | 'consultations' | 'vitals' | 'reports' | 'images' | 'billing';
-const TABS: { id: Tab; label: string; clinical: boolean }[] = [
+type Tab = 'summary' | 'consultations' | 'vitals' | 'reports' | 'images' | 'certificates' | 'billing';
+// `doctor`: only doctors and admin (who issue certificates on a doctor's
+// behalf).
+const TABS: { id: Tab; label: string; clinical: boolean; doctor?: boolean }[] = [
   { id: 'summary', label: 'Summary', clinical: false },
   { id: 'consultations', label: 'Consultations', clinical: true },
   { id: 'vitals', label: 'Vitals', clinical: true },
   { id: 'reports', label: 'Reports', clinical: true },
   { id: 'images', label: 'Images', clinical: true },
+  { id: 'certificates', label: 'Certificates', clinical: true, doctor: true },
   { id: 'billing', label: 'Billing', clinical: false },
 ];
 
@@ -37,7 +41,7 @@ export function PatientProfilePage() {
   const canEdit = !!user && ['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(user.role);
   const canBookVisit = !!user && ['ADMIN', 'RECEPTIONIST'].includes(user.role);
   const canConsult = !!user && ['ADMIN', 'DOCTOR'].includes(user.role);
-  const tabs = TABS.filter((t) => canSeeClinical || !t.clinical);
+  const tabs = TABS.filter((t) => (canSeeClinical || !t.clinical) && (canConsult || !t.doctor));
   const requested = params.get('tab') as Tab | null;
   const tab: Tab = tabs.some((t) => t.id === requested) ? requested! : 'summary';
 
@@ -81,6 +85,7 @@ export function PatientProfilePage() {
         {tab === 'vitals' && <VitalsTab records={records} />}
         {tab === 'reports' && <ReportsTab records={records} patientId={patient.id} />}
         {tab === 'images' && <ImagesTab records={records} patientId={patient.id} />}
+        {tab === 'certificates' && <CertificatesTab patient={patient} />}
         {tab === 'billing' && <BillingTab patientId={patient.id} />}
       </div>
     </div>
@@ -485,6 +490,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   RADIOLOGY_DICOM: 'DICOM image',
   PATIENT_REPORT: 'Report',
   PATIENT_IMAGE: 'Image',
+  CONSENT_FORM: 'Signed consent form',
 };
 
 const UPLOAD_ROLES = ['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE', 'RECEPTIONIST'];
@@ -629,25 +635,62 @@ function BillingTab({ patientId }: { patientId: string }) {
           <p className="text-sm text-gray-500">No bills yet.</p>
         ) : (
           <ul className="divide-y divide-gray-100" data-testid="bills">
-            {data.bills.map((b) => (
-              <li key={`${b.billType}:${b.billId}`} className="flex items-center justify-between gap-3 py-3">
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gold-light text-gold">
-                    <Icon name="rupee" className="h-4 w-4" />
+            {data.bills.map((b) => {
+              const status =
+                b.balanceDue > 0.01 ? (
+                  <span className="text-xs text-red-600">{formatMoney(b.balanceDue)} due</span>
+                ) : b.balanceDue < -0.01 ? (
+                  <span className="text-xs text-amber-700">Refund due {formatMoney(-b.balanceDue)}</span>
+                ) : (
+                  <span className="text-xs text-teal">Paid</span>
+                );
+              const head = (
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${b.billType === 'IPD' ? 'bg-teal-light text-teal' : 'bg-gold-light text-gold'}`}>
+                      <Icon name={b.billType === 'IPD' ? 'bed' : 'rupee'} className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-gray-900">
+                        {b.label}
+                        {b.inProgress && <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-normal text-amber-800">In progress</span>}
+                      </span>
+                      <span className="text-xs text-gray-500">{formatDate(b.date)}</span>
+                    </span>
                   </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-gray-900">{b.label}</span>
-                    <span className="text-xs text-gray-500">{formatDate(b.date)}</span>
+                  <span className="text-right">
+                    <span className="block font-semibold text-gray-900">{formatMoney(b.total)}</span>
+                    {b.inProgress ? <span className="text-xs text-gray-500">Bill so far</span> : status}
                   </span>
                 </span>
-                <span className="text-right">
-                  <span className="block font-semibold text-gray-900">{formatMoney(b.total)}</span>
-                  <span className={`text-xs ${b.balanceDue > 0.01 ? 'text-red-600' : 'text-teal'}`}>
-                    {b.balanceDue > 0.01 ? `${formatMoney(b.balanceDue)} due` : 'Paid'}
-                  </span>
-                </span>
-              </li>
-            ))}
+              );
+              return (
+                <li key={`${b.billType}:${b.billId}`} className="py-3" data-testid={b.billType === 'IPD' ? 'ipd-bill' : undefined}>
+                  {b.breakdown?.length ? (
+                    <details className="group">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                        <Icon name="chevronRight" className="h-4 w-4 shrink-0 text-gray-400 transition group-open:rotate-90" />
+                        {head}
+                      </summary>
+                      <dl className="ml-6 mt-2 space-y-1 rounded-lg bg-gray-50 p-3 text-sm" data-testid="ipd-breakdown">
+                        {b.breakdown.map((l) => (
+                          <div key={l.label} className="flex justify-between gap-3">
+                            <dt className="text-gray-600">{l.label}</dt>
+                            <dd className={l.amount < 0 ? 'text-teal' : 'text-gray-900'}>{l.amount < 0 ? `− ${formatMoney(-l.amount)}` : formatMoney(l.amount)}</dd>
+                          </div>
+                        ))}
+                        <div className="flex justify-between gap-3 border-t border-gray-200 pt-1 font-semibold">
+                          <dt>{b.inProgress ? 'To pay so far' : b.balanceDue < 0 ? 'Refund due' : 'Balance due'}</dt>
+                          <dd>{formatMoney(Math.abs(b.balanceDue))}</dd>
+                        </div>
+                      </dl>
+                    </details>
+                  ) : (
+                    head
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>

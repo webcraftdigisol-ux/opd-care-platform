@@ -794,9 +794,11 @@ export interface Receipt {
 //
 // Department level, in rupees: what the doctors prescribed or ordered in a
 // date range (by visit day) and how much of it the clinic's own pharmacy,
-// lab and radiology earned. Consultation fees are listed alongside.
+// lab and radiology earned. Consultation fees are listed alongside. At a
+// Tier 3 clinic each department also shows what it earned from admitted
+// patients (IPD), and the IPD-only charges get rows of their own.
 
-export type RevenueDepartment = 'CONSULTATION' | Department;
+export type RevenueDepartment = 'CONSULTATION' | Department | 'ROOM' | 'PROCEDURE' | 'OTHER_IPD';
 
 export interface DeptRevenue {
   department: RevenueDepartment;
@@ -809,12 +811,18 @@ export interface DeptRevenue {
   // Something not done in-house had no price in the list, so its value
   // is missing from `ordered` and `notInHouse`.
   hasUnpriced: boolean;
+  // Charged to admitted patients (before tax): doctor visits, pharmacy
+  // sales and clinic-supplied medicines, lab and radiology bills during a
+  // stay; procedures, other charges; room charges on discharge.
+  ipd: number;
 }
 
 export interface OrdersReport {
   from: string;
   to: string;
   departments: RevenueDepartment[];
+  // Tier 3: the IPD column applies.
+  hasIpd: boolean;
   summary: DeptRevenue[];
   byDay: { date: string; cells: DeptRevenue[] }[];
   byDoctor: { doctorId: string; doctorName: string; cells: DeptRevenue[] }[];
@@ -916,7 +924,13 @@ export interface PatientBill {
   date: string; // ISO
   total: number;
   amountPaid: number;
+  // Negative for an admission whose deposit exceeded the bill: a refund due.
   balanceDue: number;
+  // An IPD admission's bill, line by line (room, doctor visits, procedures,
+  // medicines, pharmacy, lab, radiology, other charges, tax, deposit).
+  breakdown?: { label: string; amount: number }[];
+  // Still admitted: the bill so far, not yet final.
+  inProgress?: boolean;
 }
 
 export interface PatientBillingResponse {
@@ -1051,6 +1065,8 @@ export interface ProcedureRecord {
   name: string;
   notes: string | null;
   consentSigned: boolean;
+  // The signed consent form it was done under.
+  consentFormId: string | null;
   fee: number;
   performedAt: string;
 }
@@ -1169,7 +1185,99 @@ export interface AddProcedureRequest {
   name: string;
   notes?: string;
   consentSigned: boolean;
+  // A signed consent form of this admission; implies consentSigned.
+  consentFormId?: string;
   fee?: number;
+}
+
+// ---- IPD consent forms ----
+
+export type ConsentKind = 'PROCEDURE' | 'SURGERY' | 'ANAESTHESIA' | 'BLOOD_TRANSFUSION' | 'HIGH_RISK';
+
+export interface ConsentFormInput {
+  kind: ConsentKind;
+  procedureName: string;
+  doctorId: string;
+  plannedAt?: string | null; // ISO
+  anaesthesia?: string | null;
+  purpose?: string | null;
+  risks?: string | null;
+  alternatives?: string | null;
+}
+
+export interface SignConsentRequest {
+  signedByName: string;
+  signerRelation: string; // "Self", "Father", ...
+  witnessName?: string | null;
+}
+
+export interface ConsentForm {
+  id: string;
+  admissionId: string;
+  kind: ConsentKind;
+  procedureName: string;
+  doctorId: string;
+  doctorName: string;
+  plannedAt: string | null;
+  anaesthesia: string | null;
+  purpose: string | null;
+  risks: string | null;
+  alternatives: string | null;
+  signedAt: string | null;
+  signedByName: string | null;
+  signerRelation: string | null;
+  witnessName: string | null;
+  createdAt: string;
+}
+
+// Everything the printed consent form shows.
+export interface ConsentFormPrint extends ConsentForm {
+  clinic: { name: string; address: string | null; phone: string | null };
+  patient: { name: string; patientCode: string | null; age: number | null; gender: Gender | null };
+  doctorQualification: string | null;
+  doctorRegistrationNumber: string | null;
+  ward: string;
+  bed: string;
+  admittedAt: string;
+}
+
+// ---- Medical certificates (all tiers) ----
+
+export type CertificateType = 'MEDICAL_FITNESS' | 'SICK_LEAVE' | 'FIT_TO_RESUME' | 'FIT_TO_TRAVEL' | 'GENERAL';
+
+export interface CertificateInput {
+  type: CertificateType;
+  // Admin issuing on a doctor's behalf picks the doctor; a doctor issues
+  // their own.
+  doctorId?: string;
+  diagnosis?: string | null;
+  fromDate?: string | null; // "YYYY-MM-DD"
+  toDate?: string | null;
+  purpose?: string | null;
+  // The final wording, as approved on screen.
+  body: string;
+}
+
+export interface MedicalCertificate {
+  id: string;
+  certificateNo: string;
+  patientId: string;
+  type: CertificateType;
+  doctorId: string;
+  doctorName: string;
+  diagnosis: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  purpose: string | null;
+  body: string;
+  issuedAt: string;
+}
+
+export interface CertificatePrint extends MedicalCertificate {
+  clinic: { name: string; address: string | null; phone: string | null };
+  patient: { name: string; patientCode: string | null; age: number | null; gender: Gender | null };
+  doctorQualification: string | null;
+  doctorRegistrationNumber: string | null;
 }
 
 export interface AddMedicationRequest {
@@ -1321,9 +1429,17 @@ export interface FollowUpReminderResult {
 // entityId is polymorphic on category -- a LabInvoice id for LAB_REPORT, a
 // RadiologyInvoice id for RADIOLOGY_REPORT and RADIOLOGY_DICOM (a raw
 // DICOM export attaches to the same invoice a written report does), a
-// Consultation id for PRESCRIPTION_SCAN. See
+// Consultation id for PRESCRIPTION_SCAN, a ConsentForm id for
+// CONSENT_FORM. See
 // server/src/routes/attachments.routes.ts.
-export type AttachmentCategory = 'LAB_REPORT' | 'RADIOLOGY_REPORT' | 'PRESCRIPTION_SCAN' | 'RADIOLOGY_DICOM' | 'PATIENT_REPORT' | 'PATIENT_IMAGE';
+export type AttachmentCategory =
+  | 'LAB_REPORT'
+  | 'RADIOLOGY_REPORT'
+  | 'PRESCRIPTION_SCAN'
+  | 'RADIOLOGY_DICOM'
+  | 'PATIENT_REPORT'
+  | 'PATIENT_IMAGE'
+  | 'CONSENT_FORM';
 
 export interface Attachment {
   id: string;

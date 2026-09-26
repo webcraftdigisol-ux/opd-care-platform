@@ -25,10 +25,21 @@ const itemSchema = z.object({
     .max(50)
     .nullish()
     .transform((v) => v?.trim() || null),
+  brands: z.array(z.string().max(80)).max(50).optional(),
 });
 
+// Trimmed, blanks dropped, duplicates (any case) removed, order kept.
+export function cleanBrands(brands: string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const b of brands ?? []) {
+    const t = b.trim();
+    if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t);
+  }
+  return out;
+}
+
 function toItem(i: PrismaItem): DoctorCatalogItem {
-  return { id: i.id, kind: i.kind, name: i.name, strength: i.strength };
+  return { id: i.id, kind: i.kind, name: i.name, strength: i.strength, brands: i.brands };
 }
 
 const sameKey = (a: { name: string; strength: string | null }, b: { name: string; strength: string | null }) =>
@@ -68,17 +79,19 @@ catalogueRouter.get(
     const withDepartments = clinic.tier >= 2;
     const [items, pharmacy, lab, radiology] = await Promise.all([
       prisma.doctorCatalogItem.findMany({ where: { clinicId }, orderBy: [{ name: 'asc' }, { strength: 'asc' }] }),
-      withDepartments ? prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true } }) : [],
+      withDepartments ? prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true, brand: true } }) : [],
       withDepartments ? prisma.labTestCatalog.findMany({ where: { clinicId }, select: { name: true } }) : [],
       withDepartments ? prisma.radiologyCatalog.findMany({ where: { clinicId }, select: { name: true } }) : [],
     ]);
 
     const medicines: CatalogSuggestions['medicines'] = [];
     for (const m of [
-      ...items.filter((i) => i.kind === 'MEDICINE').map((i) => ({ name: i.name, strength: i.strength })),
-      ...pharmacy.map((p) => ({ name: p.name, strength: null })),
+      ...items.filter((i) => i.kind === 'MEDICINE').map((i) => ({ name: i.name, strength: i.strength, brands: i.brands })),
+      ...pharmacy.map((p) => ({ name: p.name, strength: null, brands: p.brand ? [p.brand] : [] })),
     ]) {
-      if (!medicines.some((x) => sameKey(x, m))) medicines.push(m);
+      const same = medicines.find((x) => sameKey(x, m));
+      if (same) same.brands = cleanBrands([...same.brands, ...m.brands]);
+      else medicines.push(m);
     }
     const names = (kind: PrismaCatalogKind, extra: { name: string }[]) => {
       const seen = new Map<string, string>();
@@ -105,7 +118,8 @@ catalogueRouter.post(
     // Strength only means something for a medicine.
     const strength = data.kind === 'MEDICINE' ? data.strength : null;
     await assertNotDuplicate(clinicId, data.kind, data.name, strength);
-    const item = await prisma.doctorCatalogItem.create({ data: { clinicId, kind: data.kind, name: data.name, strength } });
+    const brands = data.kind === 'MEDICINE' ? cleanBrands(data.brands) : [];
+    const item = await prisma.doctorCatalogItem.create({ data: { clinicId, kind: data.kind, name: data.name, strength, brands } });
     res.status(201).json(toItem(item));
   }),
 );
@@ -116,13 +130,29 @@ catalogueRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const clinicId = req.auth!.clinicId;
     const existing = await prisma.doctorCatalogItem.findMany({ where: { clinicId } });
-    const toAdd = STARTER_CATALOG.filter(
-      (s) => !existing.some((e) => e.kind === s.kind && sameKey(e, { name: s.name, strength: s.strength ?? null })),
-    );
-    await prisma.doctorCatalogItem.createMany({
-      data: toAdd.map((s) => ({ clinicId, kind: s.kind, name: s.name, strength: s.strength ?? null })),
-    });
-    res.json({ added: toAdd.length });
+    const toAdd: typeof STARTER_CATALOG = [];
+    let brandsAdded = 0;
+    const updates: { id: string; brands: string[] }[] = [];
+    for (const s of STARTER_CATALOG) {
+      const match = existing.find((e) => e.kind === s.kind && sameKey(e, { name: s.name, strength: s.strength ?? null }));
+      if (!match) {
+        toAdd.push(s);
+        continue;
+      }
+      // Already there: just fill in brands it doesn't have yet.
+      const merged = cleanBrands([...match.brands, ...(s.brands ?? [])]);
+      if (merged.length > match.brands.length) {
+        brandsAdded += merged.length - match.brands.length;
+        updates.push({ id: match.id, brands: merged });
+      }
+    }
+    await prisma.$transaction([
+      prisma.doctorCatalogItem.createMany({
+        data: toAdd.map((s) => ({ clinicId, kind: s.kind, name: s.name, strength: s.strength ?? null, brands: s.brands ?? [] })),
+      }),
+      ...updates.map((u) => prisma.doctorCatalogItem.update({ where: { id: u.id }, data: { brands: u.brands } })),
+    ]);
+    res.json({ added: toAdd.length, brandsAdded });
   }),
 );
 
@@ -140,7 +170,14 @@ catalogueRouter.put(
     const data = itemSchema.parse({ ...req.body, kind: item.kind });
     const strength = item.kind === 'MEDICINE' ? data.strength : null;
     await assertNotDuplicate(item.clinicId, item.kind, data.name, strength, item.id);
-    const updated = await prisma.doctorCatalogItem.update({ where: { id: item.id }, data: { name: data.name, strength } });
+    const updated = await prisma.doctorCatalogItem.update({
+      where: { id: item.id },
+      data: {
+        name: data.name,
+        strength,
+        ...(item.kind === 'MEDICINE' && data.brands !== undefined ? { brands: cleanBrands(data.brands) } : {}),
+      },
+    });
     res.json(toItem(updated));
   }),
 );

@@ -42,9 +42,17 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
   // router, so a DB error here must reach next(err) rather than hang the
   // request as an unhandled rejection would.
   try {
-    const subscription = await prisma.subscription.findUnique({ where: { clinicId: payload.clinicId } });
+    const [subscription, account] = await Promise.all([
+      prisma.subscription.findUnique({ where: { clinicId: payload.clinicId } }),
+      prisma.user.findUnique({ where: { id: payload.sub }, select: { active: true } }),
+    ]);
     if (!isSubscriptionActive(subscription)) {
       return res.status(403).json({ message: SUBSCRIPTION_INACTIVE_MESSAGE });
+    }
+    // A deactivated (or deleted) account is signed out on its next request,
+    // not only once its token expires.
+    if (!account?.active) {
+      return res.status(401).json({ message: 'This account has been deactivated' });
     }
   } catch (err) {
     return next(err);

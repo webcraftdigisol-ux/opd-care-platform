@@ -104,6 +104,7 @@ export function toPublicUser(user: User & { patientProfile?: { patientCode: stri
     role: user.role,
     createdAt: user.createdAt.toISOString(),
     whatsappOptIn: user.whatsappOptIn,
+    ...(user.role !== 'PATIENT' ? { username: user.username, active: user.active } : {}),
     ...(user.patientProfile !== undefined ? { patientCode: user.patientProfile?.patientCode ?? null } : {}),
   };
 }
@@ -138,6 +139,7 @@ export function toPrescription(p: PrismaPrescription): Prescription {
     consultationId: p.consultationId,
     medicine: p.medicine,
     strength: p.strength,
+    brand: p.brand,
     dosage: p.dosage,
     frequency: p.frequency,
     morning: p.morning,

@@ -87,6 +87,12 @@ export function whenToTake(p: Prescription): string {
   return `${dose}${base}${p.foodTiming ? `, ${FOOD_TIMING_LABEL[p.foodTiming]}` : ''}`;
 }
 
+// "Dolo 650 (Paracetamol 650 mg)" with a brand, else "Paracetamol (650 mg)".
+export function medicineLabel(p: Pick<Prescription, 'medicine' | 'strength' | 'brand'>): string {
+  if (p.brand) return `${p.brand} (${p.medicine}${p.strength ? ` ${p.strength}` : ''})`;
+  return `${p.medicine}${p.strength ? ` (${p.strength})` : ''}`;
+}
+
 export function bmi(v: Vitals | null): number | null {
   if (!v?.heightCm || !v.weightKg) return null;
   return Math.round((v.weightKg / (v.heightCm / 100) ** 2) * 10) / 10;
@@ -231,7 +237,7 @@ export function renderVisitSummaryPdf(s: VisitSummary): Promise<Buffer> {
       drawRow(cols.map((c) => c.title.toUpperCase()), true);
       s.prescriptions.forEach((p) =>
         drawRow([
-          `${p.medicine}${p.strength ? ` (${p.strength})` : ''}`,
+          medicineLabel(p),
           whenToTake(p),
           `${p.durationDays} day(s)`,
           p.notes ?? '',

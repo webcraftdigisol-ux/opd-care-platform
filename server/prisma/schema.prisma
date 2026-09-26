@@ -80,6 +80,10 @@ enum AttachmentCategory {
   // in README.md's File Attachments section for what this does and doesn't
   // cover (single uncompressed frame only -- no DICOM network protocols).
   RADIOLOGY_DICOM
+  // Patient-level documents: an outside report or image the patient brings,
+  // filed straight to their record (entityId is the patient's own id).
+  PATIENT_REPORT
+  PATIENT_IMAGE
 }
 
 // A clinic is a tenant. Every clinic-owned record is scoped by clinicId so
@@ -126,6 +130,11 @@ model User {
   clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   email     String
   phone     String?
+  // Staff sign-in name (lowercase, no spaces) -- many receptionists have
+  // no email. Unique per clinic when set.
+  username  String?
+  // A deactivated account keeps its history but can't sign in.
+  active    Boolean  @default(true)
   password  String
   name      String
   role      Role
@@ -167,6 +176,7 @@ model User {
   dietPlansCreated         DietPlan[]     @relation("DietPlansAuthored")
 
   @@unique([clinicId, email])
+  @@unique([clinicId, username])
   // Not unique: family members often share one mobile number, so a
   // patient's identity is their Patient ID, not their phone.
   @@index([clinicId, phone])
@@ -194,6 +204,9 @@ model DoctorCatalogItem {
   kind      CatalogKind
   name      String
   strength  String?
+  // Brand names for a medicine (Dolo 650, Calpol 650, ...), offered in the
+  // prescription's brand box once the medicine is picked.
+  brands    String[]    @default([])
   createdAt DateTime    @default(now())
 
   @@index([clinicId, kind])
@@ -370,6 +383,8 @@ model Prescription {
   consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
   medicine       String
   strength       String?
+  // The brand the doctor chose, if any (printed with the generic name).
+  brand          String?
   // Dose per time, e.g. "1 tab", "5 ml".
   dosage         String
   // "1-0-1" (derived from the Morning/Afternoon/Night ticks when those are

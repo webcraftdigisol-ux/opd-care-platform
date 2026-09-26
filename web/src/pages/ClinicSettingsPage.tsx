@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import type { MedicineSystem } from '@opd/shared';
 import { updateCurrentClinic } from '../api/clinics';
+import { MEDICINE_SYSTEMS } from '../utils/medicineSystem';
 import { useAuth } from '../context/AuthContext';
 import { Card, Field, PageHeader, btnPrimary, inputClass } from '../components/ui';
 
 // The clinic's own details: they head every printed visit summary.
 export function ClinicSettingsPage() {
   const { clinic, user, setSession } = useAuth();
-  const [form, setForm] = useState({ name: '', address: '', phone: '' });
+  const [form, setForm] = useState<{ name: string; address: string; phone: string; medicineSystem: MedicineSystem }>({ name: '', address: '', phone: '', medicineSystem: 'ALLOPATHIC' });
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    if (clinic) setForm({ name: clinic.name, address: clinic.address ?? '', phone: clinic.phone ?? '' });
+    if (clinic) setForm({ name: clinic.name, address: clinic.address ?? '', phone: clinic.phone ?? '', medicineSystem: clinic.medicineSystem ?? 'ALLOPATHIC' });
   }, [clinic]);
 
   const save = useMutation({
@@ -26,7 +28,7 @@ export function ClinicSettingsPage() {
     onError: (err: any) => setStatus({ ok: false, text: err.response?.data?.message ?? 'Could not save' }),
   });
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (key: 'name' | 'address' | 'phone') => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
   return (
@@ -48,6 +50,20 @@ export function ClinicSettingsPage() {
             </Field>
             <Field label="Phone">
               <input value={form.phone} onChange={set('phone')} className={inputClass} data-testid="clinic-phone" />
+            </Field>
+            <Field label="Type of clinic / hospital" hint="Decides which standard medicine list “Load standard list” adds">
+              <select
+                value={form.medicineSystem}
+                onChange={(e) => setForm((f) => ({ ...f, medicineSystem: e.target.value as MedicineSystem }))}
+                className={inputClass}
+                data-testid="clinic-medicine-system"
+              >
+                {MEDICINE_SYSTEMS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
             </Field>
             <p className="text-sm text-gray-500">
               Each doctor's qualification and registration number are set on the{' '}

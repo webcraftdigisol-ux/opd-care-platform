@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Card, PageHeader, btnPrimary, btnSecondary, inputClass } from '../components/ui';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandsInput } from '../components/BrandsInput';
+import { medicineSystemLabel } from '../utils/medicineSystem';
 
 const TABS: { kind: CatalogKind; label: string; icon: IconName; placeholder: string }[] = [
   { kind: 'MEDICINE', label: 'Medicines', icon: 'pill', placeholder: 'Generic name, e.g. Paracetamol' },
@@ -77,7 +78,7 @@ export function CataloguePage() {
         }
         actions={
           <button type="button" onClick={() => starter.mutate()} disabled={starter.isPending} className={btnSecondary} data-testid="add-common">
-            {starter.isPending ? 'Adding…' : 'Add common items'}
+            {starter.isPending ? 'Adding…' : `Add common items (${medicineSystemLabel(clinic?.medicineSystem)})`}
           </button>
         }
       />

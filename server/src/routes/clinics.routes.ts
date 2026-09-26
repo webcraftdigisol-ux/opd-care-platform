@@ -7,6 +7,7 @@ import { toClinicSummary, toPublicUser } from '../utils/serialize';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { defaultSubscriptionAmount } from '../utils/subscriptionPricing';
+import { loadStandardCatalogue, loadStandardMedicines, loadStandardTests } from '../utils/standardLists';
 import { toSubscription } from '../utils/serialize';
 import type { AuthResponse } from '@opd/shared';
 
@@ -35,6 +36,8 @@ const registerClinicSchema = z.object({
   adminEmail: z.string().email(),
   adminPassword: z.string().min(6),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  medicineSystem: z.enum(['ALLOPATHIC', 'AYURVEDIC', 'HOMEOPATHIC', 'MIXED']).optional(),
+  loadStandardLists: z.boolean().optional(),
 });
 
 clinicsRouter.post(
@@ -58,6 +61,7 @@ clinicsRouter.post(
         name: data.clinicName,
         slug: data.clinicSlug,
         tier,
+        medicineSystem: data.medicineSystem ?? 'ALLOPATHIC',
         users: {
           create: {
             name: data.adminName,
@@ -77,6 +81,20 @@ clinicsRouter.post(
       },
       include: { users: true },
     });
+
+    // The standard lists for its system of medicine, ready to prescribe
+    // from: the Doctor's Catalogue in Tier 1, the pharmacy's, lab's and
+    // radiology's own lists from Tier 2 (unpriced until the departments
+    // set prices).
+    if (data.loadStandardLists) {
+      if (tier >= 2) {
+        await loadStandardMedicines(clinic.id);
+        await loadStandardTests(clinic.id, 'LAB_TEST');
+        await loadStandardTests(clinic.id, 'RADIOLOGY');
+      } else {
+        await loadStandardCatalogue(clinic.id);
+      }
+    }
 
     const admin = clinic.users[0];
     const token = signToken({ sub: admin.id, role: admin.role, clinicId: clinic.id });
@@ -112,6 +130,8 @@ const updateClinicSchema = z.object({
   name: z.string().trim().min(2).optional(),
   address: z.string().max(500).nullish().transform((v) => (v === undefined ? undefined : v?.trim() || null)),
   phone: z.string().max(40).nullish().transform((v) => (v === undefined ? undefined : v?.trim() || null)),
+  // Changes which standard list "Load standard list" adds from now on.
+  medicineSystem: z.enum(['ALLOPATHIC', 'AYURVEDIC', 'HOMEOPATHIC', 'MIXED']).optional(),
 });
 
 // The clinic's own details (letterhead on printed visit summaries).

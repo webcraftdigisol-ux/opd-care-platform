@@ -17,6 +17,8 @@ import { getCatalogSuggestions } from '../api/catalogue';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { DietPlanSection } from '../components/DietPlanSection';
 import { PreviousVisitSummary } from '../components/PreviousVisitSummary';
+import { AddToListDialog, LIST_NAME } from '../components/AddToListDialog';
+import { medicineInList, testInList, unlistedItems } from '../utils/listMatch';
 import { SuggestInput } from '../components/SuggestInput';
 import { Card, Field, btnPrimary, btnSecondary, inputClass } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -109,6 +111,15 @@ export function ConsultationPage() {
     return own.length ? own : brandsIn(suggestions?.standard?.medicines ?? [], name, strength);
   };
 
+  // From Tier 2 only the departments' lists can be prescribed from (so it
+  // can all be billed); anything missing is added to the list first.
+  const deptLists = suggestions?.source === 'DEPARTMENTS';
+  const [adding, setAdding] = useState<
+    | { kind: 'MEDICINE'; rowKey: number; initial: { name: string; strength?: string | null; brand?: string | null } }
+    | { kind: 'LAB_TEST' | 'RADIOLOGY'; index: number; initial: { name: string } }
+    | null
+  >(null);
+
   const [fee, setFee] = useState('');
   const [vitals, setVitals] = useState<Vitals>({});
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -195,6 +206,15 @@ export function ConsultationPage() {
     },
     onError: (err: any) => setMessage({ tone: 'error', text: err.response?.data?.message ?? 'Could not save the consultation' }),
   });
+
+  const trySave = (complete: boolean) => {
+    const missing = deptLists && suggestions ? unlistedItems(suggestions, rows, labTests, radiology) : [];
+    if (missing.length) {
+      setMessage({ tone: 'error', text: `Not in the department lists: ${missing.join(', ')}. Pick from the list or add it with "Add to list".` });
+      return;
+    }
+    save.mutate(complete);
+  };
 
   const sendSummary = useMutation({
     mutationFn: () => sendVisitSummaryWhatsApp(appointmentId!),
@@ -447,6 +467,14 @@ export function ConsultationPage() {
                         ))}
                       </select>
                     </div>
+                    {suggestions && r.medicine.trim() && !medicineInList(suggestions.medicines, r) && (
+                      <NotListedHint
+                        blocking={deptLists}
+                        listName={deptLists ? `the ${LIST_NAME.MEDICINE}` : 'your catalogue'}
+                        onAdd={() => setAdding({ kind: 'MEDICINE', rowKey: r.key, initial: { name: r.medicine, strength: r.strength, brand: r.brand } })}
+                        testId={`add-to-list-medicine-${i}`}
+                      />
+                    )}
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
                       {(['morning', 'afternoon', 'night'] as const).map((t) => (
                         <label key={t} className="flex items-center gap-1.5 text-sm text-gray-700">
@@ -508,6 +536,10 @@ export function ConsultationPage() {
           suggestions={suggestions?.labTests ?? []}
           fallback={suggestions?.standard?.labTests ?? []}
           testIdPrefix="lab-test-name"
+          checkList={!!suggestions}
+          deptLists={deptLists}
+          listName={deptLists ? `the ${LIST_NAME.LAB_TEST}` : 'your catalogue'}
+          onAdd={(index, name) => setAdding({ kind: 'LAB_TEST', index, initial: { name } })}
         />
         <OrdersCard
           title="Radiology work prescribed"
@@ -518,7 +550,25 @@ export function ConsultationPage() {
           suggestions={suggestions?.radiology ?? []}
           fallback={suggestions?.standard?.radiology ?? []}
           testIdPrefix="radiology-test-name"
+          checkList={!!suggestions}
+          deptLists={deptLists}
+          listName={deptLists ? `the ${LIST_NAME.RADIOLOGY}` : 'your catalogue'}
+          onAdd={(index, name) => setAdding({ kind: 'RADIOLOGY', index, initial: { name } })}
         />
+        {adding && (
+          <AddToListDialog
+            kind={adding.kind}
+            departments={deptLists}
+            initial={adding.initial}
+            onClose={() => setAdding(null)}
+            onAdded={(r) => {
+              if (adding.kind === 'MEDICINE') updateRow(adding.rowKey, { medicine: r.name, strength: r.strength ?? '', brand: r.brand ?? '' });
+              else (adding.kind === 'LAB_TEST' ? setLabTests : setRadiology)((os) => os.map((o, j) => (j === adding.index ? { ...o, testName: r.name } : o)));
+              setAdding(null);
+              setMessage({ tone: 'ok', text: `${r.name} ${r.added ? 'added to' : 'is already in'} the ${r.list === 'CATALOGUE' ? 'catalogue' : `${r.list === 'PHARMACY' ? 'pharmacy' : r.list === 'LAB' ? 'lab' : 'radiology'} list`}.` });
+            }}
+          />
+        )}
 
         <Card title="Advice & follow-up">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -586,10 +636,10 @@ export function ConsultationPage() {
               </button>
             </>
           )}
-          <button type="button" onClick={() => save.mutate(false)} disabled={save.isPending} className={`${btnSecondary} ${message ? '' : 'ml-auto'}`}>
+          <button type="button" onClick={() => trySave(false)} disabled={save.isPending} className={`${btnSecondary} ${message ? '' : 'ml-auto'}`}>
             Save draft
           </button>
-          <button type="button" onClick={() => save.mutate(true)} disabled={save.isPending} className={btnPrimary} data-testid="save-consultation">
+          <button type="button" onClick={() => trySave(true)} disabled={save.isPending} className={btnPrimary} data-testid="save-consultation">
             <Icon name="check" className="h-4 w-4" /> Save consultation
           </button>
         </div>
@@ -608,6 +658,21 @@ function brandsIn(meds: Med[], name: string, strength?: string | null): string[]
   return exact ? exact.brands : [...new Set(meds.filter((m) => m.name.toLowerCase() === n).flatMap((m) => m.brands))];
 }
 
+// Under a medicine or test that isn't in the list: from Tier 2 it has to
+// be added (or picked from the list) before saving; in Tier 1 it's a
+// suggestion to keep it in the doctor's catalogue.
+function NotListedHint({ blocking, listName, onAdd, testId }: { blocking: boolean; listName: string; onAdd: () => void; testId: string }) {
+  return (
+    <p className={`mt-1 flex flex-wrap items-center gap-x-2 text-xs ${blocking ? 'text-amber-700' : 'text-gray-500'}`}>
+      {blocking && <Icon name="alert" className="h-3.5 w-3.5" />}
+      Not in {listName}.
+      <button type="button" onClick={onAdd} className="font-medium text-teal hover:underline" data-testid={testId}>
+        {blocking ? 'Add to list' : 'Add to catalogue'}
+      </button>
+    </p>
+  );
+}
+
 function OrdersCard({
   title,
   empty,
@@ -617,6 +682,10 @@ function OrdersCard({
   suggestions,
   fallback,
   testIdPrefix,
+  checkList,
+  deptLists,
+  listName,
+  onAdd,
 }: {
   title: string;
   empty: string;
@@ -626,6 +695,10 @@ function OrdersCard({
   suggestions: string[];
   fallback: string[];
   testIdPrefix: string;
+  checkList: boolean;
+  deptLists: boolean;
+  listName: string;
+  onAdd: (index: number, name: string) => void;
 }) {
   const update = (i: number, patch: Partial<LabTestOrderInput>) => setOrders((os) => os.map((o, j) => (j === i ? { ...o, ...patch } : o)));
   return (
@@ -653,6 +726,9 @@ function OrdersCard({
                   testId={`${testIdPrefix}-${i}`}
                   className={small}
                 />
+                {checkList && o.testName.trim() && !testInList(suggestions, o.testName) && (
+                  <NotListedHint blocking={deptLists} listName={listName} onAdd={() => onAdd(i, o.testName)} testId={`add-to-list-${testIdPrefix}-${i}`} />
+                )}
               </div>
               <input placeholder="Notes (optional)" value={o.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value })} className={`${small} sm:col-span-6`} />
               <button type="button" onClick={() => setOrders((os) => os.filter((_, j) => j !== i))} className="text-sm text-red-500 hover:text-red-700 sm:col-span-1">

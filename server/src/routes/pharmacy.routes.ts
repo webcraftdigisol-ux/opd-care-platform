@@ -6,7 +6,7 @@ import { toPharmacyItem, toPharmacySale } from '../utils/serialize';
 import { suggestPharmacyQuantity } from '../utils/dosage';
 import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requireAuth, requireRole, requireTier, type AuthedRequest } from '../middleware/auth';
-import { STARTER_CATALOG } from '../utils/starterCatalog';
+import { loadStandardMedicines } from '../utils/standardLists';
 import { medicineLabel } from '../utils/visitSummary';
 import {
   bestProduct,
@@ -81,26 +81,7 @@ pharmacyRouter.post(
   '/items/starter',
   requireRole(...COUNTER),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const clinicId = req.auth!.clinicId;
-    const [existing, doctorItems] = await Promise.all([
-      prisma.pharmacyItem.findMany({ where: { clinicId }, select: { name: true, strength: true, brand: true } }),
-      prisma.doctorCatalogItem.findMany({ where: { clinicId, kind: 'MEDICINE' } }),
-    ]);
-    const sources = [
-      ...STARTER_CATALOG.filter((s) => s.kind === 'MEDICINE').map((s) => ({ name: s.name, strength: s.strength ?? null, brands: s.brands ?? [] })),
-      ...doctorItems.map((d) => ({ name: d.name, strength: d.strength, brands: d.brands })),
-    ];
-    const toAdd: { name: string; strength: string | null; brand: string | null }[] = [];
-    for (const s of sources) {
-      for (const brand of s.brands.length ? s.brands : [null]) {
-        const row = { name: s.name, strength: s.strength, brand };
-        if (![...existing, ...toAdd].some((e) => sameProduct(e, row))) toAdd.push(row);
-      }
-    }
-    await prisma.pharmacyItem.createMany({
-      data: toAdd.map((r) => ({ ...r, clinicId, pricePerUnit: 0, costPricePerUnit: 0, stockUnits: 0 })),
-    });
-    res.json({ added: toAdd.length });
+    res.json({ added: await loadStandardMedicines(req.auth!.clinicId) });
   }),
 );
 

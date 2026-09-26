@@ -8,6 +8,8 @@ import { Card, Field, btnPrimary, btnSecondary, inputClass } from '../components
 import { DeptTabs } from '../components/DeptTabs';
 import { Icon } from '../components/Icon';
 import { money } from '../utils/departments';
+import { useAuth } from '../context/AuthContext';
+import { medicineSystemLabel } from '../utils/medicineSystem';
 
 const PAGE = 50;
 
@@ -38,6 +40,7 @@ const toRequest = (f: Form): UpsertPharmacyItemRequest => ({
 // brand, cost and MRP. Doctors prescribe from it, the counter dispenses
 // and substitutes from it. The standard list loads in one click, unpriced.
 export function PharmacySettingsPage() {
+  const { clinic } = useAuth();
   const queryClient = useQueryClient();
   const { data: items, isLoading } = useQuery({ queryKey: ['pharmacy-items'], queryFn: listPharmacyItems });
   const [adding, setAdding] = useState(false);
@@ -101,7 +104,7 @@ export function PharmacySettingsPage() {
         actions={
           <>
             <button type="button" onClick={() => starter.mutate()} disabled={starter.isPending} className={btnSecondary} data-testid="load-standard">
-              {starter.isPending ? 'Loading…' : 'Load standard list'}
+              {starter.isPending ? 'Loading…' : `Load standard list (${medicineSystemLabel(clinic?.medicineSystem)})`}
             </button>
             <button type="button" onClick={() => setAdding((a) => !a)} className={adding ? btnSecondary : btnPrimary} data-testid="toggle-add">
               {adding ? 'Close' : <><Icon name="plus" className="h-4 w-4" /> Add medicine</>}

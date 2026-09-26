@@ -57,6 +57,15 @@ test.describe('Tier 2 departments', () => {
     await page.getByTestId('rx-night-0').check();
     await page.getByRole('button', { name: 'Add test' }).click();
     await page.getByTestId('lab-test-name-0').fill('CBC');
+    // The lab's list is empty: it can't be saved until the CBC is added to it.
+    await page.getByTestId('save-consultation').click();
+    await expect(page.getByTestId('consult-message')).toContainText('Not in the department lists: CBC');
+    await page.getByTestId('add-to-list-lab-test-name-0').click();
+    await expect(page.getByTestId('add-to-list-name')).toHaveValue('CBC');
+    await page.getByTestId('add-to-list-price').fill('300');
+    await page.getByTestId('add-to-list-save').click();
+    await expect(page.getByTestId('consult-message')).toContainText('CBC added to the lab list');
+    await expect(page.getByTestId('add-to-list-lab-test-name-0')).toHaveCount(0);
     await page.getByTestId('save-consultation').click();
     await expect(page.getByTestId('print-summary').first()).toBeVisible();
 
@@ -153,8 +162,8 @@ test.describe('Tier 2 departments', () => {
     await page.getByTestId('add-test-entry').click();
     await expect(page.getByTestId('test-row').filter({ hasText: 'CBC' })).toContainText('cost ₹100');
 
-    // The doctor finds the X-rays and CBC by their first letter, though
-    // the radiology list is empty.
+    // The doctor finds the CBC by its first letter; the X-ray isn't in the
+    // (empty) radiology list, so the doctor adds it there.
     const patient = await request<{ id: string }>('POST', '/patients', { firstName: 'Kiran', phone: '9811100033' }, admin.token);
     const visit = await request<{ id: string }>('POST', '/appointments/visit', { patientId: patient.id }, doctor.token);
     await applySession(page, doctor);
@@ -165,7 +174,16 @@ test.describe('Tier 2 departments', () => {
     await page.getByTestId('lab-test-name-0-suggestions').getByText('CBC', { exact: true }).click();
     await page.getByRole('button', { name: 'Add radiology work' }).click();
     await page.getByTestId('radiology-test-name-0').fill('X');
-    await expect(page.getByTestId('radiology-test-name-0-suggestions')).toContainText('X-Ray');
+    await expect(page.getByTestId('radiology-test-name-0-suggestions')).toHaveCount(0);
+    await page.getByTestId('radiology-test-name-0').fill('X-Ray Knee AP');
+    await page.getByTestId('add-to-list-radiology-test-name-0').click();
+    await page.getByTestId('add-to-list-save').click();
+    await expect(page.getByTestId('consult-message')).toContainText('X-Ray Knee AP added to the radiology list');
+    // ...and from now on it's suggested.
+    await page.getByRole('button', { name: 'Add radiology work' }).click();
+    await page.getByTestId('radiology-test-name-1').fill('X');
+    await expect(page.getByTestId('radiology-test-name-1-suggestions')).toContainText('X-Ray Knee AP');
+    await page.getByRole('button', { name: 'Remove' }).last().click();
     await page.getByTestId('save-consultation').click();
     await expect(page.getByTestId('print-summary').first()).toBeVisible();
 

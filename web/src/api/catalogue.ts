@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { CatalogKind, CatalogSuggestions, DoctorCatalogItem, UpsertCatalogItemRequest } from '@opd/shared';
+import type { AddToListRequest, AddToListResult, CatalogKind, CatalogSuggestions, DoctorCatalogItem, UpsertCatalogItemRequest } from '@opd/shared';
 
 export async function listCatalogue(kind?: CatalogKind): Promise<DoctorCatalogItem[]> {
   const res = await apiClient.get<DoctorCatalogItem[]>('/catalogue', { params: { kind } });
@@ -27,5 +27,10 @@ export async function deleteCatalogItem(id: string): Promise<void> {
 
 export async function addStarterCatalogue(): Promise<{ added: number; brandsAdded: number }> {
   const res = await apiClient.post<{ added: number; brandsAdded: number }>('/catalogue/starter');
+  return res.data;
+}
+
+export async function addToList(data: AddToListRequest): Promise<AddToListResult> {
+  const res = await apiClient.post<AddToListResult>('/catalogue/add-to-list', data);
   return res.data;
 }

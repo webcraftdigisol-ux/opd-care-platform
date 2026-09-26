@@ -254,8 +254,8 @@ describe("Doctor's Catalogue", () => {
     expect(summary.body.prescriptions[0].brand).toBe('Dolo 650');
   });
 
-  it('backs up empty lists with the standard list, so "C" offers CBC and "X" the X-rays', async () => {
-    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 2 });
+  it('in Tier 1 backs up empty lists with the standard list, so "C" offers CBC and "X" the X-rays', async () => {
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
     void clinic;
     const s = await request(app).get('/api/catalogue/suggestions').set(auth(adminToken));
     expect(s.body.labTests).toEqual([]);

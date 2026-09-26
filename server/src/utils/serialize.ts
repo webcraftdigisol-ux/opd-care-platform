@@ -83,6 +83,7 @@ export function toClinicSummary(clinic: Clinic): ClinicSummary {
     slug: clinic.slug,
     name: clinic.name,
     tier: clinic.tier as ClinicSummary['tier'],
+    medicineSystem: clinic.medicineSystem,
     logoUrl: clinic.logoUrl,
     taxPercent: clinic.taxPercent,
     address: clinic.address,

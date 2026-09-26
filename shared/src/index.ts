@@ -23,11 +23,16 @@ export type AppointmentStatus =
 // 1 = OPD only, 2 = + Pharmacy/Lab, 3 = + In-Patient (IPD, not built yet)
 export type ClinicTier = 1 | 2 | 3;
 
+// The clinic's system of medicine decides which standard medicine list it
+// gets; a mixed clinic gets all three.
+export type MedicineSystem = 'ALLOPATHIC' | 'AYURVEDIC' | 'HOMEOPATHIC' | 'MIXED';
+
 export interface ClinicSummary {
   id: string;
   slug: string;
   name: string;
   tier: ClinicTier;
+  medicineSystem: MedicineSystem;
   logoUrl: string | null;
   taxPercent: number;
   address: string | null;
@@ -198,6 +203,9 @@ export interface RegisterClinicRequest {
   adminEmail: string;
   adminPassword: string;
   tier?: ClinicTier;
+  medicineSystem?: MedicineSystem;
+  // Load the standard medicine and test lists for the system right away.
+  loadStandardLists?: boolean;
 }
 
 export interface RegisterRequest {
@@ -418,7 +426,30 @@ export interface CatalogSuggestionLists {
 // doesn't have -- offered after the clinic's own, so typing "C" finds CBC
 // even before a list is loaded.
 export interface CatalogSuggestions extends CatalogSuggestionLists {
+  // DEPARTMENTS (Tier 2+): the pharmacy, lab and radiology lists only --
+  // what's typed must match an entry so it can be billed. CATALOGUE
+  // (Tier 1): the Doctor's Catalogue.
+  source: 'DEPARTMENTS' | 'CATALOGUE';
   standard: CatalogSuggestionLists;
+}
+
+// A doctor adding a missing medicine or test from the consultation.
+export interface AddToListRequest {
+  kind: CatalogKind;
+  name: string;
+  strength?: string | null;
+  brand?: string | null;
+  price?: number;
+}
+
+export interface AddToListResult {
+  kind: CatalogKind;
+  name: string;
+  strength: string | null;
+  brand: string | null;
+  // false when it was already there.
+  added: boolean;
+  list: 'PHARMACY' | 'LAB' | 'RADIOLOGY' | 'CATALOGUE';
 }
 
 // Everything the patient's printed/shared Visit Summary shows -- and
@@ -454,6 +485,7 @@ export interface UpdateClinicRequest {
   name?: string;
   address?: string | null;
   phone?: string | null;
+  medicineSystem?: MedicineSystem;
 }
 
 export type StaffRole = Extract<

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listClinicsWithSubscriptions,
   reactivateSubscription,
+  extendSubscription,
   renewSubscription,
   suspendSubscription,
 } from '../api/platform';
@@ -105,10 +106,71 @@ function RenewForm({ clinic, onClose }: { clinic: ClinicWithSubscription; onClos
   );
 }
 
+function ExtendForm({ clinic, onClose }: { clinic: ClinicWithSubscription; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [days, setDays] = useState('30');
+  const [reason, setReason] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => extendSubscription(clinic.id, { days: Number(days), reason: reason.trim() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-clinics'] });
+      onClose();
+    },
+  });
+
+  const from = Math.max(new Date(clinic.subscription.currentPeriodEnd).getTime(), Date.now());
+  const daysNum = Number(days);
+  const newEnd = daysNum > 0 ? new Date(from + daysNum * 24 * 60 * 60 * 1000) : null;
+
+  return (
+    <tr className="border-t border-gray-100 bg-gray-50">
+      <td colSpan={6} className="px-4 py-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <input
+            type="number"
+            min={1}
+            max={365}
+            data-testid="extend-days"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+          <input
+            placeholder="Reason (e.g. trial extension)"
+            data-testid="extend-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-3"
+          />
+        </div>
+        <p className="mt-2 text-xs text-gray-500">
+          No payment is recorded.{newEnd ? ` New end date: ${newEnd.toLocaleDateString()}.` : ''}
+        </p>
+        {mutation.isError && (
+          <p className="mt-2 text-xs text-red-600">{(mutation.error as any)?.response?.data?.message ?? 'Could not extend'}</p>
+        )}
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !(daysNum >= 1 && daysNum <= 365) || reason.trim().length < 3}
+            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-60"
+          >
+            {mutation.isPending ? 'Extending…' : `Extend by ${daysNum > 0 ? daysNum : '…'} days`}
+          </button>
+          <button onClick={onClose} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
+            Cancel
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export function PlatformDashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [renewingClinicId, setRenewingClinicId] = useState<string | null>(null);
+  const [openForm, setOpenForm] = useState<{ clinicId: string; kind: 'renew' | 'extend' } | null>(null);
   const adminRaw = localStorage.getItem('opd_platform_admin');
   const admin = adminRaw ? (JSON.parse(adminRaw) as { name: string; email: string }) : null;
 
@@ -169,7 +231,8 @@ export function PlatformDashboardPage() {
           <tbody>
             {clinics?.map((clinic) => {
               const status = statusLabel(clinic.subscription);
-              const isRenewing = renewingClinicId === clinic.id;
+              const isRenewing = openForm?.clinicId === clinic.id && openForm.kind === 'renew';
+              const isExtending = openForm?.clinicId === clinic.id && openForm.kind === 'extend';
               return (
                 <Fragment key={clinic.id}>
                   <tr className="border-t border-gray-100">
@@ -191,10 +254,16 @@ export function PlatformDashboardPage() {
                     <td className="px-4 py-2">
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => setRenewingClinicId(isRenewing ? null : clinic.id)}
+                          onClick={() => setOpenForm(isRenewing ? null : { clinicId: clinic.id, kind: 'renew' })}
                           className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                         >
                           Renew
+                        </button>
+                        <button
+                          onClick={() => setOpenForm(isExtending ? null : { clinicId: clinic.id, kind: 'extend' })}
+                          className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                        >
+                          Extend
                         </button>
                         {clinic.subscription.status === 'SUSPENDED' || clinic.subscription.status === 'CANCELLED' ? (
                           <button
@@ -216,7 +285,8 @@ export function PlatformDashboardPage() {
                       </div>
                     </td>
                   </tr>
-                  {isRenewing && <RenewForm clinic={clinic} onClose={() => setRenewingClinicId(null)} />}
+                  {isRenewing && <RenewForm clinic={clinic} onClose={() => setOpenForm(null)} />}
+                  {isExtending && <ExtendForm clinic={clinic} onClose={() => setOpenForm(null)} />}
                 </Fragment>
               );
             })}

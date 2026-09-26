@@ -8,7 +8,7 @@ import { asyncHandler, HttpError } from '../middleware/errorHandler';
 import { requirePlatformAdmin, type PlatformAuthedRequest } from '../middleware/platformAuth';
 import { defaultSubscriptionAmount } from '../utils/subscriptionPricing';
 import { computeRenewalPeriod } from '../utils/subscriptionRenewal';
-import type { PlatformAdminAuthResponse, RenewSubscriptionRequest } from '@opd/shared';
+import type { ExtendSubscriptionRequest, PlatformAdminAuthResponse, RenewSubscriptionRequest } from '@opd/shared';
 
 export const platformRouter = Router();
 
@@ -105,6 +105,43 @@ platformRouter.post(
     ]);
 
     res.json(toSubscription(updatedSubscription));
+  }),
+);
+
+const extendSchema = z.object({
+  days: z.number().int().min(1).max(365),
+  reason: z.string().trim().min(3).max(500),
+});
+
+// Free extension (e.g. a longer trial): moves currentPeriodEnd out by `days`
+// and records who did it and why, but -- unlike renew -- creates no
+// SubscriptionPayment, so revenue records aren't padded with money that was
+// never received. Counts from today if the subscription has already lapsed.
+// Status is left alone: a suspended clinic stays suspended until reactivated.
+platformRouter.post(
+  '/clinics/:clinicId/subscription/extend',
+  asyncHandler(async (req: PlatformAuthedRequest, res) => {
+    const data = extendSchema.parse(req.body) as ExtendSubscriptionRequest;
+    const subscription = await prisma.subscription.findUnique({ where: { clinicId: req.params.clinicId } });
+    if (!subscription) throw new HttpError(404, 'This clinic has no subscription record');
+
+    const from = Math.max(subscription.currentPeriodEnd.getTime(), Date.now());
+    const newPeriodEnd = new Date(from + data.days * 24 * 60 * 60 * 1000);
+
+    const [updated] = await prisma.$transaction([
+      prisma.subscription.update({ where: { id: subscription.id }, data: { currentPeriodEnd: newPeriodEnd } }),
+      prisma.subscriptionExtension.create({
+        data: {
+          subscriptionId: subscription.id,
+          days: data.days,
+          reason: data.reason,
+          previousPeriodEnd: subscription.currentPeriodEnd,
+          newPeriodEnd,
+          extendedByAdminId: req.platformAdmin!.adminId,
+        },
+      }),
+    ]);
+    res.json(toSubscription(updated));
   }),
 );
 

@@ -1,6 +1,7 @@
 import { platformClient } from './platformClient';
 import type {
   ClinicWithSubscription,
+  ExtendSubscriptionRequest,
   PlatformAdminAuthResponse,
   RenewSubscriptionRequest,
   Subscription,
@@ -34,5 +35,10 @@ export async function suspendSubscription(clinicId: string): Promise<Subscriptio
 
 export async function reactivateSubscription(clinicId: string): Promise<Subscription> {
   const res = await platformClient.post<Subscription>(`/platform/clinics/${clinicId}/subscription/reactivate`);
+  return res.data;
+}
+
+export async function extendSubscription(clinicId: string, data: ExtendSubscriptionRequest): Promise<Subscription> {
+  const res = await platformClient.post<Subscription>(`/platform/clinics/${clinicId}/subscription/extend`, data);
   return res.data;
 }

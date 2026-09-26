@@ -29,6 +29,8 @@ function appt(id: string, date: string, c: Consultation | null, tokenNumber = 1)
   return {
     id,
     patientId: 'p1',
+    guestName: null,
+    guestPhone: null,
     doctorId: 'd1',
     date,
     tokenNumber,

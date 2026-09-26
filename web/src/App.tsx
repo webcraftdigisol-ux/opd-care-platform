@@ -39,6 +39,7 @@ import { PatientProfilePage } from './pages/PatientProfilePage';
 import { VisitSummaryPage } from './pages/VisitSummaryPage';
 import { CataloguePage } from './pages/CataloguePage';
 import { ClinicSettingsPage } from './pages/ClinicSettingsPage';
+import { AppointmentsPage } from './pages/AppointmentsPage';
 
 const PATIENT_STAFF = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'NURSE', 'HEAD_NURSE'] as const;
 const PATIENT_EDITORS = ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] as const;
@@ -134,6 +135,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'NURSE', 'HEAD_NURSE']}>
               <VisitSummaryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'RECEPTIONIST', 'DOCTOR']}>
+              <AppointmentsPage />
             </ProtectedRoute>
           }
         />

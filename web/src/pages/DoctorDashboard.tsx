@@ -50,7 +50,7 @@ export function DoctorDashboard() {
               </div>
               <div>
                 <p className="font-medium">
-                  {a.patient?.name}
+                  {a.patient?.name ?? a.guestName}
                   <span className="ml-2 text-sm font-normal text-gray-500">
                     {a.startTime ?? 'Walk-in'}
                   </span>

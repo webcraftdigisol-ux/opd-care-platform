@@ -4,6 +4,9 @@ import type {
   AppointmentStatus,
   BookAppointmentRequest,
   StartVisitRequest,
+  ScheduleAppointmentRequest,
+  RescheduleAppointmentRequest,
+  RegisterBookingRequest,
   WalkInRequest,
 } from '@opd/shared';
 
@@ -47,5 +50,25 @@ export async function registerWalkIn(data: WalkInRequest): Promise<Appointment> 
 // A consultation straight from the patient's profile (no token first).
 export async function startVisit(data: StartVisitRequest): Promise<Appointment> {
   const res = await apiClient.post<Appointment>('/appointments/visit', data);
+  return res.data;
+}
+
+export async function listDayAppointments(date: string, doctorId?: string): Promise<Appointment[]> {
+  const res = await apiClient.get<Appointment[]>('/appointments', { params: { date, doctorId } });
+  return res.data;
+}
+
+export async function scheduleAppointment(data: ScheduleAppointmentRequest): Promise<Appointment> {
+  const res = await apiClient.post<Appointment>('/appointments/schedule', data);
+  return res.data;
+}
+
+export async function rescheduleAppointment(id: string, data: RescheduleAppointmentRequest): Promise<Appointment> {
+  const res = await apiClient.patch<Appointment>(`/appointments/${id}`, data);
+  return res.data;
+}
+
+export async function registerBooking(id: string, data: RegisterBookingRequest): Promise<Appointment> {
+  const res = await apiClient.post<Appointment>(`/appointments/${id}/register`, data);
   return res.data;
 }

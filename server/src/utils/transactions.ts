@@ -68,10 +68,12 @@ export async function computeTransactions(opts: {
     ...visits.map((a) => ({
       billType: 'CONSULTATION' as const,
       billId: a.id,
-      // The visit's day; the time is when the consultation was recorded.
-      date: (a.consultation?.createdAt && clinicDateOf(a.consultation.createdAt) === a.date.toISOString().slice(0, 10)
-        ? a.consultation.createdAt
-        : new Date(a.date.getTime() - IST_MS)
+      // The visit's day, at the time the consultation was recorded or else
+      // when the visit was entered (arrival, for a walk-in) -- whichever
+      // falls on that day; failing both, the start of the day.
+      date: (
+        [a.consultation?.createdAt, a.createdAt].find((t) => t && clinicDateOf(t) === a.date.toISOString().slice(0, 10)) ??
+        new Date(a.date.getTime() - IST_MS)
       ).toISOString(),
       ...who(a.patient),
       doctorId: a.doctorId,

@@ -13,6 +13,8 @@ const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
   RADIOLOGY_REPORT: 'Radiology report',
   PRESCRIPTION_SCAN: 'Prescription scan',
   RADIOLOGY_DICOM: 'DICOM image',
+  PATIENT_REPORT: 'Report',
+  PATIENT_IMAGE: 'Image',
 };
 
 const DIETARY_PREFERENCE_LABEL: Record<string, string> = {

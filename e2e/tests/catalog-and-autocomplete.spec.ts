@@ -73,11 +73,13 @@ test.describe('Medicine/test autocomplete while prescribing', () => {
     // Matches both "Amoxicillin 250mg" and "Amlodipine 5mg" (both contain
     // "Am") but not "Metformin 500mg" -- a genuine substring filter, not
     // just "the dropdown has something in it".
-    await expect(suggestions.getByText('Amoxicillin 250mg')).toBeVisible();
-    await expect(suggestions.getByText('Amlodipine 5mg')).toBeVisible();
+    await expect(suggestions.getByText('Amoxicillin 250mg', { exact: true })).toBeVisible();
+    // The pharmacy item's brand is offered too.
+    await expect(suggestions.getByText('Novamox — Amoxicillin 250mg')).toBeVisible();
+    await expect(suggestions.getByText('Amlodipine 5mg', { exact: true })).toBeVisible();
     await expect(suggestions.getByText('Metformin 500mg')).toHaveCount(0);
 
-    await suggestions.getByText('Amoxicillin 250mg').click();
+    await suggestions.getByText('Amoxicillin 250mg', { exact: true }).click();
     await expect(medicineInput).toHaveValue('Amoxicillin 250mg');
   });
 

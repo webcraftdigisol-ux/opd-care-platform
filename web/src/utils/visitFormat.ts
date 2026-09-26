@@ -77,3 +77,9 @@ export function vitalsWarnings(v: Vitals): string[] {
 export function doctorName(name: string): string {
   return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
 }
+
+// "Dolo 650 (Paracetamol 650 mg)" with a brand, else "Paracetamol (650 mg)".
+export function medicineLabel(p: { medicine: string; strength?: string | null; brand?: string | null }): string {
+  if (p.brand) return `${p.brand} (${p.medicine}${p.strength ? ` ${p.strength}` : ''})`;
+  return `${p.medicine}${p.strength ? ` (${p.strength})` : ''}`;
+}

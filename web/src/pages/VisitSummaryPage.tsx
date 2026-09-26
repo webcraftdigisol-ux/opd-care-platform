@@ -5,7 +5,7 @@ import { downloadVisitSummaryPdf, getVisitSummary, sendVisitSummaryWhatsApp } fr
 import { useAuth } from '../context/AuthContext';
 import { btnPrimary, btnSecondary } from '../components/ui';
 import { formatDate } from '../utils/patientFormat';
-import { doctorName, vitalChips, whenToTake } from '../utils/visitFormat';
+import { doctorName, medicineLabel, vitalChips, whenToTake } from '../utils/visitFormat';
 
 const SEX: Record<string, string> = { MALE: 'M', FEMALE: 'F', OTHER: 'O' };
 
@@ -135,8 +135,7 @@ export function VisitSummaryPage() {
                 {s.prescriptions.map((p) => (
                   <tr key={p.id} className="border-b border-gray-100 align-top">
                     <td className="py-1.5 pr-2 font-medium">
-                      {p.medicine}
-                      {p.strength ? ` (${p.strength})` : ''}
+                      {medicineLabel(p)}
                     </td>
                     <td className="py-1.5 pr-2">{whenToTake(p)}</td>
                     <td className="py-1.5 pr-2">{p.durationDays} day(s)</td>

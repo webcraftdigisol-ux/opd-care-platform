@@ -16,7 +16,7 @@ export async function addCatalogItem(data: UpsertCatalogItemRequest): Promise<Do
   return res.data;
 }
 
-export async function updateCatalogItem(id: string, data: { name: string; strength?: string | null }): Promise<DoctorCatalogItem> {
+export async function updateCatalogItem(id: string, data: { name: string; strength?: string | null; brands?: string[] }): Promise<DoctorCatalogItem> {
   const res = await apiClient.put<DoctorCatalogItem>(`/catalogue/${id}`, data);
   return res.data;
 }
@@ -25,7 +25,7 @@ export async function deleteCatalogItem(id: string): Promise<void> {
   await apiClient.delete(`/catalogue/${id}`);
 }
 
-export async function addStarterCatalogue(): Promise<{ added: number }> {
-  const res = await apiClient.post<{ added: number }>('/catalogue/starter');
+export async function addStarterCatalogue(): Promise<{ added: number; brandsAdded: number }> {
+  const res = await apiClient.post<{ added: number; brandsAdded: number }>('/catalogue/starter');
   return res.data;
 }

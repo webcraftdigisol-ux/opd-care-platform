@@ -261,6 +261,80 @@ the new Patient History panel; there's no per-patient visit timeline for
 reception/admin, no "Edit this visit" from history, and no printable
 visit summary / prescription.
 
+### T1-7. Print summary (the patient's printout)
+
+Opened from a visit's "Print summary". Top bar: ← Back to patient ·
+**language selector ("English ▾")** · **Print / Save as PDF**.
+
+Page content (A4-style card):
+- Header: clinic name (left); "**Visit Summary**", "Visit 1 · 26 Sept 2026 ·
+  07:59" (right).
+- Patient block: Patient name, Patient ID, Age / Sex, Doctor.
+- **SYMPTOMS** (chief complaint + present illness, one per line).
+- **DIAGNOSIS**.
+- **VITALS** as chips: Temp, Pulse, BP, SpO2, Weight, BMI, Sugar.
+- **PRESCRIPTION** table: Medicine (strength) · When to take ("Morning,
+  Night, after food") · Duration ("10 day(s)") · Instructions · **Total**.
+- **INVESTIGATIONS / LAB TESTS ADVISED** (bullets, with notes).
+- **RADIOLOGY WORK PRESCRIBED** (bullets).
+- **DOCTOR'S ADVICE**.
+- Footer: **Follow-up: <date>** (left); signature line, "Doctor's
+  signature", doctor name (right).
+
+Deliberately **not** printed: differential diagnosis, relevant history, fee,
+private "Doctor notes" (so doctor notes are internal).
+
+**Owner's requirements (web):**
+1. **Send this summary to the patient on WhatsApp** (as a PDF) from the
+   visit.
+2. **Follow-up reminders: one the day before AND one on the follow-up
+   date** itself. (Web today sends only the day-before reminder.)
+
+**Observations / improve on offline**
+- Language selector → the printout is multilingual (to learn which
+  languages: Marathi/Hindi?). Medicine timing words, headings and advice
+  would need translating; medicine names stay as-is.
+- No clinic letterhead details (address, phone, doctor's qualification and
+  registration number, logo) -- Indian prescriptions normally carry these
+  (registration number is expected on a prescription). Needs a clinic/
+  doctor settings page.
+- Respiratory rate is missing from the printed vitals too.
+
+### T1-8. Profile: Vitals tab
+
+One chart card per vital across visits (x = visit date): Weight (kg), BMI,
+Pulse (bpm), Temperature (°F), SpO2 (%), Blood sugar, … (BP probably
+further down). Two cards per row.
+
+**Web today:** small sparkline trends inside the doctor's Patient History
+panel (BP systolic, pulse, weight, SpO2), and on IPD admissions; no
+per-patient vitals tab.
+
+### T1-9. Profile: Reports and Images tabs
+
+Both: "Stored directly in this patient's own folder — nothing here depends
+on the database." + **Upload report** / **Upload image**; empty states "No
+reports / images uploaded yet." Owner: kept for future reference.
+
+**Web equivalent:** file attachments now live in S3 (secure, backed up) but
+are tied to a lab invoice, radiology invoice or consultation -- there's no
+"upload any report/image to the patient" at profile level (e.g. outside
+reports the patient brings). Worth adding as patient-level documents.
+
+### T1-10. Profile: Billing tab
+
+"1 billing record" · **Total: ₹1,000**; list rows: icon, "**OPD consultation
+— Visit 1**", date, amount, chevron to open. The bill is created
+automatically from the visit's consultation fee when the consultation is
+saved.
+
+Owner: **Tier 1 and Tier 2 bill OPD only; Tier 3 bills OPD and IPD.**
+
+**Web today:** consultation fee is recorded at booking/walk-in, payments
+are recorded per bill (cash/card/UPI/Razorpay), and pharmacy/lab/radiology
+bills exist in Tier 2+. There's no per-patient billing history view for
+staff.
+
 ### Open questions (Tier 1 so far)
 - Patient ID format: `PT` + 6 digits, per clinic, sequential? Can it be
   customised per clinic (prefix)?
@@ -273,9 +347,13 @@ visit summary / prescription.
   it -- ₹1000 appeared) and editable per visit (discount, free follow-up)?
 - Does a visit's height/weight update the patient's baseline on the
   profile (baseline said 92 kg, the visit recorded 93)?
-- What does **Print summary** print -- a prescription for the patient
-  (letterhead, Rx, advice, follow-up) or a full visit summary? (Sample
-  printout would help.)
+- ~~What does Print summary print?~~ → a patient-facing Visit Summary
+  (see T1-7).
+- Which languages does the print's language selector offer?
+- Should the printout carry a letterhead (clinic address/phone/logo,
+  doctor's qualification and registration number)?
+- Billing: is a consultation bill marked paid/unpaid, and is the payment
+  mode (cash/UPI/card) recorded? Can a receipt be printed?
 - Can a visit be edited any time later, or only the same day? Is there a
   record of who changed what?
 - Which specialities are the main customers (the imaging example is

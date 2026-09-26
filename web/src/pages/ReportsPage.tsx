@@ -231,12 +231,12 @@ export function ReportsPage() {
   const tabs: { key: Tab; label: string }[] = own
     ? [
         { key: 'revenue', label: 'Revenue' },
-        { key: 'orders', label: 'Ordered vs done' },
+        { key: 'orders', label: 'In-house revenue' },
       ]
     : [
         { key: 'revenue', label: 'Revenue' },
         // What was ordered vs done in-house needs the Tier 2 departments.
-        ...(tier2 ? [{ key: 'orders' as const, label: 'Prescribed vs in-house' }] : []),
+        ...(tier2 ? [{ key: 'orders' as const, label: 'In-house revenue' }] : []),
         { key: 'activity', label: 'Daily Activity' },
         { key: 'follow-ups', label: 'Follow-ups Due' },
       ];
@@ -245,7 +245,7 @@ export function ReportsPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <PageHeader
         title="Reports"
-        subtitle={own ? 'Your department’s revenue, and what doctors ordered vs what was done here.' : 'Revenue, orders done in-house, activity and follow-ups.'}
+        subtitle={own ? 'Your department’s revenue, and how much of what doctors ordered was done here.' : 'Revenue by department, in-house revenue, activity and follow-ups.'}
       />
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist">
         {tabs.map((t) => (

@@ -223,11 +223,14 @@ describe('Tier 2 lab and radiology counters', () => {
   });
 });
 
-describe('Tier 2 reports: prescribed/ordered vs done in-house', () => {
-  it('counts each department’s orders, what was done in-house (incl. substitutes) and its revenue; doctors see their own, counters their own department', async () => {
-    const { clinic, adminToken, doctorToken, patient, dolo, pan, consultation } = await visitWithOrders();
+describe('Tier 2 reports: in-house revenue by department', () => {
+  it('values what was prescribed/ordered vs what was done in-house, per department in rupees; doctors see their own, counters their own department', async () => {
+    const { clinic, adminToken, doctorToken, patient, appointment, dolo, pan, consultation } = await visitWithOrders();
+    await prisma.appointment.update({ where: { id: appointment.id }, data: { consultationFee: 500 } });
     const pharmacist = await staff(clinic, 'PHARMACIST');
     const item = await prisma.pharmacyItem.create({ data: { clinicId: clinic.id, name: 'Paracetamol', strength: '650 mg', brand: 'Calpol 650', pricePerUnit: 2, costPricePerUnit: 1 } });
+    await prisma.pharmacyItem.create({ data: { clinicId: clinic.id, name: 'Pantoprazole', strength: '40 mg', brand: 'Pan 40', pricePerUnit: 3, costPricePerUnit: 2 } });
+    await prisma.radiologyCatalog.create({ data: { clinicId: clinic.id, name: 'Chest X-Ray PA', price: 400 } });
     await request(app)
       .post('/api/pharmacy/sales')
       .set(auth(pharmacist))
@@ -239,7 +242,7 @@ describe('Tier 2 reports: prescribed/ordered vs done in-house', () => {
       .set(auth(labTech))
       .send({ patientId: patient.id, items: [{ orderId: consultation.labTestsOrdered[0]!.id, testName: 'CBC', price: 300 }] });
 
-    // Another doctor's visit, which our doctor must not see.
+    // Another doctor's visit (not seen yet, so no fee), with an unpriced medicine.
     const other = await createDoctor(clinic.id);
     const a2 = await prisma.appointment.create({ data: { clinicId: clinic.id, patientId: patient.id, doctorId: other.doctorProfile.id, date: today(), tokenNumber: 2 } });
     await prisma.consultation.create({ data: { appointmentId: a2.id, prescriptions: { create: [{ medicine: 'Cetirizine', dosage: '1', frequency: '0-0-1', durationDays: 3 }] } } });
@@ -247,21 +250,20 @@ describe('Tier 2 reports: prescribed/ordered vs done in-house', () => {
     const range = `from=${ymd(today())}&to=${ymd(today())}`;
     const mine = await request(app).get(`/api/reports/orders?${range}`).set(auth(doctorToken));
     expect(mine.status).toBe(200);
+    expect(mine.body.departments).toEqual(['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY']);
     const byDept = Object.fromEntries(mine.body.summary.map((s: any) => [s.department, s]));
-    expect(byDept.PHARMACY).toMatchObject({ ordered: 2, inHouse: 1, substituted: 1, notDone: 1, pending: 0, revenue: 20 });
-    expect(byDept.LAB).toMatchObject({ ordered: 1, inHouse: 1, revenue: 300 });
-    expect(byDept.RADIOLOGY).toMatchObject({ ordered: 1, inHouse: 0, pending: 1 });
-    expect(mine.body.rows.find((r: any) => r.ordered === 'Dolo 650 (Paracetamol 650 mg)')).toMatchObject({
-      status: 'SUBSTITUTED',
-      doneAs: 'Calpol 650 (Paracetamol 650 mg)',
-      quantity: 10,
-      amount: 20,
-    });
-    expect(mine.body.rows.some((r: any) => r.ordered.startsWith('Cetirizine'))).toBe(false);
+    expect(byDept.CONSULTATION).toMatchObject({ ordered: 500, inHouse: 500, notInHouse: 0 });
+    // Calpol dispensed for Dolo (₹20); Pan 40 bought outside, 5 tabs × ₹3.
+    expect(byDept.PHARMACY).toEqual({ department: 'PHARMACY', ordered: 35, inHouse: 20, notInHouse: 15, hasUnpriced: false });
+    expect(byDept.LAB).toMatchObject({ ordered: 300, inHouse: 300, notInHouse: 0 });
+    expect(byDept.RADIOLOGY).toMatchObject({ ordered: 400, inHouse: 0, notInHouse: 400 });
+    expect(mine.body.byDay).toHaveLength(1);
+    expect(mine.body.byDay[0].cells.map((c: any) => c.inHouse)).toEqual([500, 20, 300, 0]);
 
     const all = await request(app).get(`/api/reports/orders?${range}`).set(auth(adminToken));
-    expect(all.body.summary.find((s: any) => s.department === 'PHARMACY').ordered).toBe(3);
-    expect(all.body.byDoctor.length).toBeGreaterThan(3);
+    const pharmacy = all.body.summary.find((s: any) => s.department === 'PHARMACY');
+    expect(pharmacy).toMatchObject({ ordered: 35, inHouse: 20, hasUnpriced: true });
+    expect(all.body.byDoctor).toHaveLength(2);
 
     // A counter sees only its own department, in both reports.
     const pharmacyOnly = await request(app).get(`/api/reports/orders?${range}&departments=LAB,RADIOLOGY`).set(auth(pharmacist));

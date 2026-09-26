@@ -73,7 +73,7 @@ export function toCsv(report: TransactionsReport): string {
       .join(',');
   });
   const t = report.totals;
-  lines.push(['Total', '', '', '', '', '', `${t.count} record(s)`, '', t.billed, t.collected, t.outstanding].map(cell).join(','));
+  lines.push(['Total', '', '', '', '', '', '', '', t.billed, t.collected, t.outstanding].map(cell).join(','));
   return [header.map(cell).join(','), ...lines].join('\r\n');
 }
 
@@ -193,9 +193,8 @@ export function RevenueReport({ lockTo }: { lockTo?: BillType } = {}) {
 
       {data && (
         <>
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             {[
-              { label: 'Records', value: String(data.totals.count), tone: 'text-gray-900' },
               { label: 'Billed', value: formatMoney(data.totals.billed), tone: 'text-gray-900' },
               { label: 'Collected', value: formatMoney(data.totals.collected), tone: 'text-teal' },
               { label: 'Outstanding', value: formatMoney(data.totals.outstanding), tone: data.totals.outstanding > 0 ? 'text-red-600' : 'text-gray-900' },
@@ -217,19 +216,17 @@ export function RevenueReport({ lockTo }: { lockTo?: BillType } = {}) {
                     <div key={d.date} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
                       <p className="font-medium text-gray-900">{formatDate(d.date)}</p>
                       <p className="text-xs text-gray-500">
-                        {d.count} · {formatMoney(d.billed)} billed · {formatMoney(d.collected)} in
+                        {formatMoney(d.billed)} billed · {formatMoney(d.collected)} in
                       </p>
                     </div>
                   ))}
                 </div>
               </Card>
-              <Card title="By type & payment mode">
+              <Card title="By department & payment mode">
                 <dl className="space-y-1.5 text-sm">
                   {data.byType.map((t) => (
                     <div key={t.billType} className="flex justify-between gap-2">
-                      <dt className="text-gray-600">
-                        {TYPE_LABEL[t.billType]} ({t.count})
-                      </dt>
+                      <dt className="text-gray-600">{TYPE_LABEL[t.billType]}</dt>
                       <dd className="text-gray-900">
                         {formatMoney(t.billed)} <span className="text-gray-400">/ {formatMoney(t.collected)}</span>
                       </dd>
@@ -247,7 +244,7 @@ export function RevenueReport({ lockTo }: { lockTo?: BillType } = {}) {
             </div>
           )}
 
-          <Card title="Transactions" subtitle={`${data.totals.count} record(s) from ${formatDate(from)} to ${formatDate(to)}`}>
+          <Card title="Bills" subtitle={`${formatDate(from)} to ${formatDate(to)}`}>
             {data.rows.length === 0 ? (
               <p className="text-sm text-gray-500">Nothing billed in this range.</p>
             ) : (

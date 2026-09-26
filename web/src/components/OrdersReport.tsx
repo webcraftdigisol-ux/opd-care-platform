@@ -1,48 +1,50 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { Department, OrderReportStatus, OrdersReport as Report } from '@opd/shared';
+import type { Department, DeptRevenue, OrdersReport as Report, RevenueDepartment } from '@opd/shared';
 import { getOrdersReport } from '../api/reports';
 import { listDoctors } from '../api/doctors';
 import { useAuth } from '../context/AuthContext';
-import { Card, btnPrimary, btnSecondary } from './ui';
+import { Card, btnPrimary } from './ui';
 import { Icon } from './Icon';
 import { cell, download, presets } from './RevenueReport';
 import { formatDate, formatMoney } from '../utils/patientFormat';
 import { doctorName } from '../utils/visitFormat';
-import { DEPTS } from '../utils/departments';
 
-const ALL: Department[] = ['PHARMACY', 'LAB', 'RADIOLOGY'];
-const WHAT: Record<Department, string> = { PHARMACY: 'Medicines prescribed', LAB: 'Lab tests ordered', RADIOLOGY: 'Radiology ordered' };
-const STATUS: Record<OrderReportStatus, { label: string; tone: string }> = {
-  IN_HOUSE: { label: 'Done in-house', tone: 'bg-emerald-50 text-emerald-700' },
-  SUBSTITUTED: { label: 'In-house (substitute)', tone: 'bg-teal-light text-teal' },
-  NOT_DONE: { label: 'Not done here', tone: 'bg-gray-100 text-gray-600' },
-  PENDING: { label: 'Pending', tone: 'bg-amber-50 text-amber-800' },
+export const DEPT_LABEL: Record<RevenueDepartment, string> = {
+  CONSULTATION: 'Consultation',
+  PHARMACY: 'Pharmacy',
+  LAB: 'Laboratory',
+  RADIOLOGY: 'Radiology',
 };
 const pct = (n: number, of: number) => (of ? Math.round((n / of) * 100) : 0);
+const sum = (cs: DeptRevenue[], k: 'ordered' | 'inHouse' | 'notInHouse') => Math.round(cs.reduce((n, c) => n + c[k], 0) * 100) / 100;
 
+// One CSV with three blocks: by department, by day, by doctor.
 export function ordersToCsv(report: Report): string {
-  const header = ['Visit date', 'Department', 'Patient', 'Patient ID', 'Doctor', 'Ordered', 'Status', 'Done as', 'Quantity', 'Amount', 'Note'];
-  const lines = report.rows.map((r) =>
-    [r.date, DEPTS[r.department].label, r.patientName, r.patientCode, r.doctorName, r.ordered, STATUS[r.status].label, r.doneAs, r.quantity, r.amount, r.note]
-      .map(cell)
-      .join(','),
-  );
-  return [header.map(cell).join(','), ...lines].join('\r\n');
+  const row = (vs: (string | number | null)[]) => vs.map(cell).join(',');
+  const depts = report.departments.map((d) => DEPT_LABEL[d]);
+  const lines = [
+    row([`In-house revenue ${report.from} to ${report.to}`]),
+    '',
+    row(['Department', 'Prescribed / ordered (₹)', 'Done in-house (₹)', 'Not done in-house (₹)', 'In-house %']),
+    ...report.summary.map((c) => row([DEPT_LABEL[c.department], c.ordered, c.inHouse, c.notInHouse, pct(c.inHouse, c.ordered)])),
+    row(['Total', sum(report.summary, 'ordered'), sum(report.summary, 'inHouse'), sum(report.summary, 'notInHouse'), pct(sum(report.summary, 'inHouse'), sum(report.summary, 'ordered'))]),
+    '',
+    row(['In-house revenue by day (₹)', ...depts, 'Total']),
+    ...report.byDay.map((d) => row([d.date, ...d.cells.map((c) => c.inHouse), sum(d.cells, 'inHouse')])),
+  ];
+  if (report.byDoctor.length) {
+    lines.push('', row(['In-house revenue by doctor (₹)', ...depts, 'Total']));
+    lines.push(...report.byDoctor.map((d) => row([d.doctorName, ...d.cells.map((c) => c.inHouse), sum(d.cells, 'inHouse')])));
+  }
+  return lines.join('\r\n');
 }
 
-export function ordersSummaryCsv(report: Report): string {
-  const header = ['Department', 'Item', 'Ordered', 'Done in-house', 'In-house %', 'In-house revenue'];
-  const lines = report.byItem.map((i) => [DEPTS[i.department].label, i.name, i.ordered, i.inHouse, pct(i.inHouse, i.ordered), i.revenue].map(cell).join(','));
-  const totals = report.summary.map((s) => [DEPTS[s.department].label, 'Total', s.ordered, s.inHouse, pct(s.inHouse, s.ordered), s.revenue].map(cell).join(','));
-  return [header.map(cell).join(','), ...lines, ...totals].join('\r\n');
-}
-
-// What doctors prescribed and ordered, and how much of it the clinic's own
-// pharmacy, lab and radiology then did -- by department, by item, by
-// doctor and line by line, for any date range, exportable as CSV. A doctor
-// sees their own orders; a department counter passes `lockTo`.
+// In-house revenue, department by department: consultation fees, and for
+// pharmacy, laboratory and radiology the value of what the doctors
+// prescribed/ordered against what the clinic's own departments earned from
+// it -- for any date range, by day and by doctor, exportable as CSV. A
+// doctor sees their own patients; a department counter passes `lockTo`.
 export function OrdersReport({ lockTo }: { lockTo?: Department } = {}) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
@@ -50,17 +52,14 @@ export function OrdersReport({ lockTo }: { lockTo?: Department } = {}) {
   const [from, setFrom] = useState(month.from);
   const [to, setTo] = useState(month.to);
   const [doctorId, setDoctorId] = useState('');
-  const [depts, setDepts] = useState<Department[]>(lockTo ? [lockTo] : ALL);
-  const [itemsShown, setItemsShown] = useState(15);
-  const [rowsShown, setRowsShown] = useState(100);
   const { data: doctors } = useQuery({ queryKey: ['doctors'], queryFn: listDoctors, enabled: isAdmin });
   const { data, isLoading, error } = useQuery({
-    queryKey: ['orders-report', from, to, doctorId, depts.join(',')],
-    queryFn: () => getOrdersReport({ from, to, doctorId: doctorId || undefined, departments: depts }),
+    queryKey: ['orders-report', from, to, doctorId],
+    queryFn: () => getOrdersReport({ from, to, doctorId: doctorId || undefined }),
     enabled: !!from && !!to,
   });
   const activePreset = presets().find((p) => p.from === from && p.to === to)?.key;
-  const suffix = depts.length === 1 ? `_${DEPTS[depts[0]!].label.toLowerCase()}` : '';
+  const hasUnpriced = data?.summary.some((c) => c.hasUnpriced);
 
   return (
     <div className="space-y-5">
@@ -102,45 +101,16 @@ export function OrdersReport({ lockTo }: { lockTo?: Department } = {}) {
               </button>
             ))}
           </div>
-          <div className="ml-auto flex gap-2">
-            <button
-              type="button"
-              disabled={!data?.byItem.length}
-              onClick={() => data && download(`orders_summary${suffix}_${from}_to_${to}.csv`, ordersSummaryCsv(data))}
-              className={btnSecondary}
-              data-testid="export-orders-summary"
-            >
-              Export summary
-            </button>
-            <button
-              type="button"
-              disabled={!data?.rows.length}
-              onClick={() => data && download(`orders${suffix}_${from}_to_${to}.csv`, ordersToCsv(data))}
-              className={btnPrimary}
-              data-testid="export-orders"
-            >
-              Export CSV
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={!data}
+            onClick={() => data && download(`inhouse_revenue_${from}_to_${to}.csv`, ordersToCsv(data))}
+            className={`${btnPrimary} ml-auto`}
+            data-testid="export-orders"
+          >
+            Export CSV
+          </button>
         </div>
-        {!lockTo && (
-          <div className="mt-3 flex flex-wrap gap-1.5 text-sm" role="group" aria-label="Department">
-            {[{ key: 'ALL', label: 'All departments', d: ALL }, ...ALL.map((d) => ({ key: d, label: DEPTS[d].label, d: [d] }))].map((o) => {
-              const on = o.d.length === depts.length && o.d.every((d) => depts.includes(d));
-              return (
-                <button
-                  key={o.key}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => setDepts(o.d)}
-                  className={`rounded-lg border px-3 py-1 ${on ? 'border-teal bg-teal text-white' : 'border-gray-300 text-gray-700 hover:border-teal hover:text-teal'}`}
-                >
-                  {o.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </Card>
 
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{(error as any).response?.data?.message ?? 'Could not load the report'}</p>}
@@ -148,149 +118,123 @@ export function OrdersReport({ lockTo }: { lockTo?: Department } = {}) {
 
       {data && (
         <>
-          <div className={`grid gap-4 ${data.summary.length > 1 ? 'md:grid-cols-3' : ''}`}>
-            {data.summary.map((s) => (
-              <div key={s.department} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" data-testid={`orders-summary-${s.department}`}>
-                <p className="flex items-center gap-2 text-sm font-medium text-gray-600">
-                  <Icon name={DEPTS[s.department].icon} className="h-4 w-4 text-teal" /> {WHAT[s.department]}
-                </p>
-                <p className="mt-2 text-3xl font-semibold text-gray-900">
-                  <span data-testid="summary-inhouse">{s.inHouse}</span>
-                  <span className="text-lg font-normal text-gray-400"> / {s.ordered}</span>
-                </p>
-                <p className="text-sm text-gray-500">done in-house ({pct(s.inHouse, s.ordered)}%)</p>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100" aria-hidden>
-                  <div className="h-full rounded-full bg-teal" style={{ width: `${pct(s.inHouse, s.ordered)}%` }} />
-                </div>
-                <p className="mt-3 text-xs text-gray-500">
-                  {s.substituted > 0 && `${s.substituted} substituted · `}
-                  {s.notDone} not done here · {s.pending} pending
-                </p>
-                <p className="mt-1 text-sm">
-                  In-house revenue <span className="font-semibold text-gray-900">{formatMoney(s.revenue)}</span>
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {data.byItem.length > 0 && (
-            <div className={`grid gap-4 ${isAdmin && data.byDoctor.length > data.summary.length ? 'lg:grid-cols-3' : ''}`}>
-              <Card title="By item" subtitle="Most ordered first" className="lg:col-span-2">
-                <div className="-mx-5 overflow-x-auto">
-                  <table className="w-full text-left text-sm" data-testid="orders-by-item">
-                    <thead className="text-xs uppercase tracking-wide text-gray-500">
-                      <tr className="border-b border-gray-100">
-                        <th className="px-5 py-2 font-medium">Item</th>
-                        {depts.length > 1 && <th className="px-2 py-2 font-medium">Department</th>}
-                        <th className="px-2 py-2 text-right font-medium">Ordered</th>
-                        <th className="px-2 py-2 text-right font-medium">In-house</th>
-                        <th className="px-5 py-2 text-right font-medium">Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.byItem.slice(0, itemsShown).map((i) => (
-                        <tr key={`${i.department}:${i.name}`} className="border-b border-gray-50">
-                          <td className="px-5 py-1.5 text-gray-900">{i.name}</td>
-                          {depts.length > 1 && <td className="px-2 py-1.5 text-gray-500">{DEPTS[i.department].label}</td>}
-                          <td className="px-2 py-1.5 text-right">{i.ordered}</td>
-                          <td className="px-2 py-1.5 text-right">
-                            {i.inHouse} <span className="text-xs text-gray-400">({pct(i.inHouse, i.ordered)}%)</span>
-                          </td>
-                          <td className="px-5 py-1.5 text-right">{formatMoney(i.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {data.byItem.length > itemsShown && (
-                  <button type="button" onClick={() => setItemsShown(data.byItem.length)} className="mt-3 text-sm text-teal hover:underline">
-                    Show all {data.byItem.length} items
-                  </button>
-                )}
-              </Card>
-              {isAdmin && data.byDoctor.length > data.summary.length && (
-                <Card title="By doctor">
-                  <dl className="space-y-2 text-sm">
-                    {data.byDoctor.map((d) => (
-                      <div key={`${d.doctorId}:${d.department}`} className="flex justify-between gap-2">
-                        <dt className="text-gray-600">
-                          {doctorName(d.doctorName)} <span className="text-gray-400">· {DEPTS[d.department].label}</span>
-                        </dt>
-                        <dd className="whitespace-nowrap text-gray-900">
-                          {d.inHouse}/{d.ordered} <span className="text-gray-400">({pct(d.inHouse, d.ordered)}%)</span>
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </Card>
-              )}
+          <Card title="By department" subtitle={`Visits from ${formatDate(from)} to ${formatDate(to)}`}>
+            <div className="-mx-5 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm" data-testid="orders-by-department">
+                <thead className="text-xs uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-gray-100">
+                    <th className="px-5 py-2 font-medium">Department</th>
+                    <th className="px-2 py-2 text-right font-medium">Prescribed / ordered</th>
+                    <th className="px-2 py-2 text-right font-medium">Done in-house</th>
+                    <th className="px-2 py-2 text-right font-medium">Not done in-house</th>
+                    <th className="w-44 px-5 py-2 font-medium">In-house share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.summary.map((c) => (
+                    <tr key={c.department} className="border-b border-gray-50" data-testid={`orders-dept-${c.department}`}>
+                      <td className="px-5 py-2.5 font-medium text-gray-900">{DEPT_LABEL[c.department]}</td>
+                      <td className="px-2 py-2.5 text-right">{formatMoney(c.ordered)}</td>
+                      <td className="px-2 py-2.5 text-right font-semibold text-teal" data-testid="dept-inhouse">
+                        {formatMoney(c.inHouse)}
+                      </td>
+                      <td className="px-2 py-2.5 text-right text-gray-600" data-testid="dept-not-inhouse">
+                        {c.department === 'CONSULTATION' ? '—' : formatMoney(c.notInHouse)}
+                      </td>
+                      <td className="px-5 py-2.5">
+                        <Share value={c.inHouse} of={c.ordered} />
+                      </td>
+                    </tr>
+                  ))}
+                  {data.summary.length > 1 && (
+                    <tr className="font-semibold text-gray-900" data-testid="orders-total">
+                      <td className="px-5 py-2.5">Total</td>
+                      <td className="px-2 py-2.5 text-right">{formatMoney(sum(data.summary, 'ordered'))}</td>
+                      <td className="px-2 py-2.5 text-right text-teal">{formatMoney(sum(data.summary, 'inHouse'))}</td>
+                      <td className="px-2 py-2.5 text-right">{formatMoney(sum(data.summary, 'notInHouse'))}</td>
+                      <td className="px-5 py-2.5">
+                        <Share value={sum(data.summary, 'inHouse')} of={sum(data.summary, 'ordered')} />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Done in-house is what was billed for the doctor's orders (before tax). Not done in-house — pending or taken elsewhere — is valued at today's
+              list price.
+              {hasUnpriced && ' Some items not done in-house have no price in the list, so their value isn’t included.'}
+            </p>
+          </Card>
+
+          <RevenueTable title="In-house revenue by day" first="Date" report={data} rows={data.byDay.map((d) => ({ key: d.date, label: formatDate(d.date), cells: d.cells }))} />
+          {isAdmin && !doctorId && data.byDoctor.length > 1 && (
+            <RevenueTable
+              title="In-house revenue by doctor"
+              first="Doctor"
+              report={data}
+              rows={data.byDoctor.map((d) => ({ key: d.doctorId, label: doctorName(d.doctorName), cells: d.cells }))}
+            />
           )}
 
-          <Card title="Every order" subtitle={`${data.rows.length} line(s) from visits ${formatDate(from)} to ${formatDate(to)}`}>
-            {data.rows.length === 0 ? (
-              <p className="text-sm text-gray-500">Nothing ordered in this range.</p>
-            ) : (
-              <div className="-mx-5 overflow-x-auto">
-                <table className="w-full min-w-[860px] text-left text-sm" data-testid="orders-rows">
-                  <thead className="text-xs uppercase tracking-wide text-gray-500">
-                    <tr className="border-b border-gray-100">
-                      <th className="px-5 py-2 font-medium">Visit</th>
-                      <th className="px-2 py-2 font-medium">Patient</th>
-                      <th className="px-2 py-2 font-medium">Doctor</th>
-                      <th className="px-2 py-2 font-medium">Ordered</th>
-                      <th className="px-2 py-2 font-medium">Status</th>
-                      <th className="px-2 py-2 font-medium">Done as</th>
-                      <th className="px-5 py-2 text-right font-medium">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.rows.slice(0, rowsShown).map((r, i) => (
-                      <tr key={i} className="border-b border-gray-50 align-top" data-testid="orders-row">
-                        <td className="whitespace-nowrap px-5 py-2">
-                          {formatDate(r.date)}
-                          <span className="block text-xs text-gray-400">{DEPTS[r.department].label}</span>
-                        </td>
-                        <td className="px-2 py-2">
-                          {r.patientId ? (
-                            <Link to={`/patients/${r.patientId}`} className="font-medium text-gray-900 hover:text-teal hover:underline">
-                              {r.patientName}
-                            </Link>
-                          ) : (
-                            r.patientName
-                          )}
-                          {r.patientCode && <span className="block font-mono text-xs text-gray-400">{r.patientCode}</span>}
-                        </td>
-                        <td className="px-2 py-2 text-gray-600">{doctorName(r.doctorName)}</td>
-                        <td className="max-w-[14rem] px-2 py-2 text-gray-900">{r.ordered}</td>
-                        <td className="px-2 py-2">
-                          <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium ${STATUS[r.status].tone}`}>{STATUS[r.status].label}</span>
-                          {r.note && <span className="mt-0.5 block text-xs text-gray-500">{r.note}</span>}
-                        </td>
-                        <td className="max-w-[14rem] px-2 py-2 text-gray-600">
-                          {r.doneAs ?? '—'}
-                          {r.quantity != null && r.department === 'PHARMACY' && <span className="text-gray-400"> × {r.quantity}</span>}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-2 text-right">{r.amount ? formatMoney(r.amount) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {data.rows.length > rowsShown && (
-                  <button type="button" onClick={() => setRowsShown((n) => n + 200)} className="mx-5 mt-3 text-sm text-teal hover:underline">
-                    Show more ({data.rows.length - rowsShown} more)
-                  </button>
-                )}
-              </div>
-            )}
-          </Card>
-          {user?.role === 'DOCTOR' && (
+          {(user?.role === 'DOCTOR' || lockTo) && (
             <p className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Icon name="alert" className="h-3.5 w-3.5" /> Showing your own prescriptions and orders.
+              <Icon name="alert" className="h-3.5 w-3.5" /> {lockTo ? `Showing ${DEPT_LABEL[lockTo].toLowerCase()} only.` : 'Showing your own patients.'}
             </p>
           )}
         </>
       )}
     </div>
+  );
+}
+
+function Share({ value, of }: { value: number; of: number }) {
+  const p = pct(value, of);
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100" aria-hidden>
+        <span className="block h-full rounded-full bg-teal" style={{ width: `${p}%` }} />
+      </span>
+      <span className="w-10 text-right text-xs text-gray-600">{of ? `${p}%` : '—'}</span>
+    </span>
+  );
+}
+
+function RevenueTable({ title, first, report, rows }: { title: string; first: string; report: Report; rows: { key: string; label: string; cells: DeptRevenue[] }[] }) {
+  return (
+    <Card title={title}>
+      {rows.length === 0 ? (
+        <p className="text-sm text-gray-500">Nothing in this range.</p>
+      ) : (
+        <div className="-mx-5 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead className="text-xs uppercase tracking-wide text-gray-500">
+              <tr className="border-b border-gray-100">
+                <th className="px-5 py-2 font-medium">{first}</th>
+                {report.departments.map((d) => (
+                  <th key={d} className="px-2 py-2 text-right font-medium">
+                    {DEPT_LABEL[d]}
+                  </th>
+                ))}
+                {report.departments.length > 1 && <th className="px-5 py-2 text-right font-medium">Total</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-b border-gray-50">
+                  <td className="whitespace-nowrap px-5 py-2 text-gray-900">{r.label}</td>
+                  {r.cells.map((c) => (
+                    <td key={c.department} className="px-2 py-2 text-right">
+                      {c.inHouse ? formatMoney(c.inHouse) : <span className="text-gray-300">—</span>}
+                    </td>
+                  ))}
+                  {report.departments.length > 1 && <td className="px-5 py-2 text-right font-medium">{formatMoney(sum(r.cells, 'inHouse'))}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }

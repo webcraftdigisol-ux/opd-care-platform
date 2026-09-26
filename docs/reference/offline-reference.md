@@ -385,6 +385,69 @@ queue and "Consult" opens the consultation for that appointment.
   "Completed" happens automatically when the visit is saved).
 - Add: filter by doctor, week view, search within the day, reschedule.
 
+### T1-12. Booking someone not registered yet
+
+"Not registered yet? Book by name and mobile instead" switches the modal to
+"Booking for someone not registered yet · **Search instead**": **Name***,
+**Mobile (optional)**, Date*, Time, Doctor, Reason (optional); the button
+stays disabled until the required fields are filled.
+
+In the day list an unregistered booking shows the name as **plain text**
+(not a profile link) with a phone icon + number; registered patients' names
+are links to their profile. So an unregistered booking is not a patient
+record until someone registers them.
+
+**Redesign:** keep "book without registering" (phone bookings), and on
+arrival offer **"Register & start visit"** from the appointment row that
+pre-fills name + mobile, so it becomes a real patient with a Patient ID
+before the consultation (and gets matched to an existing patient if the
+mobile already belongs to the family -- see shared mobiles).
+
+### T1-13. Find Patient (owner's requirements; screenshot to follow)
+
+- Search by **name or mobile number** (and Patient ID, as elsewhere).
+- **Not case-sensitive.**
+- **Suggestions appear as you type**; picking one opens that patient's
+  **profile** (T1-3).
+
+**Redesign:** one search component used everywhere (dashboard, Find
+Patient, Schedule appointment, the top bar): matches anywhere in the name
+("kulk" finds Kulkarni), mobile digits in any format, Patient ID with or
+without the prefix; each result shows name, age/sex, Patient ID, mobile and
+last visit so the right family member is obvious; keyboard ↑/↓/Enter.
+
+### T1-14. Doctor's Catalogue (Tier 1)
+
+Page intro: "Simple name lists so the consultation screen can suggest
+medicines, lab tests, and radiology work as you type — this clinic doesn't
+have separate Pharmacy, Laboratory, or Radiology modules, so these are
+yours to maintain."
+
+Tabs: **Medicines · Lab Tests · Radiology**.
+- Medicines: add form **Medicine name*** + **Strength (optional)**
+  (placeholder "650mg") + **Add**; list rows: pill icon, name, strength,
+  delete (bin). E.g. "Paracetamol 250", "Paracetamol 500".
+- Lab Tests: **Add test*** ("e.g. CBC, Blood Sugar") + Add; list rows with
+  delete. E.g. "Blood Sugar", "CDC".
+- Radiology: same pattern (screenshot not yet shown).
+- No edit, no search, no import visible -- add and delete only.
+
+**Confirms the tier model:** Tier 1 doctors *prescribe/order* from their own
+simple lists; Tier 2 adds the Pharmacy / Laboratory / Radiology
+*departments* (stock, prices, billing).
+
+**Current web app:** the only catalogues are the Tier 2 department ones
+(PharmacyItem with price/stock, lab and radiology catalogues with prices),
+and the API blocks them below Tier 2 -- so **a Tier 1 doctor in the web app
+gets no autocomplete at all**. The redesign needs a Tier 1 "Doctor's
+Catalogue" (names + strength, no prices/stock) that carries over into the
+department catalogues when a clinic upgrades to Tier 2.
+
+**Improve on offline:** search/filter the list, edit an entry, bulk import
+(CSV), and **ship a ready-made starter list** (common Indian generics with
+strengths, common lab panels, common imaging) so a new clinic isn't typing
+everything by hand; strength with unit; medicine form (tab/syrup/…).
+
 ### Open questions (Tier 1 so far)
 - Patient ID format: `PT` + 6 digits, per clinic, sequential? Can it be
   customised per clinic (prefix)?
@@ -412,6 +475,11 @@ queue and "Consult" opens the consultation for that appointment.
   the system), or would a doctor list be fine?
 - Does marking an appointment **Completed** do anything else (open a
   consultation, create a bill)?
+- When an unregistered booking arrives, how does it become a patient --
+  does reception register them from the appointment?
+- Find Patient screenshot (snap 28) didn't come through -- please resend.
+- Doctor's Catalogue: is it shared by all doctors in the clinic, or does
+  each doctor keep their own list?
 - Which specialities are the main customers (the imaging example is
   obstetric -- gynaecology/ANC, general physician, paediatrics …)?
 - Can the same form be saved as a draft and completed later (e.g. vitals

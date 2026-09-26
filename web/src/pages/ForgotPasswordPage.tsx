@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ClinicCodeField } from '../components/ClinicCodeField';
+import { hostClinicCode } from '../utils/clinicHost';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { confirmPasswordReset, getPasswordResetStatus, requestPasswordReset } from '../api/auth';
@@ -10,7 +12,7 @@ const inputClass = 'w-full rounded-md border border-gray-300 px-3 py-2 focus:bor
 // whether or not an account matched, so this page never says "no such user".
 export function ForgotPasswordPage() {
   const [searchParams] = useSearchParams();
-  const [clinicSlug, setClinicSlug] = useState(searchParams.get('clinic') ?? '');
+  const [clinicSlug, setClinicSlug] = useState(hostClinicCode() ?? searchParams.get('clinic') ?? '');
   const [identifier, setIdentifier] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -75,16 +77,7 @@ export function ForgotPasswordPage() {
 
       {step === 'request' && resetStatus?.available && (
         <form onSubmit={handleRequest} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Clinic code</label>
-            <input
-              required
-              placeholder="e.g. sunrise-clinic"
-              value={clinicSlug}
-              onChange={(e) => setClinicSlug(e.target.value)}
-              className={inputClass}
-            />
-          </div>
+          <ClinicCodeField value={clinicSlug} onChange={setClinicSlug} className={inputClass} />
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Email or phone</label>
             <input

@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { corsOrigins } from './utils/cors';
 import { authRouter } from './routes/auth.routes';
 import { clinicsRouter } from './routes/clinics.routes';
 import { doctorsRouter } from './routes/doctors.routes';
@@ -24,7 +25,7 @@ import { asyncHandler, errorHandler } from './middleware/errorHandler';
 
 export const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') ?? '*' }));
+app.use(cors({ origin: corsOrigins(process.env.CORS_ORIGIN) }));
 
 // Razorpay's webhook signature is computed over the exact raw request
 // bytes, so this route needs the unparsed body -- it's registered with its

@@ -45,6 +45,42 @@ function FeeEditor({ doctorId, currentFee }: { doctorId: string; currentFee: num
   );
 }
 
+// Printed under the doctor's name on visit summaries.
+function CredentialsEditor({ doctorId, qualification, registrationNumber }: { doctorId: string; qualification: string | null; registrationNumber: string | null }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [q, setQ] = useState(qualification ?? '');
+  const [reg, setReg] = useState(registrationNumber ?? '');
+  const save = useMutation({
+    mutationFn: () => updateDoctor(doctorId, { qualification: q, registrationNumber: reg }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctors'] });
+      setEditing(false);
+    },
+  });
+  if (!editing) {
+    return (
+      <button onClick={() => setEditing(true)} className="text-left text-sm text-gray-500 hover:text-teal">
+        {qualification || registrationNumber
+          ? [qualification, registrationNumber && `Reg. No. ${registrationNumber}`].filter(Boolean).join(' · ')
+          : '+ Add qualification & registration no.'}
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <input placeholder="Qualification, e.g. MBBS, MD" value={q} onChange={(e) => setQ(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-sm" />
+      <input placeholder="Registration no." value={reg} onChange={(e) => setReg(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-sm" />
+      <button onClick={() => save.mutate()} disabled={save.isPending} className="rounded-md bg-teal px-2 py-1 text-xs text-white disabled:opacity-60">
+        Save
+      </button>
+      <button onClick={() => setEditing(false)} className="text-xs text-gray-500">
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function ScheduleEditor({ doctorId }: { doctorId: string }) {
@@ -114,6 +150,8 @@ export function AdminDoctorsPage() {
     specialization: '',
     department: '',
     consultationFee: '',
+    qualification: '',
+    registrationNumber: '',
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -121,7 +159,7 @@ export function AdminDoctorsPage() {
     mutationFn: () => createDoctor({ ...form, phone: form.phone || undefined, consultationFee: Number(form.consultationFee) || 0 }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['doctors'] });
-      setForm({ name: '', email: '', phone: '', password: '', specialization: '', department: '', consultationFee: '' });
+      setForm({ name: '', email: '', phone: '', password: '', specialization: '', department: '', consultationFee: '', qualification: '', registrationNumber: '' });
     },
     onError: (err: any) => setError(err.response?.data?.message ?? 'Could not create doctor'),
   });
@@ -190,6 +228,18 @@ export function AdminDoctorsPage() {
           onChange={(e) => setForm((f) => ({ ...f, consultationFee: e.target.value }))}
           className="rounded-md border border-gray-300 px-3 py-2"
         />
+        <input
+          placeholder="Qualification (e.g. MBBS, MD)"
+          value={form.qualification}
+          onChange={(e) => setForm((f) => ({ ...f, qualification: e.target.value }))}
+          className="rounded-md border border-gray-300 px-3 py-2"
+        />
+        <input
+          placeholder="Registration no."
+          value={form.registrationNumber}
+          onChange={(e) => setForm((f) => ({ ...f, registrationNumber: e.target.value }))}
+          className="rounded-md border border-gray-300 px-3 py-2"
+        />
         {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
         <button
           type="submit"
@@ -210,6 +260,7 @@ export function AdminDoctorsPage() {
                 <p className="text-sm text-gray-500">
                   {d.specialization} · {d.department}
                 </p>
+                <CredentialsEditor doctorId={d.id} qualification={d.qualification} registrationNumber={d.registrationNumber} />
               </div>
               <div className="flex items-center gap-3">
                 <FeeEditor doctorId={d.id} currentFee={d.consultationFee} />

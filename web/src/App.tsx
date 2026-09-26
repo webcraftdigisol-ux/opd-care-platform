@@ -36,6 +36,9 @@ import { homeRouteForRole } from './utils/roleHome';
 import { FindPatientPage } from './pages/FindPatientPage';
 import { PatientFormPage } from './pages/PatientFormPage';
 import { PatientProfilePage } from './pages/PatientProfilePage';
+import { VisitSummaryPage } from './pages/VisitSummaryPage';
+import { CataloguePage } from './pages/CataloguePage';
+import { ClinicSettingsPage } from './pages/ClinicSettingsPage';
 
 const PATIENT_STAFF = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'NURSE', 'HEAD_NURSE'] as const;
 const PATIENT_EDITORS = ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] as const;
@@ -52,8 +55,10 @@ export default function App() {
   // The platform-admin section is a separate actor space from any clinic
   // (see api/platformClient.ts), and the sign-in pages come before one --
   // neither shows the clinic sidebar.
+  // The printable visit summary is a page of its own too.
   const bare =
     location.pathname.startsWith('/platform') ||
+    /^\/visits\/[^/]+\/print$/.test(location.pathname) ||
     ['/login', '/register', '/register-clinic', '/forgot-password'].includes(location.pathname);
 
   const routes = (
@@ -120,6 +125,31 @@ export default function App() {
           element={
             <ProtectedRoute roles={[...PATIENT_EDITORS]}>
               <PatientFormPage key="edit" />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/visits/:appointmentId/print"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'NURSE', 'HEAD_NURSE']}>
+              <VisitSummaryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/catalogue"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <CataloguePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <ClinicSettingsPage />
             </ProtectedRoute>
           }
         />

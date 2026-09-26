@@ -1,510 +1,630 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getConsultation, saveConsultation } from '../api/consultations';
+import type {
+  BloodSugarType,
+  Consultation,
+  FoodTiming,
+  LabTestOrderInput,
+  PrescriptionInput,
+  RadiologyTestOrderInput,
+  Vitals,
+} from '@opd/shared';
+import { getConsultation, saveConsultation, sendVisitSummaryWhatsApp } from '../api/consultations';
 import { getAppointment } from '../api/appointments';
-import { createDietPlan, listDietPlans, sendDietPlanWhatsApp, sendPrescriptionWhatsApp } from '../api/dietplans';
-import { listPharmacyItems } from '../api/pharmacy';
-import { listLabCatalog } from '../api/lab';
-import { listRadiologyCatalog } from '../api/radiology';
+import { getPatient, getPatientRecords } from '../api/patients';
+import { getCatalogSuggestions } from '../api/catalogue';
 import { AttachmentPanel } from '../components/AttachmentPanel';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
+import { DietPlanSection } from '../components/DietPlanSection';
 import { SuggestInput } from '../components/SuggestInput';
-import { useAuth } from '../context/AuthContext';
-import type { DietaryPreference, LabTestOrderInput, PrescriptionInput, RadiologyTestOrderInput, Vitals } from '@opd/shared';
+import { Card, Field, btnPrimary, btnSecondary, inputClass } from '../components/ui';
+import { Icon } from '../components/Icon';
+import { GENDER_LABEL, formatDate } from '../utils/patientFormat';
+import { FOOD_TIMING_OPTIONS, bmi, doctorName, totalToDispense, vitalsWarnings } from '../utils/visitFormat';
 
-const DIETARY_PREFERENCE_OPTIONS: { value: DietaryPreference; label: string }[] = [
-  { value: 'VEG', label: 'Vegetarian' },
-  { value: 'NON_VEG', label: 'Non-vegetarian' },
-  { value: 'EGGETARIAN', label: 'Eggetarian' },
-  { value: 'VEGAN', label: 'Vegan' },
-];
+const small = `${inputClass} py-1.5 text-sm`;
 
+type Row = PrescriptionInput & { key: number };
+let rowKey = 0;
+const newRow = (p: Partial<PrescriptionInput> = {}): Row => ({
+  key: ++rowKey,
+  medicine: '',
+  strength: '',
+  dosage: '1',
+  durationDays: 5,
+  foodTiming: null,
+  morning: false,
+  afternoon: false,
+  night: false,
+  frequency: '',
+  notes: '',
+  ...p,
+});
+const fromSaved = (c: Consultation['prescriptions'][number]): Row =>
+  newRow({
+    medicine: c.medicine,
+    strength: c.strength ?? '',
+    dosage: c.dosage,
+    durationDays: c.durationDays,
+    foodTiming: c.foodTiming,
+    morning: c.morning,
+    afternoon: c.afternoon,
+    night: c.night,
+    // Only keep a free-text frequency when no ticks describe it.
+    frequency: c.morning || c.afternoon || c.night ? '' : c.frequency,
+    notes: c.notes ?? '',
+  });
+
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Record (or edit) a consultation: patient banner, vitals, clinical notes,
+// prescription, tests, advice and follow-up -- the offline software's
+// "Record consultation" screen, plus what the web app already had.
 export function ConsultationPage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
-  const { clinic } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: existing } = useQuery({
+  const { data: existing, isFetched: existingLoaded } = useQuery({
     queryKey: ['consultation', appointmentId],
     queryFn: () => getConsultation(appointmentId!),
-    enabled: !!appointmentId,
   });
-
   const { data: appointment } = useQuery({
     queryKey: ['appointment', appointmentId],
     queryFn: () => getAppointment(appointmentId!),
-    enabled: !!appointmentId,
   });
-  const patient = appointment?.patient;
+  const patientId = appointment?.patientId;
+  const { data: patient } = useQuery({ queryKey: ['patient', patientId], queryFn: () => getPatient(patientId!), enabled: !!patientId });
+  const { data: records } = useQuery({
+    queryKey: ['patient-records', patientId],
+    queryFn: () => getPatientRecords(patientId!),
+    enabled: !!patientId,
+  });
+  const { data: suggestions } = useQuery({ queryKey: ['catalog-suggestions'], queryFn: getCatalogSuggestions });
 
-  const { data: dietPlans } = useQuery({
-    queryKey: ['diet-plans', patient?.id],
-    queryFn: () => listDietPlans(patient!.id),
-    enabled: !!patient,
-  });
+  const medicineOptions = useMemo(() => {
+    const map = new Map<string, { name: string; strength: string | null }>();
+    for (const m of suggestions?.medicines ?? []) map.set(m.strength ? `${m.name} (${m.strength})` : m.name, m);
+    return map;
+  }, [suggestions]);
 
-  // Pharmacy/lab/radiology catalogs only exist for a Tier 2+ clinic
-  // (the endpoints themselves 403 below that) -- same tier gate the Lab
-  // Tests Ordered / Radiology Ordered sections below already use.
-  const tierAllowsCatalogs = (clinic?.tier ?? 1) >= 2;
-  const { data: pharmacyItems } = useQuery({
-    queryKey: ['pharmacy-items'],
-    queryFn: listPharmacyItems,
-    enabled: tierAllowsCatalogs,
-  });
-  const { data: labCatalog } = useQuery({
-    queryKey: ['lab-catalog'],
-    queryFn: listLabCatalog,
-    enabled: tierAllowsCatalogs,
-  });
-  const { data: radiologyCatalog } = useQuery({
-    queryKey: ['radiology-catalog'],
-    queryFn: listRadiologyCatalog,
-    enabled: tierAllowsCatalogs,
-  });
-  const medicineNames = pharmacyItems?.map((i) => i.name) ?? [];
-  const labTestNames = labCatalog?.map((c) => c.name) ?? [];
-  const radiologyTestNames = radiologyCatalog?.map((c) => c.name) ?? [];
-
+  const [fee, setFee] = useState('');
   const [vitals, setVitals] = useState<Vitals>({});
+  const [chiefComplaint, setChiefComplaint] = useState('');
+  const [presentIllness, setPresentIllness] = useState('');
+  const [relevantHistory, setRelevantHistory] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
-  const [notes, setNotes] = useState('');
+  const [differentialDiagnosis, setDifferentialDiagnosis] = useState('');
+  const [advice, setAdvice] = useState('');
+  const [imagingAdvice, setImagingAdvice] = useState('');
+  const [doctorNotes, setDoctorNotes] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
-  const [prescriptions, setPrescriptions] = useState<PrescriptionInput[]>([]);
-  const [labTestsOrdered, setLabTestsOrdered] = useState<LabTestOrderInput[]>([]);
-  const [radiologyOrdered, setRadiologyOrdered] = useState<RadiologyTestOrderInput[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [labTests, setLabTests] = useState<LabTestOrderInput[]>([]);
+  const [radiology, setRadiology] = useState<RadiologyTestOrderInput[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
+    if (appointment) setFee(String(appointment.consultationFee));
+  }, [appointment]);
+
+  // Load a saved consultation once; a new one starts from the patient's
+  // baseline height/weight.
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (loaded || !existingLoaded) return;
     if (existing) {
       setVitals(existing.vitals ?? {});
+      setChiefComplaint(existing.chiefComplaint ?? '');
+      setPresentIllness(existing.presentIllness ?? '');
+      setRelevantHistory(existing.relevantHistory ?? '');
       setDiagnosis(existing.diagnosis ?? '');
-      setNotes(existing.notes ?? '');
+      setDifferentialDiagnosis(existing.differentialDiagnosis ?? '');
+      setAdvice(existing.notes ?? '');
+      setImagingAdvice(existing.imagingAdvice ?? '');
+      setDoctorNotes(existing.doctorNotes ?? '');
       setFollowUpDate(existing.followUpDate ?? '');
-      setPrescriptions(
-        existing.prescriptions.map((p) => ({
-          medicine: p.medicine,
-          dosage: p.dosage,
-          frequency: p.frequency,
-          durationDays: p.durationDays,
-          notes: p.notes ?? undefined,
-        })),
-      );
-      setLabTestsOrdered(
-        existing.labTestsOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? undefined })),
-      );
-      setRadiologyOrdered(
-        existing.radiologyOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? undefined })),
-      );
+      setRows(existing.prescriptions.map(fromSaved));
+      setLabTests(existing.labTestsOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? '' })));
+      setRadiology(existing.radiologyOrdered.map((o) => ({ testName: o.testName, notes: o.notes ?? '' })));
+      setLoaded(true);
+    } else if (patient) {
+      setVitals((v) => ({ heightCm: patient.heightCm ?? undefined, weightKg: patient.weightKg ?? undefined, ...v }));
+      setLoaded(true);
     }
-  }, [existing]);
+  }, [existing, existingLoaded, patient, loaded]);
 
-  const saveMutation = useMutation({
+  // The most recent earlier visit with a prescription, for "Repeat last".
+  const lastPrescription = useMemo(() => {
+    const earlier = (records?.appointments ?? [])
+      .filter((a) => a.id !== appointmentId && a.consultation?.prescriptions.length)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.tokenNumber - a.tokenNumber);
+    return earlier[0]?.consultation?.prescriptions ?? null;
+  }, [records, appointmentId]);
+
+  const save = useMutation({
     mutationFn: (complete: boolean) =>
       saveConsultation(appointmentId!, {
         vitals,
+        chiefComplaint,
+        presentIllness,
+        relevantHistory,
         diagnosis,
-        notes,
-        followUpDate: followUpDate || undefined,
-        prescriptions,
-        labTestsOrdered,
-        radiologyOrdered,
+        differentialDiagnosis,
+        notes: advice,
+        imagingAdvice,
+        doctorNotes,
+        followUpDate,
+        consultationFee: fee.trim() === '' ? undefined : Number(fee),
+        prescriptions: rows
+          .filter((r) => r.medicine.trim())
+          .map(({ key: _key, ...r }) => ({ ...r, strength: r.strength || null, frequency: r.frequency || undefined })),
+        labTestsOrdered: labTests.filter((o) => o.testName.trim()),
+        radiologyOrdered: radiology.filter((o) => o.testName.trim()),
         complete,
       }),
-    onSuccess: (_, complete) => {
+    onSuccess: (_saved, complete) => {
       queryClient.invalidateQueries({ queryKey: ['consultation', appointmentId] });
-      if (complete) navigate('/doctor');
+      queryClient.invalidateQueries({ queryKey: ['appointment', appointmentId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-records', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-billing', patientId] });
+      if (complete) navigate(`/patients/${patientId}?tab=consultations`);
+      else setMessage({ tone: 'ok', text: 'Saved.' });
     },
+    onError: (err: any) => setMessage({ tone: 'error', text: err.response?.data?.message ?? 'Could not save the consultation' }),
   });
 
-  function addLabTest() {
-    setLabTestsOrdered((prev) => [...prev, { testName: '' }]);
-  }
-
-  function updateLabTest(index: number, field: keyof LabTestOrderInput, value: string) {
-    setLabTestsOrdered((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
-  }
-
-  function removeLabTest(index: number) {
-    setLabTestsOrdered((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addRadiologyTest() {
-    setRadiologyOrdered((prev) => [...prev, { testName: '' }]);
-  }
-
-  function updateRadiologyTest(index: number, field: keyof RadiologyTestOrderInput, value: string) {
-    setRadiologyOrdered((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
-  }
-
-  function removeRadiologyTest(index: number) {
-    setRadiologyOrdered((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addPrescription() {
-    setPrescriptions((prev) => [...prev, { medicine: '', dosage: '', frequency: '', durationDays: 5 }]);
-  }
-
-  function updatePrescription(index: number, field: keyof PrescriptionInput, value: string | number) {
-    setPrescriptions((prev) =>
-      prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)),
-    );
-  }
-
-  function removePrescription(index: number) {
-    setPrescriptions((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  const [dietaryPreference, setDietaryPreference] = useState<DietaryPreference>('VEG');
-  const [allergies, setAllergies] = useState('');
-  const [localFoodNotes, setLocalFoodNotes] = useState('');
-  const [planText, setPlanText] = useState('');
-  const [whatsappStatus, setWhatsappStatus] = useState<string | null>(null);
-
-  const dietPlanMutation = useMutation({
-    mutationFn: () =>
-      createDietPlan({
-        patientId: patient!.id,
-        consultationId: existing?.id,
-        dietaryPreference,
-        allergies: allergies || undefined,
-        localFoodNotes: localFoodNotes || undefined,
-        planText,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['diet-plans', patient?.id] });
-      setAllergies('');
-      setLocalFoodNotes('');
-      setPlanText('');
-    },
-  });
-
-  const sendDietPlanMutation = useMutation({
-    mutationFn: (id: string) => sendDietPlanWhatsApp(id),
-    onSuccess: (notification) =>
-      setWhatsappStatus(
-        notification.status === 'SENT' ? 'Diet plan sent via WhatsApp.' : `Diet plan not sent: ${notification.error}`,
+  const sendSummary = useMutation({
+    mutationFn: () => sendVisitSummaryWhatsApp(appointmentId!),
+    onSuccess: (n) =>
+      setMessage(
+        n.status === 'SENT'
+          ? { tone: 'ok', text: 'Visit summary sent on WhatsApp.' }
+          : { tone: 'error', text: `Not sent: ${n.error}` },
       ),
+    onError: (err: any) => setMessage({ tone: 'error', text: err.response?.data?.message ?? 'Could not send' }),
   });
 
-  const sendPrescriptionMutation = useMutation({
-    mutationFn: () => sendPrescriptionWhatsApp(appointmentId!),
-    onSuccess: (notification) =>
-      setWhatsappStatus(
-        notification.status === 'SENT' ? 'Prescription sent via WhatsApp.' : `Prescription not sent: ${notification.error}`,
-      ),
-  });
+  const setVital = (key: keyof Vitals) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setVitals((v) => ({ ...v, [key]: e.target.value === '' ? undefined : Number(e.target.value) }));
+  const vitalInput = (key: keyof Vitals, label: string, step = 'any') => (
+    <Field label={label}>
+      <input type="number" step={step} inputMode="decimal" value={(vitals[key] as number | undefined) ?? ''} onChange={setVital(key)} className={small} data-testid={`vital-${key}`} />
+    </Field>
+  );
+
+  const updateRow = (key: number, patch: Partial<PrescriptionInput>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  const warnings = vitalsWarnings(vitals);
+  const computedBmi = bmi(vitals);
+  const saved = !!existing;
+
+  if (!appointment) return <div className="px-6 py-10 text-gray-500">Loading…</div>;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-semibold text-teal">Consultation</h1>
-
-      {patient && (
-        <PatientHistoryPanel
-          patientId={patient.id}
-          currentAppointmentId={appointmentId!}
-          currentConsultationId={existing?.id}
-        />
-      )}
-
-      <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-        <h2 className="mb-3 font-semibold text-gray-700">Vitals</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {(
-            [
-              ['bpSystolic', 'BP Systolic'],
-              ['bpDiastolic', 'BP Diastolic'],
-              ['pulse', 'Pulse'],
-              ['tempC', 'Temp (°C)'],
-              ['weightKg', 'Weight (kg)'],
-              ['heightCm', 'Height (cm)'],
-              ['spo2', 'SpO2 (%)'],
-            ] as [keyof Vitals, string][]
-          ).map(([key, label]) => (
-            <div key={key}>
-              <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
-              <input
-                type="number"
-                value={vitals[key] ?? ''}
-                onChange={(e) =>
-                  setVitals((v) => ({ ...v, [key]: e.target.value ? Number(e.target.value) : undefined }))
-                }
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-teal focus:outline-none"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-        <h2 className="mb-3 font-semibold text-gray-700">Diagnosis & Notes</h2>
-        <input
-          value={diagnosis}
-          onChange={(e) => setDiagnosis(e.target.value)}
-          placeholder="Diagnosis"
-          className="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
-        />
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Consultation notes"
-          rows={4}
-          className="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
-        />
-        <label className="mb-1 block text-xs font-medium text-gray-500">Follow-up date (optional)</label>
-        <input
-          type="date"
-          value={followUpDate}
-          onChange={(e) => setFollowUpDate(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
-        />
-      </section>
-
-      <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-700">Prescriptions</h2>
-          <button onClick={addPrescription} className="text-sm text-teal hover:underline">
-            + Add medicine
-          </button>
-        </div>
-        <div className="space-y-3">
-          {prescriptions.map((p, i) => (
-            <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-5">
-              <div className="sm:col-span-2">
-                <SuggestInput
-                  placeholder="Medicine"
-                  value={p.medicine}
-                  onChange={(v) => updatePrescription(i, 'medicine', v)}
-                  suggestions={medicineNames}
-                  testId={`prescription-medicine-${i}`}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                />
-              </div>
-              <input
-                placeholder="Dosage"
-                value={p.dosage}
-                onChange={(e) => updatePrescription(i, 'dosage', e.target.value)}
-                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-              />
-              <input
-                placeholder="Frequency"
-                value={p.frequency}
-                onChange={(e) => updatePrescription(i, 'frequency', e.target.value)}
-                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-              />
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  placeholder="Days"
-                  value={p.durationDays}
-                  onChange={(e) => updatePrescription(i, 'durationDays', Number(e.target.value))}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                />
-                <button onClick={() => removePrescription(i)} className="text-red-400 hover:text-red-600">
-                  ×
-                </button>
-              </div>
-            </div>
-          ))}
-          {prescriptions.length === 0 && <p className="text-sm text-gray-400">No prescriptions added.</p>}
-        </div>
-        {existing && existing.prescriptions.length > 0 && (
-          <div className="mt-3 border-t border-gray-100 pt-3">
-            <button
-              onClick={() => sendPrescriptionMutation.mutate()}
-              disabled={sendPrescriptionMutation.isPending || !patient?.whatsappOptIn}
-              className="rounded-md border border-teal px-3 py-1.5 text-sm text-teal hover:bg-teal-light disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Send saved prescription via WhatsApp
+    <div className="mx-auto max-w-5xl px-4 pb-28 pt-6 sm:px-6">
+      {/* Patient banner */}
+      <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm" data-testid="consult-banner">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{saved ? 'Edit consultation' : 'Record consultation'}</p>
+            <p className="text-lg font-semibold text-gray-900">
+              {appointment.patient?.name}{' '}
+              {patient && <span className="rounded-md bg-teal-light px-2 py-0.5 font-mono text-sm font-normal text-teal">{patient.patientCode}</span>}
+            </p>
+            <p className="text-sm text-gray-500">
+              {[
+                patient?.gender && GENDER_LABEL[patient.gender],
+                patient?.age != null && `${patient.age} yrs`,
+                patient?.bloodGroup,
+                patient?.phone,
+                `Visit on ${formatDate(appointment.date)}`,
+                appointment.doctor && doctorName(appointment.doctor.user.name),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setShowHistory((s) => !s)} className={btnSecondary}>
+              {showHistory ? 'Hide history' : 'Show history'}
             </button>
-            {!patient?.whatsappOptIn && (
-              <p className="mt-1 text-xs text-gray-400">Patient hasn't opted in to WhatsApp messages yet.</p>
+            {patientId && (
+              <Link to={`/patients/${patientId}`} className={btnSecondary}>
+                Profile
+              </Link>
+            )}
+          </div>
+        </div>
+        {(patient?.allergies || patient?.chronicDiseases) && (
+          <div className="mt-3 flex flex-wrap gap-2 text-sm">
+            {patient.allergies && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1 text-red-800" data-testid="consult-allergies">
+                <Icon name="alert" className="h-4 w-4" /> Allergies: {patient.allergies}
+              </span>
+            )}
+            {patient.chronicDiseases && (
+              <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-amber-900">Chronic: {patient.chronicDiseases}</span>
             )}
           </div>
         )}
       </section>
 
-      <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-        <h2 className="font-semibold text-gray-700">Prescription Scan</h2>
-        {existing?.id ? (
-          <AttachmentPanel category="PRESCRIPTION_SCAN" entityId={existing.id} label="Attached scans (e.g. a prescription the patient brought in)" />
-        ) : (
-          <p className="mt-2 text-sm text-gray-400">Save a draft first to attach a file.</p>
-        )}
-      </section>
+      {showHistory && patientId && (
+        <PatientHistoryPanel patientId={patientId} currentAppointmentId={appointmentId!} currentConsultationId={existing?.id} />
+      )}
 
-      <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-        <h2 className="mb-3 font-semibold text-gray-700">Diet Plan</h2>
-        {patient ? (
-          <>
-            {dietPlans && dietPlans.length > 0 && (
-              <div className="mb-4 space-y-3">
-                {dietPlans.map((plan) => (
-                  <div key={plan.id} className="rounded-md border border-gray-200 p-3">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                        {DIETARY_PREFERENCE_OPTIONS.find((o) => o.value === plan.dietaryPreference)?.label}
-                      </span>
-                      <span className="text-xs text-gray-400">{new Date(plan.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-sm text-gray-700">{plan.planText}</p>
-                    {plan.allergies && <p className="mt-1 text-xs text-gray-500">Allergies: {plan.allergies}</p>}
-                    {plan.localFoodNotes && <p className="text-xs text-gray-500">Local food notes: {plan.localFoodNotes}</p>}
-                    <button
-                      onClick={() => sendDietPlanMutation.mutate(plan.id)}
-                      disabled={sendDietPlanMutation.isPending || !patient.whatsappOptIn}
-                      className="mt-2 rounded-md border border-teal px-3 py-1 text-xs text-teal hover:bg-teal-light disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Send via WhatsApp
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {!patient.whatsappOptIn && (
-              <p className="mb-3 text-xs text-gray-400">Patient hasn't opted in to WhatsApp messages yet.</p>
-            )}
+      <div className="space-y-5">
+        <Card title="Visit details">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Field label="Date">
+              <input readOnly value={formatDate(appointment.date)} className={`${small} bg-gray-50`} />
+            </Field>
+            <Field label="Token">
+              <input readOnly value={`#${appointment.tokenNumber}`} className={`${small} bg-gray-50`} />
+            </Field>
+            <Field label="Doctor">
+              <input readOnly value={appointment.doctor ? doctorName(appointment.doctor.user.name) : ''} className={`${small} bg-gray-50`} />
+            </Field>
+            <Field label="Consultation fee (₹)" hint="Change for a discount or free review">
+              <input type="number" min={0} value={fee} onChange={(e) => setFee(e.target.value)} className={small} data-testid="consult-fee" />
+            </Field>
+          </div>
+        </Card>
 
-            <div className="space-y-3 rounded-md border border-gray-200 p-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Dietary preference</label>
+        <Card title="Vitals" subtitle="BMI is worked out from height and weight.">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {vitalInput('tempF', 'Temp (°F)', '0.1')}
+            {vitalInput('pulse', 'Pulse (bpm)')}
+            {vitalInput('bpSystolic', 'BP systolic')}
+            {vitalInput('bpDiastolic', 'BP diastolic')}
+            {vitalInput('respiratoryRate', 'Resp. rate (/min)')}
+            {vitalInput('spo2', 'SpO2 (%)')}
+            {vitalInput('heightCm', 'Height (cm)', '0.1')}
+            {vitalInput('weightKg', 'Weight (kg)', '0.1')}
+            <Field label="BMI">
+              <input readOnly value={computedBmi ?? ''} className={`${small} bg-gray-50`} data-testid="bmi" />
+            </Field>
+            <Field label="Blood sugar (mg/dL)">
+              <div className="flex gap-1">
+                <input type="number" value={vitals.bloodSugar ?? ''} onChange={setVital('bloodSugar')} className={`${small} min-w-0`} data-testid="vital-bloodSugar" />
                 <select
-                  value={dietaryPreference}
-                  onChange={(e) => setDietaryPreference(e.target.value as DietaryPreference)}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-teal focus:outline-none"
+                  aria-label="Blood sugar type"
+                  value={vitals.bloodSugarType ?? ''}
+                  onChange={(e) => setVitals((v) => ({ ...v, bloodSugarType: (e.target.value || undefined) as BloodSugarType | undefined }))}
+                  className={`${small} !w-auto px-1`}
                 >
-                  {DIETARY_PREFERENCE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
+                  <option value="">Type</option>
+                  <option value="FASTING">Fasting</option>
+                  <option value="PP">PP</option>
+                  <option value="RANDOM">Random</option>
                 </select>
               </div>
-              <input
-                value={allergies}
-                onChange={(e) => setAllergies(e.target.value)}
-                placeholder="Allergies (optional)"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-teal focus:outline-none"
-              />
-              <input
-                value={localFoodNotes}
-                onChange={(e) => setLocalFoodNotes(e.target.value)}
-                placeholder="Locally available food notes (optional)"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-teal focus:outline-none"
-              />
-              <textarea
-                value={planText}
-                onChange={(e) => setPlanText(e.target.value)}
-                placeholder="Diet plan / recommendation, informed by the patient's history, complaints and the fields above"
-                rows={3}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-teal focus:outline-none"
-              />
-              <button
-                onClick={() => dietPlanMutation.mutate()}
-                disabled={dietPlanMutation.isPending || !planText.trim()}
-                className="rounded-md bg-teal px-3 py-1.5 text-sm text-white hover:bg-teal-mid disabled:opacity-60"
-              >
-                Save diet plan
+            </Field>
+          </div>
+          {vitals.tempC != null && vitals.tempF == null && (
+            <p className="mt-2 text-xs text-gray-500">Recorded earlier as {vitals.tempC}°C.</p>
+          )}
+          {warnings.length > 0 && (
+            <ul className="mt-3 space-y-1 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" data-testid="vitals-warnings">
+              {warnings.map((w) => (
+                <li key={w} className="flex items-start gap-2">
+                  <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" /> {w}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Clinical notes">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Chief complaint" className="sm:col-span-2">
+              <textarea rows={2} value={chiefComplaint} onChange={(e) => setChiefComplaint(e.target.value)} className={inputClass} data-testid="chief-complaint" />
+            </Field>
+            <Field label="History of present illness">
+              <textarea rows={2} value={presentIllness} onChange={(e) => setPresentIllness(e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Relevant history">
+              <textarea rows={2} value={relevantHistory} onChange={(e) => setRelevantHistory(e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Diagnosis">
+              <input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} className={inputClass} data-testid="diagnosis" />
+            </Field>
+            <Field label="Differential diagnosis">
+              <input value={differentialDiagnosis} onChange={(e) => setDifferentialDiagnosis(e.target.value)} className={inputClass} />
+            </Field>
+          </div>
+        </Card>
+
+        <Card
+          title="Prescription"
+          actions={
+            <div className="flex flex-wrap gap-2">
+              {lastPrescription && (
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  onClick={() => setRows((rs) => [...rs.filter((r) => r.medicine.trim()), ...lastPrescription.map(fromSaved)])}
+                >
+                  Repeat last prescription
+                </button>
+              )}
+              <button type="button" onClick={() => setRows((rs) => [...rs, newRow()])} className={btnSecondary}>
+                <Icon name="plus" className="h-4 w-4" /> Add medicine
               </button>
             </div>
-          </>
-        ) : (
-          <p className="text-sm text-gray-400">Loading patient…</p>
-        )}
-        {whatsappStatus && <p className="mt-3 text-sm text-teal">{whatsappStatus}</p>}
-      </section>
-
-      {clinic && clinic.tier >= 2 && (
-        <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700">Lab Tests Ordered</h2>
-            <button onClick={addLabTest} className="text-sm text-teal hover:underline">
-              + Add test
-            </button>
-          </div>
-          <div className="space-y-3">
-            {labTestsOrdered.map((o, i) => (
-              <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-4">
-                <div className="sm:col-span-2">
-                  <SuggestInput
-                    placeholder="Test name"
-                    value={o.testName}
-                    onChange={(v) => updateLabTest(i, 'testName', v)}
-                    suggestions={labTestNames}
-                    testId={`lab-test-name-${i}`}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                  />
-                </div>
-                <input
-                  placeholder="Notes (optional)"
-                  value={o.notes ?? ''}
-                  onChange={(e) => updateLabTest(i, 'notes', e.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                />
-                <button onClick={() => removeLabTest(i)} className="text-red-400 hover:text-red-600">
-                  Remove
-                </button>
-              </div>
-            ))}
-            {labTestsOrdered.length === 0 && <p className="text-sm text-gray-400">No lab tests ordered.</p>}
-          </div>
-        </section>
-      )}
-
-      {clinic && clinic.tier >= 2 && (
-        <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700">Radiology Ordered</h2>
-            <button onClick={addRadiologyTest} className="text-sm text-teal hover:underline">
-              + Add test
-            </button>
-          </div>
-          <div className="space-y-3">
-            {radiologyOrdered.map((o, i) => (
-              <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-gray-200 p-3 sm:grid-cols-4">
-                <div className="sm:col-span-2">
-                  <SuggestInput
-                    placeholder="Test name (e.g. Chest X-Ray)"
-                    value={o.testName}
-                    onChange={(v) => updateRadiologyTest(i, 'testName', v)}
-                    suggestions={radiologyTestNames}
-                    testId={`radiology-test-name-${i}`}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                  />
-                </div>
-                <input
-                  placeholder="Notes (optional)"
-                  value={o.notes ?? ''}
-                  onChange={(e) => updateRadiologyTest(i, 'notes', e.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                />
-                <button onClick={() => removeRadiologyTest(i)} className="text-red-400 hover:text-red-600">
-                  Remove
-                </button>
-              </div>
-            ))}
-            {radiologyOrdered.length === 0 && <p className="text-sm text-gray-400">No radiology ordered.</p>}
-          </div>
-        </section>
-      )}
-
-      <div className="flex gap-3">
-        <button
-          onClick={() => saveMutation.mutate(false)}
-          disabled={saveMutation.isPending}
-          className="flex-1 rounded-md border border-teal py-2 font-medium text-teal hover:bg-teal-light disabled:opacity-60"
+          }
         >
-          Save draft
-        </button>
-        <button
-          onClick={() => saveMutation.mutate(true)}
-          disabled={saveMutation.isPending}
-          className="flex-1 rounded-md bg-teal py-2 font-medium text-white hover:bg-teal-mid disabled:opacity-60"
-        >
-          Complete consultation
-        </button>
+          {rows.length === 0 ? (
+            <p className="text-sm text-gray-500">No medicines added yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((r, i) => {
+                const total = totalToDispense(r);
+                const ticked = r.morning || r.afternoon || r.night;
+                return (
+                  <div key={r.key} className="rounded-xl border border-gray-200 p-3" data-testid="prescription-row">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-12">
+                      <div className="col-span-2 sm:col-span-4">
+                        <SuggestInput
+                          placeholder="Medicine"
+                          value={r.medicine}
+                          onChange={(v) => {
+                            const picked = medicineOptions.get(v);
+                            updateRow(r.key, picked ? { medicine: picked.name, strength: picked.strength ?? r.strength } : { medicine: v });
+                          }}
+                          suggestions={[...medicineOptions.keys()]}
+                          testId={`prescription-medicine-${i}`}
+                          className={small}
+                        />
+                      </div>
+                      <input placeholder="Strength" value={r.strength ?? ''} onChange={(e) => updateRow(r.key, { strength: e.target.value })} className={`${small} sm:col-span-2`} aria-label="Strength" />
+                      <input placeholder="Dose" value={r.dosage} onChange={(e) => updateRow(r.key, { dosage: e.target.value })} className={`${small} sm:col-span-1`} aria-label="Dose per time" title="Dose each time, e.g. 1, ½, 5 ml" />
+                      <div className="flex items-center gap-1 sm:col-span-2">
+                        <input
+                          type="number"
+                          min={1}
+                          value={r.durationDays}
+                          onChange={(e) => updateRow(r.key, { durationDays: Number(e.target.value) })}
+                          className={small}
+                          aria-label="Days"
+                        />
+                        <span className="text-xs text-gray-500">days</span>
+                      </div>
+                      <select
+                        value={r.foodTiming ?? ''}
+                        onChange={(e) => updateRow(r.key, { foodTiming: (e.target.value || null) as FoodTiming | null })}
+                        className={`${small} sm:col-span-3`}
+                        aria-label="Food timing"
+                      >
+                        <option value="">Food timing</option>
+                        {FOOD_TIMING_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                      {(['morning', 'afternoon', 'night'] as const).map((t) => (
+                        <label key={t} className="flex items-center gap-1.5 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={!!r[t]}
+                            onChange={(e) => updateRow(r.key, { [t]: e.target.checked })}
+                            className="h-4 w-4 accent-teal"
+                            data-testid={`rx-${t}-${i}`}
+                          />
+                          {t[0]!.toUpperCase() + t.slice(1)}
+                        </label>
+                      ))}
+                      {!ticked && (
+                        <input
+                          placeholder="or e.g. SOS, 1-1-1"
+                          value={r.frequency ?? ''}
+                          onChange={(e) => updateRow(r.key, { frequency: e.target.value })}
+                          className={`${small} !w-40`}
+                          aria-label="Frequency"
+                        />
+                      )}
+                      <input
+                        placeholder="Instructions (optional)"
+                        value={r.notes ?? ''}
+                        onChange={(e) => updateRow(r.key, { notes: e.target.value })}
+                        className={`${small} !w-auto min-w-[12rem] flex-1`}
+                        aria-label="Instructions"
+                      />
+                      <button type="button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} className="text-sm text-red-500 hover:text-red-700">
+                        Remove
+                      </button>
+                    </div>
+                    {r.medicine.trim() && (
+                      <p className="mt-2 text-xs text-gray-500" data-testid={`rx-total-${i}`}>
+                        {total != null ? (
+                          <>
+                            Total to dispense: <span className="font-semibold text-gray-800">{total}</span> × {r.medicine}
+                            {r.strength ? ` ${r.strength}` : ''}
+                          </>
+                        ) : (
+                          'Tick morning/afternoon/night, or give a frequency such as SOS.'
+                        )}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        <OrdersCard
+          title="Lab tests ordered"
+          empty="No tests ordered for this visit."
+          addLabel="Add test"
+          orders={labTests}
+          setOrders={setLabTests}
+          suggestions={suggestions?.labTests ?? []}
+          testIdPrefix="lab-test-name"
+        />
+        <OrdersCard
+          title="Radiology work prescribed"
+          empty="No radiology work prescribed for this visit."
+          addLabel="Add radiology work"
+          orders={radiology}
+          setOrders={setRadiology}
+          suggestions={suggestions?.radiology ?? []}
+          testIdPrefix="radiology-test-name"
+        />
+
+        <Card title="Advice & follow-up">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Advice" className="sm:col-span-2">
+              <textarea rows={3} value={advice} onChange={(e) => setAdvice(e.target.value)} className={inputClass} data-testid="advice" />
+            </Field>
+            <Field label="Ultrasound / imaging advice" className="sm:col-span-2">
+              <input value={imagingAdvice} onChange={(e) => setImagingAdvice(e.target.value)} className={inputClass} placeholder="e.g. USG Pelvis recommended" />
+            </Field>
+            <Field label="Follow-up date" hint="Reminders go out the day before and on the day">
+              <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className={inputClass} data-testid="follow-up" />
+              <span className="mt-2 flex flex-wrap gap-1.5">
+                {[
+                  ['3 days', 3],
+                  ['1 week', 7],
+                  ['2 weeks', 14],
+                  ['1 month', 30],
+                ].map(([label, days]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setFollowUpDate(addDays(days as number))}
+                    className="rounded-full border border-gray-300 px-2.5 py-0.5 text-xs text-gray-600 hover:border-teal hover:text-teal"
+                  >
+                    +{label}
+                  </button>
+                ))}
+                {followUpDate && (
+                  <button type="button" onClick={() => setFollowUpDate('')} className="px-1 text-xs text-gray-500 underline">
+                    clear
+                  </button>
+                )}
+              </span>
+            </Field>
+            <Field label="Doctor notes" hint="Private — never printed or shared with the patient">
+              <textarea rows={3} value={doctorNotes} onChange={(e) => setDoctorNotes(e.target.value)} className={`${inputClass} bg-amber-50/40`} />
+            </Field>
+          </div>
+        </Card>
+
+        <details className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <summary className="cursor-pointer font-semibold text-gray-900">Prescription scan &amp; diet plan</summary>
+          <div className="mt-4 space-y-5">
+            <div>
+              <h3 className="font-medium text-gray-800">Prescription scan</h3>
+              {existing?.id ? (
+                <AttachmentPanel category="PRESCRIPTION_SCAN" entityId={existing.id} label="Attached scans (e.g. a prescription the patient brought in)" />
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">Save first to attach a file.</p>
+              )}
+            </div>
+          </div>
+        </details>
+        <DietPlanSection patient={appointment.patient} consultationId={existing?.id} />
+      </div>
+
+      {/* Sticky actions */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:left-64">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2">
+          {message && (
+            <p className={`mr-auto text-sm ${message.tone === 'ok' ? 'text-teal' : 'text-red-600'}`} role="status" data-testid="consult-message">
+              {message.text}
+            </p>
+          )}
+          {saved && (
+            <>
+              <Link to={`/visits/${appointmentId}/print`} className={btnSecondary}>
+                Print summary
+              </Link>
+              <button
+                type="button"
+                onClick={() => sendSummary.mutate()}
+                disabled={sendSummary.isPending || !patient?.whatsappOptIn}
+                title={patient?.whatsappOptIn ? undefined : "The patient hasn't agreed to WhatsApp messages"}
+                className={btnSecondary}
+              >
+                Send on WhatsApp
+              </button>
+            </>
+          )}
+          <button type="button" onClick={() => save.mutate(false)} disabled={save.isPending} className={`${btnSecondary} ${message ? '' : 'ml-auto'}`}>
+            Save draft
+          </button>
+          <button type="button" onClick={() => save.mutate(true)} disabled={save.isPending} className={btnPrimary} data-testid="save-consultation">
+            <Icon name="check" className="h-4 w-4" /> Save consultation
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function OrdersCard({
+  title,
+  empty,
+  addLabel,
+  orders,
+  setOrders,
+  suggestions,
+  testIdPrefix,
+}: {
+  title: string;
+  empty: string;
+  addLabel: string;
+  orders: LabTestOrderInput[];
+  setOrders: React.Dispatch<React.SetStateAction<LabTestOrderInput[]>>;
+  suggestions: string[];
+  testIdPrefix: string;
+}) {
+  const update = (i: number, patch: Partial<LabTestOrderInput>) => setOrders((os) => os.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+  return (
+    <Card
+      title={title}
+      actions={
+        <button type="button" onClick={() => setOrders((os) => [...os, { testName: '', notes: '' }])} className={btnSecondary}>
+          <Icon name="plus" className="h-4 w-4" /> {addLabel}
+        </button>
+      }
+    >
+      {orders.length === 0 ? (
+        <p className="text-sm text-gray-500">{empty}</p>
+      ) : (
+        <div className="space-y-2">
+          {orders.map((o, i) => (
+            <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+              <div className="sm:col-span-5">
+                <SuggestInput
+                  placeholder="Test name"
+                  value={o.testName}
+                  onChange={(v) => update(i, { testName: v })}
+                  suggestions={suggestions}
+                  testId={`${testIdPrefix}-${i}`}
+                  className={small}
+                />
+              </div>
+              <input placeholder="Notes (optional)" value={o.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value })} className={`${small} sm:col-span-6`} />
+              <button type="button" onClick={() => setOrders((os) => os.filter((_, j) => j !== i))} className="text-sm text-red-500 hover:text-red-700 sm:col-span-1">
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

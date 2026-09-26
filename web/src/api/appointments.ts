@@ -3,6 +3,7 @@ import type {
   Appointment,
   AppointmentStatus,
   BookAppointmentRequest,
+  StartVisitRequest,
   WalkInRequest,
 } from '@opd/shared';
 
@@ -40,5 +41,11 @@ export async function updateAppointmentStatus(id: string, status: AppointmentSta
 
 export async function registerWalkIn(data: WalkInRequest): Promise<Appointment> {
   const res = await apiClient.post<Appointment>('/appointments/walk-in', data);
+  return res.data;
+}
+
+// A consultation straight from the patient's profile (no token first).
+export async function startVisit(data: StartVisitRequest): Promise<Appointment> {
+  const res = await apiClient.post<Appointment>('/appointments/visit', data);
   return res.data;
 }

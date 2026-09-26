@@ -5,3 +5,14 @@
 body {
   @apply bg-teal-light/40 text-gray-900;
 }
+
+/* The printable visit summary: an A4 page with its own margins. */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  body {
+    background: white;
+  }
+}

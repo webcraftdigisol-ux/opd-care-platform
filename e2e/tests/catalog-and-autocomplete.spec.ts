@@ -64,7 +64,7 @@ test.describe('Medicine/test autocomplete while prescribing', () => {
     await applySession(page, doctorSession);
     await page.goto(`/doctor/consult/${appointment.id}`);
 
-    await page.getByRole('button', { name: '+ Add medicine' }).click();
+    await page.getByRole('button', { name: 'Add medicine' }).click();
     const medicineInput = page.getByTestId('prescription-medicine-0');
     await medicineInput.fill('Am');
 

@@ -39,7 +39,3 @@ export function ageFromDob(dob: string, now = new Date()): number | null {
   return years >= 0 ? years : null;
 }
 
-// "Dr. Rao" from "Rao" or "Dr. Rao" -- some clinics type the title into the name.
-export function doctorName(name: string): string {
-  return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
-}

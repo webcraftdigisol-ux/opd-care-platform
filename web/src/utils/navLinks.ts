@@ -15,7 +15,8 @@ export interface NavSection {
 // The sidebar, per role. Admin can do everything, so admin gets every
 // screen the clinic's tier includes; every other role sees only its own.
 // Tier gating mirrors the server's: pharmacy/lab/radiology need Tier 2+,
-// IPD needs Tier 3.
+// IPD needs Tier 3. From Tier 2 the departments' own lists replace the
+// Doctor's Catalogue -- doctors prescribe from what the pharmacy stocks.
 export function navSectionsFor(role: Role, tier: number): NavSection[] {
   const tier2 = tier >= 2;
   const tier3 = tier >= 3;
@@ -27,7 +28,7 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
   const wards: NavLink = { to: '/admin/ipd/wards', label: 'Wards', icon: 'building' };
   const reports: NavLink = { to: '/admin/reports', label: 'Reports', icon: 'chart' };
   const appointments: NavLink = { to: '/appointments', label: 'Appointments', icon: 'calendar' };
-  const catalogue: NavLink = { to: '/catalogue', label: "Doctor's Catalogue", icon: 'book' };
+  const catalogue: NavLink[] = tier2 ? [] : [{ to: '/catalogue', label: "Doctor's Catalogue", icon: 'book' }];
 
   switch (role) {
     case 'ADMIN':
@@ -40,20 +41,30 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
             findPatient,
             { to: '/reception', label: "Today's queue", icon: 'queue' },
             walkIn,
-            catalogue,
+            ...catalogue,
           ],
         },
         ...(tier2
           ? [
               {
-                title: 'Services',
+                title: 'Pharmacy',
                 links: [
                   { to: '/pharmacy', label: 'Pharmacy counter', icon: 'pill' as const },
-                  { to: '/admin/pharmacy', label: 'Medicine Catalog', icon: 'book' as const },
+                  { to: '/pharmacy/settings', label: 'Medicine list', icon: 'book' as const },
+                ],
+              },
+              {
+                title: 'Laboratory',
+                links: [
                   { to: '/lab', label: 'Lab counter', icon: 'flask' as const },
-                  { to: '/admin/lab', label: 'Lab test catalog', icon: 'book' as const },
+                  { to: '/lab/settings', label: 'Lab test list', icon: 'book' as const },
+                ],
+              },
+              {
+                title: 'Radiology',
+                links: [
                   { to: '/radiology', label: 'Radiology counter', icon: 'scan' as const },
-                  { to: '/admin/radiology', label: 'Radiology catalog', icon: 'book' as const },
+                  { to: '/radiology/settings', label: 'Radiology list', icon: 'book' as const },
                 ],
               },
             ]
@@ -86,7 +97,7 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
             appointments,
             findPatient,
             newPatient,
-            catalogue,
+            ...catalogue,
             ...(tier3 ? [inPatients] : []),
             reports,
           ],
@@ -108,8 +119,9 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
       return [
         {
           links: [
-            { to: '/pharmacy', label: 'Counter', icon: 'pill' },
-            { to: '/admin/pharmacy', label: 'Medicine Catalog', icon: 'book' },
+            { to: '/pharmacy', label: 'Patients', icon: 'pill' },
+            { to: '/pharmacy/settings', label: 'Settings', icon: 'book' },
+            reports,
           ],
         },
       ];
@@ -117,8 +129,9 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
       return [
         {
           links: [
-            { to: '/lab', label: 'Counter', icon: 'flask' },
-            { to: '/admin/lab', label: 'Test Catalog', icon: 'book' },
+            { to: '/lab', label: 'Patients', icon: 'flask' },
+            { to: '/lab/settings', label: 'Settings', icon: 'book' },
+            reports,
           ],
         },
       ];
@@ -126,8 +139,9 @@ export function navSectionsFor(role: Role, tier: number): NavSection[] {
       return [
         {
           links: [
-            { to: '/radiology', label: 'Counter', icon: 'scan' },
-            { to: '/admin/radiology', label: 'Test Catalog', icon: 'book' },
+            { to: '/radiology', label: 'Patients', icon: 'scan' },
+            { to: '/radiology/settings', label: 'Settings', icon: 'book' },
+            reports,
           ],
         },
       ];

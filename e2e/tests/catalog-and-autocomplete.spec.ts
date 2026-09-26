@@ -18,31 +18,32 @@ test.describe('Medicine catalog management', () => {
     await page.goto('/pharmacy');
     // Reachable via the nav link, not just a direct URL -- this is the
     // widened role access, not just a route that happens to accept the role.
-    await page.getByRole('link', { name: 'Medicine Catalog' }).click();
-    await expect(page).toHaveURL('/admin/pharmacy');
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await expect(page).toHaveURL('/pharmacy/settings');
 
-    await page.getByPlaceholder('Medicine name').fill('Azithromycin 500mg');
-    await page.getByPlaceholder('Brand (optional)').fill('Zithrox');
-    await page.getByPlaceholder('Price / unit').fill('12');
-    await page.getByPlaceholder('Cost / unit').fill('8');
-    await page.getByPlaceholder('Stock (units)').fill('40');
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByTestId('toggle-add').click();
+    await page.getByTestId('med-name').fill('Azithromycin');
+    await page.getByTestId('med-strength').fill('500 mg');
+    await page.getByTestId('med-brand').fill('Zithrox');
+    await page.getByTestId('med-cost').fill('8');
+    await page.getByTestId('med-mrp').fill('12');
+    await page.getByTestId('save-medicine').click();
 
-    const row = page.locator('tr', { hasText: 'Azithromycin 500mg' });
+    const row = page.getByTestId('med-row').filter({ hasText: 'Azithromycin' });
+    await expect(row).toContainText('500 mg');
     await expect(row).toContainText('Zithrox');
     await expect(row).toContainText('₹12.00');
 
-    await row.getByRole('button', { name: 'Edit' }).click();
-    const editingRow = page.getByTestId('pharmacy-item-editing-row');
-    await editingRow.locator('input').nth(1).fill('Azithral');
-    await editingRow.getByRole('button', { name: 'Save' }).click();
+    await row.getByRole('button', { name: 'Edit Zithrox' }).click();
+    await page.getByTestId('edit-brand').fill('Azithral 500');
+    await page.getByTestId('save-edit').click();
 
-    const updatedRow = page.locator('tr', { hasText: 'Azithromycin 500mg' });
-    await expect(updatedRow).toContainText('Azithral');
+    const updatedRow = page.getByTestId('med-row').filter({ hasText: 'Azithromycin' });
+    await expect(updatedRow).toContainText('Azithral 500');
 
     page.once('dialog', (dialog) => dialog.accept());
-    await updatedRow.getByRole('button', { name: 'Delete' }).click();
-    await expect(page.locator('tr', { hasText: 'Azithromycin 500mg' })).toHaveCount(0);
+    await updatedRow.getByRole('button', { name: 'Remove Azithral 500' }).click();
+    await expect(page.getByTestId('med-row').filter({ hasText: 'Azithromycin' })).toHaveCount(0);
   });
 });
 

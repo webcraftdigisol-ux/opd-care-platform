@@ -511,7 +511,10 @@ export interface UpsertScheduleRequest {
 
 export interface PharmacyItem {
   id: string;
+  // Generic / composition name ("Paracetamol"); with strength it decides
+  // which brands can stand in for each other.
   name: string;
+  strength: string | null;
   brand: string | null;
   unitsPerStrip: number | null;
   pricePerUnit: number;
@@ -521,28 +524,13 @@ export interface PharmacyItem {
 
 export interface UpsertPharmacyItemRequest {
   name: string;
+  strength?: string | null;
   brand?: string | null;
   unitsPerStrip?: number | null;
+  // MRP per unit; 0 = not priced yet.
   pricePerUnit: number;
   costPricePerUnit: number;
-  stockUnits: number;
-}
-
-// A prescription line from a patient's visit, annotated with a best-effort
-// catalog match so the counter can pre-fill quantity/price while still
-// allowing free-text entry when nothing matches.
-export interface PendingPharmacyLine {
-  prescriptionId: string;
-  appointmentId: string;
-  appointmentDate: string;
-  medicine: string;
-  dosage: string;
-  frequency: string;
-  durationDays: number;
-  matchedItem: PharmacyItem | null;
-  suggestedQuantity: number;
-  suggestedUnitPrice: number;
-  alreadyDispensed: boolean;
+  stockUnits?: number;
 }
 
 export interface PharmacySaleItemInput {
@@ -565,6 +553,8 @@ export interface PharmacySaleItem {
   prescriptionId: string | null;
   itemId: string | null;
   medicineName: string;
+  // What the doctor prescribed, when something else was dispensed.
+  substitutedFor: string | null;
   quantity: number;
   unitPrice: number;
   lineTotal: number;
@@ -598,17 +588,6 @@ export interface UpsertLabTestCatalogRequest {
   price: number;
 }
 
-export interface PendingLabLine {
-  orderId: string;
-  appointmentId: string;
-  appointmentDate: string;
-  testName: string;
-  notes: string | null;
-  matchedTest: LabTestCatalogEntry | null;
-  suggestedPrice: number;
-  alreadyResulted: boolean;
-}
-
 export interface LabResultItemInput {
   orderId?: string;
   catalogItemId?: string;
@@ -629,6 +608,7 @@ export interface LabResultItem {
   orderId: string | null;
   catalogItemId: string | null;
   testName: string;
+  substitutedFor: string | null;
   resultText: string | null;
   price: number;
 }
@@ -662,17 +642,6 @@ export interface UpsertRadiologyTestCatalogRequest {
   price: number;
 }
 
-export interface PendingRadiologyLine {
-  orderId: string;
-  appointmentId: string;
-  appointmentDate: string;
-  testName: string;
-  notes: string | null;
-  matchedTest: RadiologyTestCatalogEntry | null;
-  suggestedPrice: number;
-  alreadyResulted: boolean;
-}
-
 export interface RadiologyResultItemInput {
   orderId?: string;
   catalogItemId?: string;
@@ -693,6 +662,7 @@ export interface RadiologyResultItem {
   orderId: string | null;
   catalogItemId: string | null;
   testName: string;
+  substitutedFor: string | null;
   resultText: string | null;
   price: number;
 }
@@ -710,6 +680,171 @@ export interface RadiologyInvoice {
   total: number;
   createdAt: string;
   items: RadiologyResultItem[];
+}
+
+// ---- Department counters (Tier 2+): pharmacy, lab, radiology ----
+
+export type Department = 'PHARMACY' | 'LAB' | 'RADIOLOGY';
+
+// Who the counter is serving, as shown in its header and queue.
+export interface DeptPatient {
+  id: string;
+  name: string;
+  patientCode: string | null;
+  gender: Gender | null;
+  age: number | null;
+  phone: string | null;
+}
+
+// PENDING: still to do here; DONE: dispensed / done in-house (possibly as
+// a substitute); SKIPPED: marked as not being done here.
+export type OrderLineStatus = 'PENDING' | 'DONE' | 'SKIPPED';
+
+// A patient waiting at a counter: a visit with orders not yet done.
+export interface DeptQueueEntry {
+  patient: DeptPatient;
+  appointmentId: string;
+  visitDate: string; // "YYYY-MM-DD"
+  doctorName: string;
+  pending: number;
+  total: number;
+  // The pending items' names, for a one-line preview.
+  items: string[];
+}
+
+export interface PharmacyOrderLine {
+  prescriptionId: string;
+  medicine: string;
+  strength: string | null;
+  brand: string | null;
+  // "Dolo 650 (Paracetamol 650 mg)" -- as the doctor wrote it.
+  label: string;
+  dosage: string;
+  frequency: string;
+  durationDays: number;
+  foodTiming: string | null;
+  notes: string | null;
+  status: OrderLineStatus;
+  skipReason: string | null;
+  dispensed: { saleId: string; medicineName: string; quantity: number; lineTotal: number; substitutedFor: string | null }[];
+  suggestedQuantity: number;
+  // The product to dispense by default: the prescribed brand if stocked,
+  // else another brand of the same composition (in stock first).
+  match: PharmacyItem | null;
+  // Every stocked product of the same composition (name + strength).
+  substitutes: PharmacyItem[];
+}
+
+export interface TestOrderLine {
+  orderId: string;
+  testName: string;
+  notes: string | null;
+  status: OrderLineStatus;
+  skipReason: string | null;
+  done: { invoiceId: string; itemId: string; testName: string; price: number; resultText: string | null }[];
+  match: LabTestCatalogEntry | null;
+}
+
+export interface DeptVisit<L> {
+  appointmentId: string;
+  consultationId: string;
+  date: string; // "YYYY-MM-DD"
+  doctorName: string;
+  diagnosis: string | null;
+  lines: L[];
+}
+
+export interface PharmacyPatientOrders {
+  patient: DeptPatient;
+  visits: DeptVisit<PharmacyOrderLine>[];
+  sales: PharmacySale[];
+}
+
+export interface TestPatientOrders {
+  patient: DeptPatient;
+  visits: DeptVisit<TestOrderLine>[];
+  invoices: LabInvoice[];
+}
+
+export interface SkipOrderRequest {
+  reason?: string;
+}
+
+// A printable receipt for any department bill.
+export interface Receipt {
+  billType: Department;
+  billId: string;
+  receiptNo: string;
+  createdAt: string;
+  clinic: { name: string; address: string | null; phone: string | null };
+  patient: DeptPatient;
+  doctorName: string | null;
+  preparedBy: string | null;
+  lines: { description: string; detail: string | null; quantity: number; unitPrice: number; amount: number }[];
+  subtotal: number;
+  taxPercent: number;
+  taxAmount: number;
+  total: number;
+  paid: number;
+  balance: number;
+  payments: { method: PaymentMethod; amount: number; paidAt: string }[];
+}
+
+// ---- Orders vs in-house report ----
+
+export type OrderReportStatus = 'IN_HOUSE' | 'SUBSTITUTED' | 'NOT_DONE' | 'PENDING';
+
+export interface OrdersReportRow {
+  date: string; // visit day, "YYYY-MM-DD"
+  department: Department;
+  patientId: string | null;
+  patientName: string;
+  patientCode: string | null;
+  doctorId: string;
+  doctorName: string;
+  ordered: string;
+  status: OrderReportStatus;
+  // What was actually dispensed or done, when in-house.
+  doneAs: string | null;
+  quantity: number | null;
+  amount: number;
+  note: string | null;
+}
+
+export interface OrdersReportSummary {
+  department: Department;
+  ordered: number;
+  inHouse: number; // includes substituted
+  substituted: number;
+  notDone: number;
+  pending: number;
+  revenue: number;
+}
+
+export interface OrdersReportItem {
+  department: Department;
+  name: string;
+  ordered: number;
+  inHouse: number;
+  revenue: number;
+}
+
+export interface OrdersReportDoctor {
+  doctorId: string;
+  doctorName: string;
+  department: Department;
+  ordered: number;
+  inHouse: number;
+  revenue: number;
+}
+
+export interface OrdersReport {
+  from: string;
+  to: string;
+  summary: OrdersReportSummary[];
+  byItem: OrdersReportItem[];
+  byDoctor: OrdersReportDoctor[];
+  rows: OrdersReportRow[];
 }
 
 // ---- Patient record ----

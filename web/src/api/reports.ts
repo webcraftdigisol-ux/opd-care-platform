@@ -1,5 +1,14 @@
 import { apiClient } from './client';
-import type { BillType, DailyActivityReport, FinancialReport, FollowUpReminderResult, FollowUpsReport, TransactionsReport } from '@opd/shared';
+import type {
+  BillType,
+  DailyActivityReport,
+  Department,
+  FinancialReport,
+  FollowUpReminderResult,
+  FollowUpsReport,
+  OrdersReport,
+  TransactionsReport,
+} from '@opd/shared';
 
 export async function getFinancialReport(from?: string, to?: string): Promise<FinancialReport> {
   const res = await apiClient.get<FinancialReport>('/reports/financial', { params: { from, to } });
@@ -28,6 +37,13 @@ export async function sendFollowUpReminder(consultationId: string): Promise<Foll
 export async function getTransactionsReport(q: { from: string; to: string; doctorId?: string; types: BillType[] }): Promise<TransactionsReport> {
   const res = await apiClient.get<TransactionsReport>('/reports/transactions', {
     params: { from: q.from, to: q.to, doctorId: q.doctorId, types: q.types.join(',') },
+  });
+  return res.data;
+}
+
+export async function getOrdersReport(q: { from: string; to: string; doctorId?: string; departments?: Department[] }): Promise<OrdersReport> {
+  const res = await apiClient.get<OrdersReport>('/reports/orders', {
+    params: { from: q.from, to: q.to, doctorId: q.doctorId, departments: q.departments?.join(',') },
   });
   return res.data;
 }

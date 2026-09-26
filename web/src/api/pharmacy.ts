@@ -1,7 +1,6 @@
 import { apiClient } from './client';
 import type {
   CreatePharmacySaleRequest,
-  PendingPharmacyLine,
   PharmacyItem,
   PharmacySale,
   UpsertPharmacyItemRequest,
@@ -27,11 +26,6 @@ export async function updatePharmacyItem(
 
 export async function deletePharmacyItem(id: string): Promise<void> {
   await apiClient.delete(`/pharmacy/items/${id}`);
-}
-
-export async function getPendingPharmacyLines(patientId: string): Promise<PendingPharmacyLine[]> {
-  const res = await apiClient.get<PendingPharmacyLine[]>(`/pharmacy/patients/${patientId}/pending`);
-  return res.data;
 }
 
 export async function createPharmacySale(data: CreatePharmacySaleRequest): Promise<PharmacySale> {

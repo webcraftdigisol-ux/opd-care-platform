@@ -39,15 +39,19 @@ deploy/   PM2/Nginx config + the CD GitHub Actions workflow (see CI/CD below)
 - **Doctor** — see today's queue ordered by token, check patients in, record vitals/diagnosis/notes/prescriptions/lab test orders. Web.
 - **Admin** — full staff/doctor management, all front-desk and in-patient actions, manages pharmacy inventory & lab/radiology catalogs, sees every report. Web.
 - **Receptionist** — the front-desk subset of Admin: register walk-in patients and view/check in the day's appointments (`/reception`). Cannot manage doctors, staff, catalogs, or see any clinical/financial data — deliberately excluded from patient records for privacy, since front desk only needs appointment/demographic info, not diagnoses or results.
-- **Pharmacist** (Tier 2+) — counter workflow: search patient → see prescriptions from their visits, auto-matched to inventory with quantity/price pre-filled → confirm or edit → receipt, with stock decremented automatically. Web.
-- **Lab Technician** (Tier 2+) — same pattern for doctor-ordered lab tests: auto-matched to the priced catalog, record results, receipt. Web.
-- **Radiology Technician** (Tier 2+) — same pattern again for doctor-ordered radiology/imaging tests (X-Ray, ultrasound, CT, MRI, etc.): auto-matched to the priced catalog, record results, receipt. Web.
+- **Pharmacist** (Tier 2+) — counter workflow (`/pharmacy`): a "waiting" list of patients with medicines still to dispense from the last week's visits, or search by name, mobile or Patient ID → the patient's page shows the doctor's prescriptions visit by visit, each line pre-filled with the prescribed brand (or, if it's out, another brand of the same composition — or any other medicine), quantity from the dosing and MRP from the medicine list → tick what's handed over, **Dispense & create receipt** → printable receipt, payment. A line not dispensed here is marked with a reason ("Not in stock", "Patient declined"…). **Settings** (`/pharmacy/settings`) is the medicine list: generic name, strength, brand, cost and MRP per unit, optional stock; the standard list (the Doctor's Catalogue's ~800 brands) loads in one click, unpriced. **Reports**: pharmacy revenue and prescribed-vs-dispensed, CSV export. Web.
+- **Lab Technician** (Tier 2+) — the same pattern for doctor-ordered lab tests (`/lab`): do the test under the lab's own name when the doctor's wording differs, mark done → receipt; enter results and attach the report file then or later. Settings: the lab's test list and prices. Web.
+- **Radiology Technician** (Tier 2+) — the same again for radiology/imaging (`/radiology`), with a DICOM slot next to the report file. Web.
 - **Nurse** (Tier 3+) — ward-floor clinical logging on an admission: vitals, medications given. Can view admissions/patient records for clinical continuity, but cannot admit, discharge, transfer beds, or see any billing figure — the admission detail page hides those sections and the server independently rejects the underlying requests.
 - **Head Nurse** (Tier 3+) — everything a Nurse can do, plus bed/ward management: transfer a patient between beds, mark a bed under maintenance, and view (read-only) the bill preview and final bill. Admission and discharge — the two actions with real financial/legal weight — stay Admin/Doctor only even for Head Nurse.
 
 Admins (and doctors, for the follow-ups view and in-patient management) also get:
-- A **Reports** page: a financial report covering Pharmacy, Lab, and
-  Radiology (Actual vs. Total ordered — Tier 2+), a daily OPD activity report, and a follow-ups-due
+- A **Reports** page: revenue (every bill, billed vs collected — all
+  together or Consultation / Pharmacy / Laboratory / Radiology on their
+  own), **Prescribed vs in-house** (Tier 2+: what the doctor prescribed and
+  ordered in a date range vs what the clinic's own pharmacy, lab and
+  radiology then did — by department, item, doctor and line, substitutes
+  counted; a doctor sees their own), a daily OPD activity report, and a follow-ups-due
   dashboard (overdue / due today / due this week) with a "mark contacted"
   action, driven by an optional follow-up date doctors can set on a
   consultation.
@@ -84,17 +88,22 @@ same-day walk-ins falling after them by booking order.
 ## Medicine/Test Catalogs & Autocomplete
 
 Each Tier 2+ clinic keeps its own exhaustive lists of medicines
-(`PharmacyItem`: name, an optional `brand`, packaging, price/unit, cost/unit,
-stock), lab tests (`LabTestCatalog`: name, price), and radiology tests
+(`PharmacyItem`: generic name, `strength`, `brand`, packaging, MRP/unit,
+cost/unit, optional stock — one row per brand, and brands sharing a name +
+strength are substitutes for each other at the counter), lab tests
+(`LabTestCatalog`: name, price), and radiology tests
 (`RadiologyCatalog`: name, price) — not a shared cross-clinic drug database,
 since prices, stock, and what a given clinic actually stocks are all
 clinic-specific. Full CRUD (add, edit every field, delete) is available to
 Admin **and** the matching counter-staff role for that catalog — Pharmacist
 for medicines, Lab Technician for lab tests, Radiology Technician for
-radiology tests — at `/admin/pharmacy`, `/admin/lab`, `/admin/radiology`
-(reachable from a **Medicine Catalog**/**Test Catalog** nav link for that
-staff role, not just Admin's nav, which is what actually makes this usable
-day-to-day rather than a page only an Admin happens to be able to reach).
+radiology tests — at `/pharmacy/settings`, `/lab/settings`, `/radiology/settings`
+(each counter role's **Settings** link; Admin gets them all). From Tier 2
+these lists replace the Doctor's Catalogue: doctors prescribe and order
+from what the departments actually offer. **Load standard list** adds the
+Doctor's Catalogue's generics/brands, lab tests and imaging (plus anything
+the clinic's doctors added there) unpriced, skipping what's already listed;
+a price of 0 means "not priced yet" and is flagged at the counter.
 Deleting a catalog entry always succeeds, even if it's been sold/ordered
 before: `PharmacySaleItem.itemId`/`LabResultItem.catalogItemId`/
 `RadiologyResultItem.catalogItemId` are all `ON DELETE SET NULL`, and every
@@ -403,9 +412,8 @@ upload which category mirrors exactly who already produces that content
 elsewhere (Lab Technician for lab reports, Radiology Technician for
 radiology reports and DICOM images, a doctor for a prescription scan
 attached to their own consultation); reading is broader — any clinic
-staff member, plus the patient themself for their own files. A
-`LabCounterPage`/
-`RadiologyCounterPage` upload happens right after confirming that receipt;
+staff member, plus the patient themself for their own files. A lab/radiology
+report upload sits with that bill's results on the patient's counter page;
 a prescription scan attaches to a consultation once it's been saved at
 least once (a fresh, never-saved consultation has no id yet to attach to).
 Patients see everything attached to them in one place on their **My Medical

@@ -85,7 +85,7 @@ export async function createUser(
 
 export async function createDoctor(
   clinicId: string,
-  opts: { email?: string; password?: string; consultationFee?: number } = {},
+  opts: { email?: string; password?: string; consultationFee?: number; name?: string } = {},
 ) {
   const { user, password } = await createUser(clinicId, 'DOCTOR', opts);
   const doctorProfile = await prisma.doctorProfile.create({

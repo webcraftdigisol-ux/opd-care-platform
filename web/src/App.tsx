@@ -22,6 +22,7 @@ import { PharmacySettingsPage } from './pages/PharmacySettingsPage';
 import { TestPatientPage } from './pages/TestPatientPage';
 import { TestSettingsPage } from './pages/TestSettingsPage';
 import { ReceiptPage } from './pages/ReceiptPage';
+import { DeptReportPage } from './pages/DeptReportPage';
 import { ConsentPrintPage } from './pages/ConsentPrintPage';
 import { CertificatePrintPage } from './pages/CertificatePrintPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -297,6 +298,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/pharmacy/report"
+          element={
+            <ProtectedRoute roles={['PHARMACIST', 'ADMIN']}>
+              <DeptReportPage key="PHARMACY" dept="PHARMACY" />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/admin/pharmacy" element={<Navigate to="/pharmacy/settings" replace />} />
         <Route
           path="/lab"
@@ -322,6 +331,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/lab/report"
+          element={
+            <ProtectedRoute roles={['LAB_TECHNICIAN', 'ADMIN']}>
+              <DeptReportPage key="LAB" dept="LAB" />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/admin/lab" element={<Navigate to="/lab/settings" replace />} />
         <Route
           path="/radiology"
@@ -344,6 +361,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
               <TestSettingsPage key="radiology" dept="radiology" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/radiology/report"
+          element={
+            <ProtectedRoute roles={['RADIOLOGY_TECHNICIAN', 'ADMIN']}>
+              <DeptReportPage key="RADIOLOGY" dept="RADIOLOGY" />
             </ProtectedRoute>
           }
         />

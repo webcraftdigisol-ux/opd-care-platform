@@ -36,22 +36,27 @@ deploy/   PM2/Nginx config + the CD GitHub Actions workflow (see CI/CD below)
 ## Roles
 
 - **Patient** — register/login under their clinic, book appointments, see live queue position (token number), view visit history, prescriptions, pharmacy purchases & lab results. Web + mobile.
-- **Doctor** — see today's queue ordered by token, check patients in, record vitals/diagnosis/notes/prescriptions/lab test orders. Web.
+- **Doctor** — see today's queue ordered by token, check patients in, record vitals, chief complaint / symptoms, history of present illness, diagnosis, prescriptions, lab and radiology orders and a diet plan. A new consultation opens with a short summary of the patient's last visit (complaint, diagnosis, vitals, medicines, tests, advice, follow-up). Web.
 - **Admin** — full staff/doctor management, all front-desk and in-patient actions, manages pharmacy inventory & lab/radiology catalogs, sees every report. Web.
 - **Receptionist** — the front-desk subset of Admin: register walk-in patients and view/check in the day's appointments (`/reception`). Cannot manage doctors, staff, catalogs, or see any clinical/financial data — deliberately excluded from patient records for privacy, since front desk only needs appointment/demographic info, not diagnoses or results.
-- **Pharmacist** (Tier 2+) — counter workflow (`/pharmacy`): a "waiting" list of patients with medicines still to dispense from the last week's visits, or search by name, mobile or Patient ID → the patient's page shows the doctor's prescriptions visit by visit, each line pre-filled with the prescribed brand (or, if it's out, another brand of the same composition — or any other medicine), quantity from the dosing and MRP from the medicine list → tick what's handed over, **Dispense & create receipt** → printable receipt, payment. A line not dispensed here is marked with a reason ("Not in stock", "Patient declined"…). **Settings** (`/pharmacy/settings`) is the medicine list: generic name, strength, brand, cost and MRP per unit, optional stock; the standard list (the Doctor's Catalogue's ~800 brands) loads in one click, unpriced. **Reports**: pharmacy revenue and in-house revenue, CSV export. Web.
-- **Lab Technician** (Tier 2+) — the same pattern for doctor-ordered lab tests (`/lab`): do the test under the lab's own name when the doctor's wording differs, mark done → receipt; enter results and attach the report file then or later. Settings: the lab's test list and prices. Web.
-- **Radiology Technician** (Tier 2+) — the same again for radiology/imaging (`/radiology`), with a DICOM slot next to the report file. Web.
+- **Pharmacist** (Tier 2+) — counter workflow (`/pharmacy`): a "waiting" list of patients with medicines still to dispense from the last week's visits, or search by name, mobile or Patient ID → the patient's page shows the doctor's prescriptions visit by visit, each line pre-filled with the prescribed brand (or, if it's out, another brand of the same composition — or any other medicine), quantity from the dosing and MRP from the medicine list → tick what's handed over, **Dispense & create receipt** → printable receipt, payment. A line not dispensed here is marked with a reason ("Not in stock", "Patient declined"…). The sidebar has one **Pharmacy** entry; its page has three tabs: **Counter**, **Medicine list** (`/pharmacy/settings`: generic name, strength, brand, cost and MRP per unit, optional stock; the standard list — the Doctor's Catalogue's ~800 brands — loads in one click, unpriced) and **Report** (`/pharmacy/report`: every medicine dispensed in the dates, with revenue, cost and profit, by day and by item, CSV). Web.
+- **Lab Technician** (Tier 2+) — the same pattern for doctor-ordered lab tests (`/lab`): do the test under the lab's own name when the doctor's wording differs, mark done → receipt; enter results and attach the report file then or later. One **Laboratory** entry with Counter / Test list (price and cost per test) / Report tabs. Web.
+- **Radiology Technician** (Tier 2+) — the same again for radiology/imaging (`/radiology`), with a DICOM slot next to the report file; one **Radiology** entry with Counter / Radiology list / Report tabs. Web.
 - **Nurse** (Tier 3+) — ward-floor clinical logging on an admission: vitals, medications given. Can view admissions/patient records for clinical continuity, but cannot admit, discharge, transfer beds, or see any billing figure — the admission detail page hides those sections and the server independently rejects the underlying requests.
 - **Head Nurse** (Tier 3+) — everything a Nurse can do, plus bed/ward management: transfer a patient between beds, mark a bed under maintenance, and view (read-only) the bill preview and final bill. Admission and discharge — the two actions with real financial/legal weight — stay Admin/Doctor only even for Head Nurse.
 
 Admins (and doctors, for the follow-ups view and in-patient management) also get:
-- A **Reports** page: revenue (every bill, billed vs collected — all
-  together or Consultation / Pharmacy / Laboratory / Radiology on their
-  own), **In-house revenue** (Tier 2+, in rupees, department level:
-  consultation fees, and the value of what doctors prescribed/ordered vs
-  what the clinic's own pharmacy, lab and radiology earned from it — by
-  day and by doctor; a doctor sees their own), a daily OPD activity report, and a follow-ups-due
+- A **Reports** page (at the top of the sidebar): **Revenue summary** in
+  every tier (Tier 1: consultation revenue; Tier 2: also the value of what
+  doctors prescribed/ordered — expected — vs what the clinic's own
+  pharmacy, lab and radiology earned from it — actual; Tier 3: split OPD /
+  IPD — by day and by doctor; a doctor sees their own), **Bills &
+  collections** (every bill, billed vs collected — all together or one
+  department), **Doctor share** (Tier 2+: each doctor's revenue, cost,
+  profit and share of the pharmacy, lab and radiology bills of their
+  patients, OPD and IPD, at the percentage the admin sets — a clinic
+  default per department and any doctor's own; a doctor sees their own
+  share, CSV), a daily OPD activity report, and a follow-ups-due
   dashboard (overdue / due today / due this week) with a "mark contacted"
   action, driven by an optional follow-up date doctors can set on a
   consultation.
@@ -69,7 +74,7 @@ Admins (and doctors, for the follow-ups view and in-patient management) also get
   each admission (the running bill while admitted, the final bill after)
   with its breakdown and the deposit, and pharmacy/lab/radiology bills
   raised during a stay are counted inside it rather than twice. The
-  **In-house revenue** report adds an IPD column per department plus
+  **Revenue summary** report adds an IPD column per department plus
   procedures, room and other ward charges.
 - **In-Patient / IPD** (Tier 3+): set up wards and bulk-add beds at a daily
   rate, admit a patient to a vacant bed with a deposit, log doctor visits,
@@ -114,9 +119,14 @@ clinic-specific. Full CRUD (add, edit every field, delete) is available to
 Admin **and** the matching counter-staff role for that catalog — Pharmacist
 for medicines, Lab Technician for lab tests, Radiology Technician for
 radiology tests — at `/pharmacy/settings`, `/lab/settings`, `/radiology/settings`
-(each counter role's **Settings** link; Admin gets them all). From Tier 2
+(the list tab of each department's page). Lab tests and radiology carry a
+cost as well as a price, and each sale records its cost at the time, for
+the department report and the doctors' profit share. From Tier 2
 these lists replace the Doctor's Catalogue: doctors prescribe and order
-from what the departments actually offer. **Load standard list** adds the
+from what the departments actually offer. The standard list always backs
+up the suggestions, so typing "C" offers CBC and "X" the X-rays even
+before a department has loaded its list (the clinic's own entry wins
+where both have one). **Load standard list** adds the
 Doctor's Catalogue's generics/brands, lab tests and imaging (plus anything
 the clinic's doctors added there) unpriced, skipping what's already listed;
 a price of 0 means "not priced yet" and is flagged at the counter.
@@ -390,25 +400,20 @@ of flaky cross-test interference at worst.
 
 ## Diet Plans
 
-A doctor can record a dietary recommendation for a patient
-(`DietPlan`: `dietaryPreference` — Vegetarian/Non-vegetarian/Eggetarian/
-Vegan — plus free-text `allergies`, `localFoodNotes`, and the actual
-`planText`), authored from the same consultation screen as prescriptions,
-and optionally (not necessarily) linked to the consultation it came out of
-via an optional `consultationId` (`onDelete: SetNull` — deleting the
-consultation later doesn't take the diet plan with it). It's linked
-directly to `patientId` rather than only reachable through a consultation,
-matching how a patient can have diet plans spanning multiple visits.
-Authoring is doctor/admin-only (`POST /api/diet-plans`, same write-role
-split as a prescription); reading is broader — any clinic staff, plus the
-patient themself for their own (`GET /api/diet-plans?patientId=`, visible
-on **My Medical Records** on web and the **Records** tab on mobile). This
-is deliberately structured-fields-plus-free-text, not AI-generated: the
-brief was specific inputs (medical history and complaints via the optional
-consultation link, allergies, dietary preference, local food availability)
-and a doctor-authored recommendation from them, not an LLM integration —
-adding one would have introduced a third unrequested external-credentials
-dependency alongside WhatsApp and the payment gateway.
+A doctor prescribes a diet from a consultation (OPD) or an admission (IPD).
+About twenty templates (diabetes, high BP, fever, typhoid, dengue,
+acidity, loose motions, jaundice / fatty liver, anaemia, cough / cold,
+kidney disease, kidney stones, weight loss / PCOS, heart / cholesterol,
+constipation / piles, hypothyroidism, UTI, gout, pregnancy, healing after
+surgery, and a general diet — `web/src/utils/dietTemplates.ts`), each in a
+**Veg** and a **Non-veg** version, are suggested from the chief complaint
+and diagnosis (or the admission reason) by keyword. Picking one fills the
+plan text, which the doctor edits and saves (`DietPlan`: `dietaryPreference`,
+`planText`, optional `consultationId` or `admissionId`). Earlier plans show
+below, each can be sent on WhatsApp. Authoring is doctor/admin-only
+(`POST /api/diet-plans`); reading is any clinic staff, plus the patient
+for their own (**My Medical Records** on web, **Records** on mobile).
+The templates are fixed text, not AI-generated.
 
 ## File Attachments
 

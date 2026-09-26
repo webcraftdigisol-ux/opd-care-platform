@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PharmacyItem, UpsertPharmacyItemRequest } from '@opd/shared';
 import { createPharmacyItem, deletePharmacyItem, listPharmacyItems, updatePharmacyItem } from '../api/pharmacy';
 import { addStarterMedicines } from '../api/departments';
-import { Card, Field, PageHeader, btnPrimary, btnSecondary, inputClass } from '../components/ui';
+import { Card, Field, btnPrimary, btnSecondary, inputClass } from '../components/ui';
+import { DeptTabs } from '../components/DeptTabs';
 import { Icon } from '../components/Icon';
 import { money } from '../utils/departments';
 
@@ -95,12 +96,8 @@ export function PharmacySettingsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <Link to="/pharmacy" className="mb-3 inline-flex items-center gap-1 text-sm text-gray-600 hover:text-teal">
-        <Icon name="chevronLeft" className="h-4 w-4" /> Pharmacy
-      </Link>
-      <PageHeader
-        title="Medicine list"
-        subtitle="What the pharmacy stocks — doctors prescribe from this list, and brands of the same composition can be swapped at the counter."
+      <DeptTabs
+        dept="PHARMACY"
         actions={
           <>
             <button type="button" onClick={() => starter.mutate()} disabled={starter.isPending} className={btnSecondary} data-testid="load-standard">
@@ -112,6 +109,9 @@ export function PharmacySettingsPage() {
           </>
         }
       />
+      <p className="-mt-3 mb-4 text-sm text-gray-500">
+        What the pharmacy stocks — doctors prescribe from this list, and brands of the same composition can be swapped at the counter.
+      </p>
 
       {adding && (
         <Card title="New medicine" className="mb-5">

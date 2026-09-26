@@ -88,13 +88,14 @@ test.describe('Tier 2 departments', () => {
 
     // The pharmacist's own revenue report shows only pharmacy bills.
     await page.goto('/admin/reports');
+    await page.getByRole('tab', { name: 'Bills & collections' }).click();
     await expect(page.getByTestId('report-billed')).toHaveText('₹20');
     await expect(page.getByText('Showing pharmacy bills.')).toBeVisible();
 
     // Doctor: 1 of 1 medicine done in-house (as a substitute), the CBC pending.
     await applySession(page, doctor);
     await page.goto('/admin/reports');
-    await page.getByRole('tab', { name: 'In-house revenue' }).click();
+    await page.getByRole('tab', { name: 'Revenue summary' }).click();
     await expect(page.getByTestId('orders-dept-CONSULTATION').getByTestId('dept-inhouse')).toHaveText('₹500');
     await expect(page.getByTestId('orders-dept-PHARMACY').getByTestId('dept-inhouse')).toHaveText('₹20');
     await expect(page.getByTestId('orders-dept-LAB').getByTestId('dept-inhouse')).toHaveText('₹0');
@@ -138,5 +139,64 @@ test.describe('Tier 2 departments', () => {
     await expect(block).toContainText('Saved');
     await page.reload();
     await expect(page.getByTestId('results-block').first().locator('textarea')).toHaveValue('TC 212 mg/dL, LDL 140 mg/dL');
+  });
+
+  test('the lab sees its own revenue, cost and profit; admin sets the doctors’ profit share and the doctor sees theirs', async ({ page }) => {
+    const { admin, labTech, doctor } = await tier2Clinic();
+
+    // The lab lists a CBC at ₹300 that costs it ₹100.
+    await applySession(page, labTech);
+    await page.goto('/lab/settings');
+    await page.getByTestId('test-name').fill('CBC');
+    await page.getByTestId('test-price').fill('300');
+    await page.getByTestId('test-cost').fill('100');
+    await page.getByTestId('add-test-entry').click();
+    await expect(page.getByTestId('test-row').filter({ hasText: 'CBC' })).toContainText('cost ₹100');
+
+    // The doctor finds the X-rays and CBC by their first letter, though
+    // the radiology list is empty.
+    const patient = await request<{ id: string }>('POST', '/patients', { firstName: 'Kiran', phone: '9811100033' }, admin.token);
+    const visit = await request<{ id: string }>('POST', '/appointments/visit', { patientId: patient.id }, doctor.token);
+    await applySession(page, doctor);
+    await page.goto(`/doctor/consult/${visit.id}`);
+    await page.getByRole('button', { name: 'Add test' }).click();
+    await page.getByTestId('lab-test-name-0').fill('C');
+    await expect(page.getByTestId('lab-test-name-0-suggestions')).toContainText('CBC');
+    await page.getByTestId('lab-test-name-0-suggestions').getByText('CBC', { exact: true }).click();
+    await page.getByRole('button', { name: 'Add radiology work' }).click();
+    await page.getByTestId('radiology-test-name-0').fill('X');
+    await expect(page.getByTestId('radiology-test-name-0-suggestions')).toContainText('X-Ray');
+    await page.getByTestId('save-consultation').click();
+    await expect(page.getByTestId('print-summary').first()).toBeVisible();
+
+    // The lab does it; its report tab shows revenue, cost and profit.
+    await applySession(page, labTech);
+    await openAtCounter(page, '/lab', 'Kiran');
+    await page.getByTestId('mark-done').click();
+    await expect(page.getByTestId('receipt-created')).toBeVisible();
+    await page.goto('/lab');
+    await page.getByTestId('dept-tab-report').click();
+    await expect(page.getByTestId('dept-report-revenue')).toHaveText('₹300');
+    await expect(page.getByTestId('dept-report-cost')).toHaveText('₹100');
+    await expect(page.getByTestId('dept-report-profit')).toHaveText('₹200');
+    await expect(page.getByTestId('dept-report-line')).toContainText('Kiran');
+
+    // Admin: the doctor gets 20% of the lab's profit.
+    await applySession(page, admin);
+    await page.goto('/admin/reports');
+    await page.getByRole('tab', { name: 'Doctor share' }).click();
+    await page.getByTestId('edit-share-rates').click();
+    await page.getByTestId('rate-default-LAB').fill('20');
+    await page.getByTestId('save-share-rates').click();
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('share-doctors-share')).toHaveText('₹40');
+    await expect(page.getByTestId('share-row').filter({ hasText: 'Laboratory' })).toContainText('20%');
+
+    // The doctor sees their own share, without the editor.
+    await applySession(page, doctor);
+    await page.goto('/admin/reports');
+    await page.getByRole('tab', { name: 'Doctor share' }).click();
+    await expect(page.getByTestId('share-your-share')).toHaveText('₹40');
+    await expect(page.getByTestId('edit-share-rates')).toHaveCount(0);
   });
 });

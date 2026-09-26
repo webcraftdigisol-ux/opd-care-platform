@@ -158,6 +158,7 @@ export function toDietPlan(plan: PrismaDietPlan & { createdBy?: User }): DietPla
     clinicId: plan.clinicId,
     patientId: plan.patientId,
     consultationId: plan.consultationId,
+    admissionId: plan.admissionId,
     createdById: plan.createdById,
     createdByName: plan.createdBy?.name,
     dietaryPreference: plan.dietaryPreference,
@@ -269,6 +270,7 @@ export function toPharmacySaleItem(item: PrismaPharmacySaleItem): PharmacySaleIt
     medicineName: item.medicineName,
     substitutedFor: item.substitutedFor,
     quantity: item.quantity,
+    unitCost: item.unitCost,
     unitPrice: item.unitPrice,
     lineTotal: item.lineTotal,
   };
@@ -294,7 +296,7 @@ export function toPharmacySale(
 }
 
 export function toLabTestCatalogEntry(entry: PrismaLabTestCatalog): LabTestCatalogEntry {
-  return { id: entry.id, name: entry.name, price: entry.price };
+  return { id: entry.id, name: entry.name, price: entry.price, cost: entry.cost };
 }
 
 export function toLabResultItem(item: PrismaLabResultItem): LabResultItem {
@@ -304,6 +306,7 @@ export function toLabResultItem(item: PrismaLabResultItem): LabResultItem {
     catalogItemId: item.catalogItemId,
     testName: item.testName,
     substitutedFor: item.substitutedFor,
+    cost: item.cost,
     resultText: item.resultText,
     price: item.price,
   };
@@ -329,7 +332,7 @@ export function toLabInvoice(
 }
 
 export function toRadiologyTestCatalogEntry(entry: PrismaRadiologyCatalog): RadiologyTestCatalogEntry {
-  return { id: entry.id, name: entry.name, price: entry.price };
+  return { id: entry.id, name: entry.name, price: entry.price, cost: entry.cost };
 }
 
 export function toRadiologyResultItem(item: PrismaRadiologyResultItem): RadiologyResultItem {
@@ -339,6 +342,7 @@ export function toRadiologyResultItem(item: PrismaRadiologyResultItem): Radiolog
     catalogItemId: item.catalogItemId,
     testName: item.testName,
     substitutedFor: item.substitutedFor,
+    cost: item.cost,
     resultText: item.resultText,
     price: item.price,
   };

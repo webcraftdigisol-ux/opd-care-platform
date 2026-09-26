@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { Department } from '@opd/shared';
 import { getQueue, listRecentInvoices, listRecentSales } from '../api/departments';
 import { PatientSearch } from '../components/PatientSearch';
-import { Card, EmptyState, PageHeader, btnSecondary } from '../components/ui';
+import { Card, EmptyState } from '../components/ui';
+import { DeptTabs } from '../components/DeptTabs';
 import { Icon } from '../components/Icon';
 import { formatDate, sexAge } from '../utils/patientFormat';
 import { doctorName } from '../utils/visitFormat';
@@ -32,15 +33,8 @@ export function DepartmentHomePage({ dept }: { dept: Department }) {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-      <PageHeader
-        title={info.label}
-        subtitle={`Find the patient to see the ${info.items} the doctor ordered.`}
-        actions={
-          <Link to={`${info.base}/settings`} className={btnSecondary}>
-            <Icon name="book" className="h-4 w-4" /> {info.listTitle}
-          </Link>
-        }
-      />
+      <DeptTabs dept={dept} />
+      <p className="-mt-3 mb-4 text-sm text-gray-500">Find the patient to see the {info.items} the doctor ordered.</p>
 
       <Card className="mb-6">
         <PatientSearch size="lg" autoFocus onSelect={(p) => navigate(`${info.base}/patients/${p.id}`)} />

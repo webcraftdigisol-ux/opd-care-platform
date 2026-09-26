@@ -45,7 +45,9 @@ export async function computeOrdersReport(opts: {
   const hasIpd = opts.tier >= 3;
   const want = (d: RevenueDepartment) => opts.departments.includes(d);
   const departments = (['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY', 'PROCEDURE', 'ROOM', 'OTHER_IPD'] as const).filter(
-    (d) => want(d) && (hasIpd || !['PROCEDURE', 'ROOM', 'OTHER_IPD'].includes(d)),
+    // Tier 1 has consultations only; the departments need Tier 2, the
+    // IPD-only rows Tier 3.
+    (d) => want(d) && (d === 'CONSULTATION' || opts.tier >= 2) && (hasIpd || !['PROCEDURE', 'ROOM', 'OTHER_IPD'].includes(d)),
   );
 
   const [appointments, items, labCatalog, radiologyCatalog] = await Promise.all([

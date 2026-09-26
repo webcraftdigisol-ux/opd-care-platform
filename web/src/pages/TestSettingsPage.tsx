@@ -9,7 +9,8 @@ import {
   updateTestCatalogEntry,
   type TestDept,
 } from '../api/departments';
-import { Card, PageHeader, btnPrimary, btnSecondary, inputClass } from '../components/ui';
+import { Card, btnPrimary, btnSecondary, inputClass } from '../components/ui';
+import { DeptTabs } from '../components/DeptTabs';
 import { Icon } from '../components/Icon';
 import { DEPTS, money } from '../utils/departments';
 
@@ -25,8 +26,9 @@ export function TestSettingsPage({ dept }: { dept: TestDept }) {
   const { data: tests, isLoading } = useQuery({ queryKey: key, queryFn: () => listTestCatalog(dept) });
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [cost, setCost] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ name: '', price: '' });
+  const [edit, setEdit] = useState({ name: '', price: '', cost: '' });
   const [filter, setFilter] = useState('');
   const [unpricedOnly, setUnpricedOnly] = useState(false);
   const [limit, setLimit] = useState(PAGE);
@@ -38,17 +40,18 @@ export function TestSettingsPage({ dept }: { dept: TestDept }) {
   const fail = (err: any, fallback: string) => setMessage({ ok: false, text: err.response?.data?.message ?? fallback });
 
   const create = useMutation({
-    mutationFn: () => createTestCatalogEntry(dept, { name: name.trim(), price: Number(price) || 0 }),
+    mutationFn: () => createTestCatalogEntry(dept, { name: name.trim(), price: Number(price) || 0, cost: Number(cost) || 0 }),
     onSuccess: (t) => {
       setName('');
       setPrice('');
+      setCost('');
       setMessage({ ok: true, text: `Added ${t.name}.` });
       refresh();
     },
     onError: (err) => fail(err, 'Could not add'),
   });
   const save = useMutation({
-    mutationFn: () => updateTestCatalogEntry(dept, editing!, { name: edit.name.trim(), price: Number(edit.price) || 0 }),
+    mutationFn: () => updateTestCatalogEntry(dept, editing!, { name: edit.name.trim(), price: Number(edit.price) || 0, cost: Number(edit.cost) || 0 }),
     onSuccess: () => {
       setEditing(null);
       setMessage(null);
@@ -73,18 +76,17 @@ export function TestSettingsPage({ dept }: { dept: TestDept }) {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-      <Link to={info.base} className="mb-3 inline-flex items-center gap-1 text-sm text-gray-600 hover:text-teal">
-        <Icon name="chevronLeft" className="h-4 w-4" /> {info.label}
-      </Link>
-      <PageHeader
-        title={info.listTitle}
-        subtitle={`The ${info.items} ${info.label.toLowerCase()} offers and their prices — doctors order from this list.`}
+      <DeptTabs
+        dept={info.dept}
         actions={
           <button type="button" onClick={() => starter.mutate()} disabled={starter.isPending} className={btnSecondary} data-testid="load-standard">
             {starter.isPending ? 'Loading…' : 'Load standard list'}
           </button>
         }
       />
+      <p className="-mt-3 mb-4 text-sm text-gray-500">
+        The {info.items} {info.label.toLowerCase()} offers, with price and cost — doctors order from this list.
+      </p>
 
       <Card className="mb-5">
         <form
@@ -101,6 +103,10 @@ export function TestSettingsPage({ dept }: { dept: TestDept }) {
           <label className="text-sm">
             <span className="mb-1 block font-medium text-gray-700">Price (₹)</span>
             <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputClass} !w-32`} data-testid="test-price" />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block font-medium text-gray-700">Cost (₹)</span>
+            <input type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} className={`${inputClass} !w-32`} data-testid="test-cost" />
           </label>
           <button type="submit" disabled={create.isPending} className={btnPrimary} data-testid="add-test-entry">
             <Icon name="plus" className="h-4 w-4" /> Add
@@ -152,6 +158,17 @@ export function TestSettingsPage({ dept }: { dept: TestDept }) {
                     aria-label="Price"
                     data-testid="edit-price"
                   />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={edit.cost}
+                    onChange={(e) => setEdit((x) => ({ ...x, cost: e.target.value }))}
+                    placeholder="Cost"
+                    className={`${inputClass} !w-28`}
+                    aria-label="Cost"
+                    data-testid="edit-cost"
+                  />
                   <button type="button" onClick={() => save.mutate()} disabled={save.isPending || !edit.name.trim()} className="font-medium text-teal hover:underline" data-testid="save-edit">
                     Save
                   </button>
@@ -162,12 +179,13 @@ export function TestSettingsPage({ dept }: { dept: TestDept }) {
               ) : (
                 <li key={t.id} className="flex items-center gap-3 py-2 text-sm" data-testid="test-row">
                   <span className="min-w-0 flex-1 font-medium text-gray-900">{t.name}</span>
+                  <span className="w-24 text-right text-xs text-gray-500">{t.cost ? `cost ${money(t.cost)}` : ''}</span>
                   <span className="w-24 text-right">{t.price ? money(t.price) : <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">Not set</span>}</span>
                   <button
                     type="button"
                     onClick={() => {
                       setEditing(t.id);
-                      setEdit({ name: t.name, price: t.price ? String(t.price) : '' });
+                      setEdit({ name: t.name, price: t.price ? String(t.price) : '', cost: t.cost ? String(t.cost) : '' });
                     }}
                     className="text-teal hover:underline"
                     aria-label={`Edit ${t.name}`}

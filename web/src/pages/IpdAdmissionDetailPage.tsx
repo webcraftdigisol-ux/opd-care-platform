@@ -22,6 +22,7 @@ import { PaymentRecorder } from '../components/PaymentRecorder';
 import { SuggestInput } from '../components/SuggestInput';
 import { useAuth } from '../context/AuthContext';
 import { ConsentSection, consentsKey } from '../components/ConsentSection';
+import { DietPlanSection } from '../components/DietPlanSection';
 import { listConsents } from '../api/consents';
 import type { MedicationSource } from '@opd/shared';
 
@@ -462,6 +463,12 @@ export function IpdAdmissionDetailPage() {
           isAdmitted={isAdmitted}
           canCreate={canManageClinical}
         />
+      )}
+
+      {canManageClinical && (
+        <div className="mb-6">
+          <DietPlanSection patient={admission.patient} admissionId={admission.id} context={[admission.reason, admission.dischargeSummary].filter(Boolean).join('\n')} />
+        </div>
       )}
 
       <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">

@@ -35,6 +35,7 @@ function makeDietPlan(overrides: Partial<DietPlan> = {}): DietPlan {
     clinicId: 'clinic-1',
     patientId: 'patient-1',
     consultationId: null,
+    admissionId: null,
     createdById: 'doctor-1',
     createdByName: 'Dr. Asha Rao',
     dietaryPreference: 'VEG',

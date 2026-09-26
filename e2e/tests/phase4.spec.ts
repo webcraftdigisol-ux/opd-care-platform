@@ -120,12 +120,19 @@ test.describe('Phase 4', () => {
     await expect(page.getByText(/200/).first()).toBeVisible();
 
     await page.goto('/admin/reports');
+    await page.getByRole('tab', { name: 'Bills & collections' }).click();
     await expect(page.getByTestId('report-billed')).toHaveText('₹600');
     await expect(page.getByTestId('report-collected')).toHaveText('₹200');
     await expect(page.getByTestId('report-outstanding')).toHaveText('₹400');
     await expect(page.getByTestId('transactions')).toContainText('Part paid');
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-csv').click()]);
     expect(download.suggestedFilename()).toMatch(/^revenue_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.csv$/);
+
+    // Tier 1's revenue summary is consultation only; no doctor-share tab.
+    await page.getByRole('tab', { name: 'Revenue summary' }).click();
+    await expect(page.getByTestId('orders-dept-CONSULTATION')).toContainText('₹600');
+    await expect(page.getByTestId('orders-dept-PHARMACY')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Doctor share' })).toHaveCount(0);
 
     // Upload an outside report to the patient's record.
     await page.goto(`/patients/${patientId}?tab=reports`);

@@ -82,6 +82,12 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   `opd-care-db-pre-whatsapp-20260925-1654` was taken just before migration
   `20260925062745_whatsapp_otp_followup_reminders` ran in production
   (2026-09-25). Safe to delete once that release has proven itself.
+- **Production runs ahead of `main`**: the box is checked out at `57753b3`
+  on `claude/determined-brahmagupta-wc774v` (PR #6: platform-admin
+  "Extend" without payment), including migration
+  `20260926020704_subscription_extensions`; RDS snapshot
+  `opd-care-db-pre-extensions-20260926-0211` was taken just before it. Once
+  #6 is merged, `git checkout main && git pull` on the box and rebuild.
 - **WhatsApp isn't connected yet**: no `WHATSAPP_PROVIDER`/`META_*`/`TWILIO_*`
   in `server/.env`, so sends are logged by the stub and "Forgot password?"
   is hidden. See `docs/whatsapp-templates.md` for going live.

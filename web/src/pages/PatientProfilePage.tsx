@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Attachment, Patient, PatientRecordsResponse } from '@opd/shared';
 import { getPatient, getPatientBilling, getPatientRecords } from '../api/patients';
 import { openAttachment } from '../api/attachments';
@@ -11,8 +11,11 @@ import { initials } from '../components/AppShell';
 import { StatusBadge } from '../components/StatusBadge';
 import { VitalsTrendChart } from '../components/VitalsTrendChart';
 import { DicomViewer } from '../components/DicomViewer';
-import { formatBp, vitalsSeries, type VisitWithConsultation } from '../utils/patientHistory';
-import { GENDER_LABEL, doctorName, formatDate, formatMoney } from '../utils/patientFormat';
+import { vitalsSeries, type VisitWithConsultation } from '../utils/patientHistory';
+import { doctorName, vitalChips, whenToTake } from '../utils/visitFormat';
+import { listDoctors } from '../api/doctors';
+import { startVisit } from '../api/appointments';
+import { GENDER_LABEL, formatDate, formatMoney } from '../utils/patientFormat';
 
 type Tab = 'summary' | 'consultations' | 'vitals' | 'reports' | 'images' | 'billing';
 const TABS: { id: Tab; label: string; clinical: boolean }[] = [
@@ -33,6 +36,7 @@ export function PatientProfilePage() {
   const canSeeClinical = user?.role !== 'RECEPTIONIST';
   const canEdit = !!user && ['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(user.role);
   const canBookVisit = !!user && ['ADMIN', 'RECEPTIONIST'].includes(user.role);
+  const canConsult = !!user && ['ADMIN', 'DOCTOR'].includes(user.role);
   const tabs = TABS.filter((t) => canSeeClinical || !t.clinical);
   const requested = params.get('tab') as Tab | null;
   const tab: Tab = tabs.some((t) => t.id === requested) ? requested! : 'summary';
@@ -71,7 +75,9 @@ export function PatientProfilePage() {
 
       <div className="mt-6">
         {tab === 'summary' && <SummaryTab patient={patient} canEdit={canEdit} />}
-        {tab === 'consultations' && <ConsultationsTab records={records} canBookVisit={canBookVisit} patientId={patient.id} />}
+        {tab === 'consultations' && (
+          <ConsultationsTab records={records} canConsult={canConsult} canBookVisit={canBookVisit} patientId={patient.id} />
+        )}
         {tab === 'vitals' && <VitalsTab records={records} />}
         {tab === 'reports' && <ReportsTab records={records} />}
         {tab === 'images' && <ImagesTab records={records} />}
@@ -214,90 +220,234 @@ function Loading() {
   return <p className="text-sm text-gray-500">Loading…</p>;
 }
 
+// "New consultation" from the profile: a doctor starts their own visit
+// straight away; admin picks the doctor (skipped when there's only one).
+function StartConsultation({ patientId }: { patientId: string }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isAdmin = user?.role === 'ADMIN';
+  const { data: doctors } = useQuery({ queryKey: ['doctors'], queryFn: listDoctors, enabled: isAdmin });
+  const [picking, setPicking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const start = useMutation({
+    mutationFn: (doctorId?: string) => startVisit({ patientId, doctorId }),
+    onSuccess: (a) => navigate(`/doctor/consult/${a.id}`),
+    onError: (err: any) => setError(err.response?.data?.message ?? 'Could not start the consultation'),
+  });
+
+  function begin() {
+    if (!isAdmin) return start.mutate(undefined);
+    if (doctors?.length === 1) return start.mutate(doctors[0]!.id);
+    setPicking(true);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {picking && doctors ? (
+        <select
+          autoFocus
+          defaultValue=""
+          onChange={(e) => e.target.value && start.mutate(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          aria-label="Doctor for this consultation"
+        >
+          <option value="">Choose the doctor…</option>
+          {doctors.map((d) => (
+            <option key={d.id} value={d.id}>
+              {doctorName(d.user.name)} — {d.specialization}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <button type="button" onClick={begin} disabled={start.isPending} className={btnPrimary} data-testid="new-consultation">
+          <Icon name="plus" className="h-4 w-4" /> New consultation
+        </button>
+      )}
+      {error && <span className="text-sm text-red-600">{error}</span>}
+    </div>
+  );
+}
+
 function ConsultationsTab({
   records,
+  canConsult,
   canBookVisit,
   patientId,
 }: {
   records?: PatientRecordsResponse;
+  canConsult: boolean;
   canBookVisit: boolean;
   patientId: string;
 }) {
   if (!records) return <Loading />;
-  const visits = [...records.appointments].sort((a, b) => b.date.localeCompare(a.date) || b.tokenNumber - a.tokenNumber);
+  // Visits are numbered per patient, oldest first, counting consulted ones.
+  const consulted = [...records.appointments]
+    .filter((a) => a.consultation)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.tokenNumber - b.tokenNumber || a.createdAt.localeCompare(b.createdAt));
+  const number = new Map(consulted.map((a, i) => [a.id, i + 1]));
+  const visits = [...records.appointments]
+    .filter((a) => a.status !== 'CANCELLED')
+    .sort((a, b) => b.date.localeCompare(a.date) || b.tokenNumber - a.tokenNumber);
   return (
     <Card
       title="Consultation history"
-      subtitle={`${visits.length} visit${visits.length === 1 ? '' : 's'}`}
+      subtitle={`${consulted.length} visit${consulted.length === 1 ? '' : 's'} recorded`}
       actions={
-        canBookVisit && (
-          <Link to={`/admin/walk-in?patientId=${patientId}`} className={btnPrimary}>
-            <Icon name="plus" className="h-4 w-4" /> New visit
-          </Link>
+        canConsult ? (
+          <StartConsultation patientId={patientId} />
+        ) : (
+          canBookVisit && (
+            <Link to={`/admin/walk-in?patientId=${patientId}`} className={btnPrimary}>
+              <Icon name="plus" className="h-4 w-4" /> New visit
+            </Link>
+          )
         )
       }
     >
       {visits.length === 0 ? (
-        <EmptyState>No visits recorded yet. Start the first visit to build this patient's timeline.</EmptyState>
+        <EmptyState>No visits recorded yet. Start the first consultation to build this patient's timeline.</EmptyState>
       ) : (
-        <ol className="relative space-y-4 border-l-2 border-teal-light pl-6">
-          {visits.map((v) => {
-            const c = v.consultation;
-            const bp = formatBp(c?.vitals ?? null);
-            const vitals = [
-              bp && `BP ${bp}`,
-              c?.vitals?.pulse != null && `Pulse ${c.vitals.pulse}`,
-              c?.vitals?.tempC != null && `Temp ${c.vitals.tempC}°C`,
-              c?.vitals?.spo2 != null && `SpO2 ${c.vitals.spo2}%`,
-              c?.vitals?.weightKg != null && `Wt ${c.vitals.weightKg} kg`,
-            ].filter(Boolean);
-            return (
-              <li key={v.id} className="relative" data-testid="timeline-visit">
-                <span className="absolute -left-[31px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-teal" />
-                <div className="rounded-xl border border-gray-200 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium text-gray-900">
-                      {formatDate(v.date)}
-                      {v.doctor && <span className="font-normal text-gray-500"> · {doctorName(v.doctor.user.name)}</span>}
-                    </p>
-                    <StatusBadge status={v.status} />
-                  </div>
-                  {v.reason && <p className="mt-1 text-sm text-gray-600">Reason: {v.reason}</p>}
-                  {c ? (
-                    <div className="mt-2 space-y-1.5 text-sm">
-                      {c.diagnosis && (
-                        <p>
-                          <span className="text-gray-500">Diagnosis:</span> <span className="font-medium">{c.diagnosis}</span>
-                        </p>
-                      )}
-                      {vitals.length > 0 && <p className="text-gray-600">{vitals.join(' · ')}</p>}
-                      {c.prescriptions.length > 0 && (
-                        <ul className="list-inside list-disc text-gray-700">
-                          {c.prescriptions.map((rx) => (
-                            <li key={rx.id}>
-                              {rx.medicine} — {rx.dosage}, {rx.frequency}, {rx.durationDays} days
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {(c.labTestsOrdered.length > 0 || c.radiologyOrdered.length > 0) && (
-                        <p className="text-gray-600">
-                          Tests: {[...c.labTestsOrdered.map((o) => o.testName), ...c.radiologyOrdered.map((o) => o.testName)].join(', ')}
-                        </p>
-                      )}
-                      {c.notes && <p className="text-gray-600">Advice: {c.notes}</p>}
-                      {c.followUpDate && <p className="text-gray-600">Follow-up: {formatDate(c.followUpDate)}</p>}
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-sm text-gray-400">No consultation recorded for this visit.</p>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+        <ol className="space-y-3">
+          {visits.map((v, i) => (
+            <VisitCard key={v.id} visit={v} visitNumber={number.get(v.id)} open={i === 0} canEdit={canConsult} />
+          ))}
         </ol>
       )}
     </Card>
+  );
+}
+
+function VisitCard({
+  visit: v,
+  visitNumber,
+  open,
+  canEdit,
+}: {
+  visit: PatientRecordsResponse['appointments'][number];
+  visitNumber?: number;
+  open: boolean;
+  canEdit: boolean;
+}) {
+  const c = v.consultation;
+  const chips = vitalChips(c?.vitals);
+  const rows: [string, string | null | undefined][] = c
+    ? [
+        ['Chief complaint', c.chiefComplaint],
+        ['Present illness', c.presentIllness],
+        ['History', c.relevantHistory],
+        ['Diagnosis', c.diagnosis],
+        ['Differential diagnosis', c.differentialDiagnosis],
+        ['Advice', c.notes],
+        ['Imaging advice', c.imagingAdvice],
+        ['Follow-up', c.followUpDate && formatDate(c.followUpDate)],
+        ['Fee', formatMoney(v.consultationFee)],
+        ['Doctor notes', c.doctorNotes],
+      ]
+    : [];
+  return (
+    <li data-testid="timeline-visit">
+      <details open={open} className="group rounded-xl border border-gray-200">
+        <summary className="flex cursor-pointer list-none items-center gap-3 p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-light text-teal">
+            <Icon name="stethoscope" className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-gray-900">
+              {visitNumber ? `Visit ${visitNumber}` : 'Visit'} · {formatDate(v.date)}
+              {v.doctor && <span className="font-normal text-gray-500"> · {doctorName(v.doctor.user.name)}</span>}
+            </span>
+            <span className="block truncate text-sm text-gray-500">{c?.diagnosis || v.reason || 'No consultation recorded yet'}</span>
+          </span>
+          <span className="hidden sm:inline-flex">
+            <StatusBadge status={v.status} />
+          </span>
+          <Icon name="chevronRight" className="h-4 w-4 text-gray-400 transition group-open:rotate-90" />
+        </summary>
+        {c ? (
+          <div className="border-t border-gray-100 p-4">
+            <div className="grid gap-5 md:grid-cols-2">
+              <dl className="space-y-2.5">
+                {rows
+                  .filter(([, value]) => value)
+                  .map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</dt>
+                      <dd className={`whitespace-pre-line text-sm ${label === 'Doctor notes' ? 'rounded bg-amber-50 px-2 py-1 text-amber-900' : 'text-gray-900'}`}>
+                        {value}
+                      </dd>
+                    </div>
+                  ))}
+              </dl>
+              <div className="space-y-4">
+                {chips.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Vitals</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {chips.map((chip) => (
+                        <span key={chip} className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {c.prescriptions.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Prescription</p>
+                    <ul className="space-y-1.5">
+                      {c.prescriptions.map((rx) => (
+                        <li key={rx.id} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                          <span className="font-medium text-gray-900">
+                            {rx.medicine}
+                            {rx.strength ? ` · ${rx.strength}` : ''}
+                          </span>
+                          <span className="block text-xs text-gray-500">
+                            {whenToTake(rx)} · {rx.durationDays} days
+                            {rx.totalToDispense != null ? ` · total ${rx.totalToDispense}` : ''}
+                            {rx.notes ? ` · ${rx.notes}` : ''}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {c.labTestsOrdered.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">Lab tests ordered</p>
+                    <p className="text-sm text-gray-800">{c.labTestsOrdered.map((o) => (o.notes ? `${o.testName} (${o.notes})` : o.testName)).join(', ')}</p>
+                  </div>
+                )}
+                {c.radiologyOrdered.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">Radiology work prescribed</p>
+                    <p className="text-sm text-gray-800">{c.radiologyOrdered.map((o) => (o.notes ? `${o.testName} (${o.notes})` : o.testName)).join(', ')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+              {canEdit && (
+                <Link to={`/doctor/consult/${v.id}`} className={btnSecondary}>
+                  <Icon name="edit" className="h-4 w-4" /> Edit this visit
+                </Link>
+              )}
+              <Link to={`/visits/${v.id}/print`} className={btnSecondary} data-testid="print-summary">
+                Print summary
+              </Link>
+            </div>
+          </div>
+        ) : (
+          canEdit &&
+          ['CHECKED_IN', 'IN_CONSULTATION'].includes(v.status) && (
+            <div className="border-t border-gray-100 p-4">
+              <Link to={`/doctor/consult/${v.id}`} className={btnPrimary}>
+                Start consultation
+              </Link>
+            </div>
+          )
+        )}
+      </details>
+    </li>
   );
 }
 
@@ -306,8 +456,11 @@ const VITALS = [
   { key: 'pulse', label: 'Pulse', unit: ' bpm' },
   { key: 'bpSystolic', label: 'BP systolic', unit: '' },
   { key: 'bpDiastolic', label: 'BP diastolic', unit: '' },
-  { key: 'tempC', label: 'Temperature', unit: ' °C' },
+  { key: 'tempF', label: 'Temperature', unit: ' °F' },
+  { key: 'tempC', label: 'Temperature (earlier, °C)', unit: ' °C' },
   { key: 'spo2', label: 'SpO2', unit: '%' },
+  { key: 'respiratoryRate', label: 'Respiratory rate', unit: '/min' },
+  { key: 'bloodSugar', label: 'Blood sugar', unit: ' mg/dL' },
 ] as const;
 
 function VitalsTab({ records }: { records?: PatientRecordsResponse }) {

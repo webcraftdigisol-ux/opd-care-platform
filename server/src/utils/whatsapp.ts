@@ -25,6 +25,9 @@ export interface WhatsAppSendOptions {
   // the code a second time, as the parameter of the template's copy-code
   // button. Also marks the send as sensitive, so the code is never logged.
   otpCode?: string;
+  // A document header (the template must be approved with one): a public
+  // URL the provider fetches, and the file name the patient sees.
+  document?: { link: string; filename: string };
 }
 
 export interface WhatsAppClient {
@@ -40,7 +43,11 @@ export interface WhatsAppClient {
 class StubWhatsAppClient implements WhatsAppClient {
   async sendTemplatedMessage(opts: WhatsAppSendOptions): Promise<WhatsAppSendResult> {
     const params = opts.otpCode ? '[redacted one-time code]' : opts.params;
-    console.log(`[whatsapp:stub] would send template "${opts.templateName}" to ${opts.to} with params`, params);
+    console.log(
+      `[whatsapp:stub] would send template "${opts.templateName}" to ${opts.to} with params`,
+      params,
+      ...(opts.document ? ['and document', opts.document.filename] : []),
+    );
     return { providerMessageId: `stub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
   }
 }
@@ -66,6 +73,9 @@ export class MetaCloudWhatsAppClient implements WhatsAppClient {
         name: opts.templateName,
         language: { code: this.languageCode },
         components: [
+          ...(opts.document
+            ? [{ type: 'header', parameters: [{ type: 'document', document: { link: opts.document.link, filename: opts.document.filename } }] }]
+            : []),
           { type: 'body', parameters: opts.params.map((text) => ({ type: 'text', text })) },
           ...(opts.otpCode
             ? [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: opts.otpCode }] }]
@@ -116,6 +126,7 @@ export class TwilioWhatsAppClient implements WhatsAppClient {
     } else {
       body.set('Body', `[${opts.templateName}] ${opts.params.join(' | ')}`);
     }
+    if (opts.document) body.set('MediaUrl', opts.document.link);
     return body;
   }
 
@@ -246,6 +257,7 @@ interface WhatsAppNotifyOptions {
   // Notification.body so the audit trail / any admin view of past
   // notifications reads naturally rather than showing raw template params.
   renderedBody: string;
+  document?: WhatsAppSendOptions['document'];
 }
 
 function skipped(opts: WhatsAppNotifyOptions, recipient: string, error: string) {
@@ -282,7 +294,12 @@ export async function notifyPatientWhatsApp(opts: WhatsAppNotifyOptions) {
   const params = [clinic?.name ?? 'Your clinic', ...opts.params].map(sanitizeTemplateParam);
 
   try {
-    const result = await getWhatsAppClient().sendTemplatedMessage({ to, templateName: opts.templateName, params });
+    const result = await getWhatsAppClient().sendTemplatedMessage({
+      to,
+      templateName: opts.templateName,
+      params,
+      ...(opts.document ? { document: opts.document } : {}),
+    });
     return prisma.notification.create({
       data: {
         clinicId: opts.clinicId,

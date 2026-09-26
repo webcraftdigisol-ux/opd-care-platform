@@ -86,6 +86,11 @@ chmod 600 opd-admin.pem && ssh -i opd-admin.pem ubuntu@3.7.243.104
   `opd-care-db-pre-extensions-20260926-0211` was taken just before migration
   `20260926020704_subscription_extensions` ran in production (2026-09-26).
   Safe to delete once that release has proven itself.
+- **Pre-patient-profiles snapshot**: RDS snapshot
+  `opd-care-db-pre-patient-profiles-20260926-0410` was taken just before
+  migration `20260926033549_patient_profiles` ran in production
+  (2026-09-26; it drops the unique phone per clinic and backfills Patient
+  IDs). Safe to delete once that release has proven itself.
 - **WhatsApp isn't connected yet**: no `WHATSAPP_PROVIDER`/`META_*`/`TWILIO_*`
   in `server/.env`, so sends are logged by the stub and "Forgot password?"
   is hidden. See `docs/whatsapp-templates.md` for going live.

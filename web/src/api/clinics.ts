@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { ClinicSummary, RegisterClinicRequest, AuthResponse, Subscription } from '@opd/shared';
+import type { ClinicSummary, RegisterClinicRequest, AuthResponse, Subscription, UpdateClinicRequest } from '@opd/shared';
 
 export async function registerClinic(data: RegisterClinicRequest): Promise<AuthResponse> {
   const res = await apiClient.post<AuthResponse>('/clinics/register', data);
@@ -13,6 +13,11 @@ export async function fetchClinicBySlug(slug: string): Promise<ClinicSummary> {
 
 export async function fetchCurrentClinic(): Promise<ClinicSummary> {
   const res = await apiClient.get<ClinicSummary>('/clinics/me/current');
+  return res.data;
+}
+
+export async function updateCurrentClinic(data: UpdateClinicRequest): Promise<ClinicSummary> {
+  const res = await apiClient.put<ClinicSummary>('/clinics/me/current', data);
   return res.data;
 }
 

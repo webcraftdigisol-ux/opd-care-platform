@@ -4,7 +4,8 @@ import { getPatientRecords } from '../api/patients';
 import { openAttachment } from '../api/attachments';
 import { DicomViewer } from './DicomViewer';
 import { VitalsTrendChart } from './VitalsTrendChart';
-import { formatBp, previousVisits, vitalsSeries } from '../utils/patientHistory';
+import { previousVisits, vitalsSeries } from '../utils/patientHistory';
+import { vitalChips, whenToTake } from '../utils/visitFormat';
 import type { Attachment } from '@opd/shared';
 
 const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
@@ -101,14 +102,7 @@ export function PatientHistoryPanel({
           <div className="space-y-2">
             {visits.map((v, i) => {
               const c = v.consultation;
-              const bp = formatBp(c.vitals);
-              const vitalsSummary = [
-                bp && `BP ${bp}`,
-                c.vitals?.pulse != null && `Pulse ${c.vitals.pulse}`,
-                c.vitals?.tempC != null && `Temp ${c.vitals.tempC}°C`,
-                c.vitals?.weightKg != null && `Wt ${c.vitals.weightKg} kg`,
-                c.vitals?.spo2 != null && `SpO2 ${c.vitals.spo2}%`,
-              ].filter(Boolean);
+              const vitalsSummary = vitalChips(c.vitals);
               return (
                 <details
                   key={v.id}
@@ -123,14 +117,16 @@ export function PatientHistoryPanel({
                   </summary>
                   <div className="mt-2 space-y-1 text-sm text-gray-600">
                     {vitalsSummary.length > 0 && <p>{vitalsSummary.join(' · ')}</p>}
-                    {c.notes && <p>{c.notes}</p>}
+                    {c.chiefComplaint && <p>Complaint: {c.chiefComplaint}</p>}
+                    {c.notes && <p>Advice: {c.notes}</p>}
                     {c.prescriptions.length > 0 && (
                       <div>
                         <p className="font-medium text-gray-700">Prescribed</p>
                         <ul className="ml-4 list-disc">
                           {c.prescriptions.map((p) => (
                             <li key={p.id}>
-                              {p.medicine} — {p.dosage}, {p.frequency}, {p.durationDays} days
+                              {p.medicine}
+                              {p.strength ? ` ${p.strength}` : ''} — {whenToTake(p)}, {p.durationDays} days
                             </li>
                           ))}
                         </ul>

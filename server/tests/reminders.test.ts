@@ -224,3 +224,36 @@ describe('Scheduled follow-up reminders (sendDueFollowUpReminders)', () => {
     expect(await followUpNotifications(patient.id)).toHaveLength(0);
   });
 });
+
+describe('Follow-up reminder on the day itself', () => {
+  async function dueToday(opts: { optedIn?: boolean } = {}) {
+    const { clinic } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const { user: patient } = await createUser(clinic.id, 'PATIENT', { phone: `+9198${Math.floor(10000000 + Math.random() * 89999999)}` });
+    if (opts.optedIn) await prisma.user.update({ where: { id: patient.id }, data: { whatsappOptIn: true } });
+    const visit = await createAppointment(clinic.id, patient.id, doctorProfile.id, { date: dateOnlyOffsetFromToday(-7), status: 'COMPLETED' });
+    const consultation = await prisma.consultation.create({
+      data: { appointmentId: visit.id, followUpDate: dateOnlyOffsetFromToday(0), followUpReminderSentAt: new Date() },
+    });
+    return { clinic, patient, doctorProfile, consultation };
+  }
+
+  it('sends a "due today" reminder on the follow-up date, once, after the day-before one', async () => {
+    const { patient, consultation } = await dueToday({ optedIn: true });
+    await sendDueFollowUpReminders();
+    await sendDueFollowUpReminders();
+
+    const sent = await prisma.notification.findMany({ where: { patientId: patient.id, type: 'FOLLOWUP_REMINDER' } });
+    expect(sent.map((n) => n.channel).sort()).toEqual(['EMAIL', 'WHATSAPP']);
+    expect(sent.every((n) => /due today/.test(n.body))).toBe(true);
+    const row = await prisma.consultation.findUniqueOrThrow({ where: { id: consultation.id } });
+    expect(row.followUpDayReminderSentAt).not.toBeNull();
+  });
+
+  it('is skipped when the patient has already come in today', async () => {
+    const { clinic, patient, doctorProfile } = await dueToday();
+    await createAppointment(clinic.id, patient.id, doctorProfile.id, { date: dateOnlyOffsetFromToday(0), status: 'COMPLETED' });
+    await sendDueFollowUpReminders();
+    expect(await prisma.notification.count({ where: { patientId: patient.id, type: 'FOLLOWUP_REMINDER' } })).toBe(0);
+  });
+});

@@ -100,6 +100,24 @@ clinicsRouter.get(
   }),
 );
 
+const updateClinicSchema = z.object({
+  name: z.string().trim().min(2).optional(),
+  address: z.string().max(500).nullish().transform((v) => (v === undefined ? undefined : v?.trim() || null)),
+  phone: z.string().max(40).nullish().transform((v) => (v === undefined ? undefined : v?.trim() || null)),
+});
+
+// The clinic's own details (letterhead on printed visit summaries).
+clinicsRouter.put(
+  '/me/current',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = updateClinicSchema.parse(req.body);
+    const clinic = await prisma.clinic.update({ where: { id: req.auth!.clinicId }, data });
+    res.json(toClinicSummary(clinic));
+  }),
+);
+
 // Self-service read of the clinic's own billing status -- distinct from
 // the platform-admin-only /api/platform/clinics/:id/subscription view,
 // which can see every clinic's; this is what powers a clinic ADMIN's own

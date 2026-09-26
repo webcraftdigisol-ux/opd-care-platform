@@ -53,6 +53,7 @@ jobs:
           npm run build:web
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_CLINIC_DOMAIN: ${{ secrets.VITE_CLINIC_DOMAIN }}
 
       - name: Deploy backend over SSH
         if: steps.check.outputs.configured == 'true'

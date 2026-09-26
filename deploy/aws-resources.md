@@ -17,20 +17,37 @@ Account `026587008370`, default VPC `vpc-04658e9176f126746`.
 | S3 | `opd-care-web-026587008370` -- all public access blocked, currently empty |
 | S3 (uploads) | `opd-care-uploads-026587008370` -- uploaded reports/scans/DICOM (`UPLOADS_S3_BUCKET` in `server/.env`). Private (public access blocked, bucket-owner-enforced), SSE-S3, TLS-only bucket policy, versioning on with non-current versions expired after 30 days. The EC2 role's `opd-care-uploads-s3` inline policy allows Get/Put/DeleteObject on it plus ListBucket (so a missing key reads as 404, not 403) |
 | Domain | `ohmscare.in`, registered at GoDaddy, nameservers delegated to Route 53 |
-| Route 53 zone | `Z04804252LG40JXTDNAI4` -- A records for `ohmscare.in`, `www`, `app`, `api` -> `3.7.243.104`; CAA allows `letsencrypt.org` and `amazon.com` |
+| Route 53 zone | `Z04804252LG40JXTDNAI4` -- A records for `ohmscare.in`, `www`, `app`, `api` and the wildcard `*.ohmscare.in` (clinic addresses) -> `3.7.243.104`; CAA allows `letsencrypt.org` and `amazon.com` |
 
 ## URLs
 
 - Web app: https://app.ohmscare.in
 - API: https://api.ohmscare.in/api (health check at `/health`)
+- Each clinic's own address: `https://<clinic code>.ohmscare.in` (e.g.
+  https://anandi.ohmscare.in) -- the same web app, whose sign-in pages then
+  take the clinic from the address instead of asking for its code. No
+  per-clinic setup: a new clinic's address works as soon as it registers.
+  Clinic codes the platform uses (`app`, `api`, `www`, ...) are refused at
+  registration.
 - `ohmscare.in` and `www.ohmscare.in` 301 to the app; plain HTTP redirects
   to HTTPS; requests by bare IP are dropped (`return 444`).
 
 TLS is Let's Encrypt via `certbot --nginx` (one certificate covering all four
 names, auto-renewed by the `certbot.timer` systemd timer). Nginx config is
-`/etc/nginx/sites-available/opd-care` on the box. Backend `server/.env` has
-`CORS_ORIGIN="https://app.ohmscare.in"`, and the frontend is built with
-`VITE_API_URL=https://api.ohmscare.in/api`.
+`/etc/nginx/sites-available/opd-care` on the box. Clinic addresses use a
+second, wildcard certificate (`certbot certificates` name `ohmscare.in`:
+`ohmscare.in` + `*.ohmscare.in`), issued with the DNS-01 challenge through
+the `python3-certbot-dns-route53` plugin and renewed by the same timer (its
+deploy hook reloads nginx). The EC2 role's `opd-care-certbot-dns` inline
+policy allows exactly that: ListHostedZones/GetChange, and TXT changes to
+`_acme-challenge.ohmscare.in` in this zone only. Nginx serves any
+`<label>.ohmscare.in` from `/var/www/opd-care` with it (`app`, `api` and
+`www` have their own server blocks, which take precedence). Backend
+`server/.env` has
+`CORS_ORIGIN="https://app.ohmscare.in,https://*.ohmscare.in"` (a `*.` entry
+allows one subdomain label), and the frontend is built with
+`VITE_API_URL=https://api.ohmscare.in/api` and
+`VITE_CLINIC_DOMAIN=ohmscare.in`.
 
 ## SSM parameters
 

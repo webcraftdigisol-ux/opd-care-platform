@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ClinicCodeField } from '../components/ClinicCodeField';
+import { hostClinicCode } from '../utils/clinicHost';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SUBSCRIPTION_INACTIVE_MESSAGE } from '@opd/shared';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +10,7 @@ import { homeRouteForRole } from '../utils/roleHome';
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
-  const [clinicSlug, setClinicSlug] = useState(searchParams.get('clinic') ?? '');
+  const [clinicSlug, setClinicSlug] = useState(hostClinicCode() ?? searchParams.get('clinic') ?? '');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(
@@ -47,16 +49,7 @@ export function LoginPage() {
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Clinic code</label>
-          <input
-            required
-            placeholder="e.g. sunrise-clinic"
-            value={clinicSlug}
-            onChange={(e) => setClinicSlug(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
-          />
-        </div>
+        <ClinicCodeField value={clinicSlug} onChange={setClinicSlug} className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none" />
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Email, phone or username</label>
           <input
@@ -102,12 +95,14 @@ export function LoginPage() {
           Create an account
         </Link>
       </p>
-      <p className="mt-2 text-center text-sm text-gray-500">
-        Setting up a new clinic?{' '}
-        <Link to="/register-clinic" className="text-teal underline">
-          Register your clinic
-        </Link>
-      </p>
+      {!hostClinicCode() && (
+        <p className="mt-2 text-center text-sm text-gray-500">
+          Setting up a new clinic?{' '}
+          <Link to="/register-clinic" className="text-teal underline">
+            Register your clinic
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

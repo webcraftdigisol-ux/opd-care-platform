@@ -57,6 +57,9 @@ export default defineConfig({
       timeout: 60_000,
       env: {
         VITE_API_URL: `${apiUrl}/api`,
+        // Clinic addresses in tests: <code>.localhost:5173 (Chromium resolves
+        // *.localhost to this machine).
+        VITE_CLINIC_DOMAIN: 'localhost',
       },
     },
   ],

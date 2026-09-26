@@ -14,11 +14,19 @@ const NEW_CLINIC_TRIAL_DAYS = 30;
 
 export const clinicsRouter = Router();
 
+// The clinic code is also the clinic's web address (anandi.ohmscare.in),
+// so it must be a valid DNS label and not one of the platform's own names.
+export const RESERVED_CLINIC_CODES = new Set([
+  'app', 'api', 'www', 'admin', 'platform', 'mail', 'email', 'smtp', 'ftp', 'static', 'assets', 'cdn',
+  'status', 'help', 'support', 'docs', 'blog', 'dev', 'staging', 'test', 'demo', 'login', 'ohmscare',
+]);
+
 const slugSchema = z
   .string()
   .min(3)
   .max(40)
-  .regex(/^[a-z0-9-]+$/, 'Clinic code may only contain lowercase letters, numbers, and hyphens');
+  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Clinic code may only contain lowercase letters, numbers, and hyphens (not at the start or end)')
+  .refine((s) => !RESERVED_CLINIC_CODES.has(s), 'That clinic code is reserved; please choose another');
 
 const registerClinicSchema = z.object({
   clinicName: z.string().min(2),

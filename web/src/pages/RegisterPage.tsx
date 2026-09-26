@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { ClinicCodeField } from '../components/ClinicCodeField';
+import { hostClinicCode } from '../utils/clinicHost';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { register } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
 export function RegisterPage() {
   const [searchParams] = useSearchParams();
-  const [clinicSlug, setClinicSlug] = useState(searchParams.get('clinic') ?? '');
+  const [clinicSlug, setClinicSlug] = useState(hostClinicCode() ?? searchParams.get('clinic') ?? '');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -41,16 +43,7 @@ export function RegisterPage() {
       <h1 className="mb-1 text-2xl font-semibold text-teal">Create your account</h1>
       <p className="mb-6 text-sm text-gray-500">Book appointments and track your queue</p>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Clinic code</label>
-          <input
-            required
-            placeholder="e.g. sunrise-clinic"
-            value={clinicSlug}
-            onChange={(e) => setClinicSlug(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none"
-          />
-        </div>
+        <ClinicCodeField value={clinicSlug} onChange={setClinicSlug} className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-teal focus:outline-none" />
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Full name</label>
           <input

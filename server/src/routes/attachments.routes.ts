@@ -29,6 +29,8 @@ const WRITE_ROLES_BY_CATEGORY: Record<AttachmentCategory, string[]> = {
   // them -- the doctor in the room, a nurse, or the front desk scanning.
   PATIENT_REPORT: ['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE', 'RECEPTIONIST'],
   PATIENT_IMAGE: ['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE', 'RECEPTIONIST'],
+  // The signed consent form, scanned on the ward.
+  CONSENT_FORM: ['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE'],
 };
 
 // entityId is polymorphic on category, same pattern as Payment.billId in
@@ -61,6 +63,11 @@ async function loadOwnerPatientId(clinicId: string, category: AttachmentCategory
       if (!patient) throw new HttpError(404, 'Patient not found');
       return patient.id;
     }
+    case 'CONSENT_FORM': {
+      const consent = await prisma.consentForm.findFirst({ where: { id: entityId, clinicId }, include: { admission: true } });
+      if (!consent) throw new HttpError(404, 'Consent form not found');
+      return consent.admission.patientId;
+    }
   }
 }
 
@@ -71,6 +78,7 @@ const ATTACHMENT_CATEGORIES = [
   'RADIOLOGY_DICOM',
   'PATIENT_REPORT',
   'PATIENT_IMAGE',
+  'CONSENT_FORM',
 ] as const;
 
 const uploadBodySchema = z.object({

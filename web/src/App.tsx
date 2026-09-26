@@ -22,6 +22,8 @@ import { PharmacySettingsPage } from './pages/PharmacySettingsPage';
 import { TestPatientPage } from './pages/TestPatientPage';
 import { TestSettingsPage } from './pages/TestSettingsPage';
 import { ReceiptPage } from './pages/ReceiptPage';
+import { ConsentPrintPage } from './pages/ConsentPrintPage';
+import { CertificatePrintPage } from './pages/CertificatePrintPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { IpdWardsPage } from './pages/IpdWardsPage';
 import { IpdAdmissionsPage } from './pages/IpdAdmissionsPage';
@@ -61,6 +63,7 @@ export default function App() {
     location.pathname.startsWith('/platform') ||
     /^\/visits\/[^/]+\/print$/.test(location.pathname) ||
     /^\/receipts\//.test(location.pathname) ||
+    /^\/(consents|certificates)\/[^/]+\/print$/.test(location.pathname) ||
     ['/login', '/register', '/register-clinic', '/forgot-password'].includes(location.pathname);
 
   const routes = (
@@ -345,6 +348,22 @@ export default function App() {
           }
         />
         <Route path="/admin/radiology" element={<Navigate to="/radiology/settings" replace />} />
+        <Route
+          path="/consents/:id/print"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR', 'NURSE', 'HEAD_NURSE']}>
+              <ConsentPrintPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/certificates/:id/print"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+              <CertificatePrintPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/receipts/:dept/:billId"
           element={

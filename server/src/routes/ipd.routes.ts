@@ -301,6 +301,7 @@ const procedureSchema = z.object({
   name: z.string().min(1),
   notes: z.string().optional(),
   consentSigned: z.boolean(),
+  consentFormId: z.string().min(1).optional(),
   fee: z.number().nonnegative().optional(),
 });
 
@@ -310,12 +311,19 @@ ipdRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = procedureSchema.parse(req.body);
     const admission = await assertAdmitted(req.auth!.clinicId, req.params.id);
+    // Done under a consent form: it must be this admission's, and signed.
+    if (data.consentFormId) {
+      const consent = await prisma.consentForm.findFirst({ where: { id: data.consentFormId, admissionId: admission.id } });
+      if (!consent) throw new HttpError(404, 'Consent form not found for this admission');
+      if (!consent.signedAt) throw new HttpError(400, 'That consent form has not been signed yet');
+    }
     const procedure = await prisma.ipdProcedure.create({
       data: {
         admissionId: admission.id,
         name: data.name,
         notes: data.notes,
-        consentSigned: data.consentSigned,
+        consentSigned: data.consentSigned || !!data.consentFormId,
+        consentFormId: data.consentFormId,
         fee: data.fee ?? 0,
       },
     });

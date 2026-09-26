@@ -72,7 +72,7 @@ export function isSubstitution(item: Pick<PrismaPharmacyItem, 'name' | 'strength
 }
 
 // A human receipt number: PH-260926-7F3A.
-export function receiptNo(prefix: 'PH' | 'LB' | 'RD', createdAt: Date, id: string): string {
+export function receiptNo(prefix: 'PH' | 'LB' | 'RD' | 'MC', createdAt: Date, id: string): string {
   const ist = new Date(createdAt.getTime() + 5.5 * 3600 * 1000).toISOString();
   return `${prefix}-${ist.slice(2, 4)}${ist.slice(5, 7)}${ist.slice(8, 10)}-${id.replace(/-/g, '').slice(0, 4).toUpperCase()}`;
 }

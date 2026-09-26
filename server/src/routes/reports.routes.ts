@@ -127,8 +127,8 @@ const ordersQuerySchema = z.object({
   departments: z
     .string()
     .optional()
-    .transform((v) => (v ? v.split(',') : ['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY']))
-    .pipe(z.array(z.enum(['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY']))),
+    .transform((v) => (v ? v.split(',') : ['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY', 'PROCEDURE', 'ROOM', 'OTHER_IPD']))
+    .pipe(z.array(z.enum(['CONSULTATION', 'PHARMACY', 'LAB', 'RADIOLOGY', 'PROCEDURE', 'ROOM', 'OTHER_IPD']))),
 });
 
 // In-house revenue by department: consultation fees, and what doctors
@@ -142,8 +142,10 @@ reportsRouter.get(
     const q = ordersQuerySchema.parse(req.query);
     checkRange(q.from, q.to);
     const own = DEPARTMENT_OF[req.auth!.role];
+    const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: req.auth!.clinicId }, select: { tier: true } });
     const report: OrdersReport = await computeOrdersReport({
       clinicId: req.auth!.clinicId,
+      tier: clinic.tier,
       from: q.from,
       to: q.to,
       doctorId: await forcedDoctorId(req, q.doctorId),

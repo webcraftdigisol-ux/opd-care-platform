@@ -416,6 +416,7 @@ export function toProcedure(procedure: PrismaIpdProcedure): ProcedureRecord {
     name: procedure.name,
     notes: procedure.notes,
     consentSigned: procedure.consentSigned,
+    consentFormId: procedure.consentFormId,
     fee: procedure.fee,
     performedAt: procedure.performedAt.toISOString(),
   };

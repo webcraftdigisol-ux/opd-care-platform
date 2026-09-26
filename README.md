@@ -55,6 +55,22 @@ Admins (and doctors, for the follow-ups view and in-patient management) also get
   dashboard (overdue / due today / due this week) with a "mark contacted"
   action, driven by an optional follow-up date doctors can set on a
   consultation.
+- **Certificates** (every tier): from the patient's **Certificates** tab a
+  doctor (or admin, naming the doctor) issues a medical fitness, sick
+  leave, fit-to-resume, fit-to-travel or general certificate. The wording
+  is suggested from the details (name, age, dates, diagnosis) and can be
+  edited, then prints on the clinic's letterhead with a certificate number
+  and the doctor's qualification and registration number.
+- **In-Patient / IPD** (Tier 3+): **consent forms** for procedures, surgery,
+  anaesthesia and blood transfusion -- written by the doctor, printed with
+  the standard declaration and signature lines, marked signed (who signed,
+  relationship, witness) with the scan attached, and a procedure can be
+  recorded under its signed consent. The patient's **Billing** tab shows
+  each admission (the running bill while admitted, the final bill after)
+  with its breakdown and the deposit, and pharmacy/lab/radiology bills
+  raised during a stay are counted inside it rather than twice. The
+  **In-house revenue** report adds an IPD column per department plus
+  procedures, room and other ward charges.
 - **In-Patient / IPD** (Tier 3+): set up wards and bulk-add beds at a daily
   rate, admit a patient to a vacant bed with a deposit, log doctor visits,
   procedures (with a consent-signed flag), medications given (clinic-supplied

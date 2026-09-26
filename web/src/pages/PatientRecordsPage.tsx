@@ -15,6 +15,7 @@ const ATTACHMENT_CATEGORY_LABEL: Record<string, string> = {
   RADIOLOGY_DICOM: 'DICOM image',
   PATIENT_REPORT: 'Report',
   PATIENT_IMAGE: 'Image',
+  CONSENT_FORM: 'Signed consent form',
 };
 
 const DIETARY_PREFERENCE_LABEL: Record<string, string> = {

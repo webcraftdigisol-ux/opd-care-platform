@@ -84,6 +84,9 @@ enum AttachmentCategory {
   // filed straight to their record (entityId is the patient's own id).
   PATIENT_REPORT
   PATIENT_IMAGE
+  // The scanned, signed copy of an IPD consent form (entityId is the
+  // ConsentForm's id).
+  CONSENT_FORM
 }
 
 // A clinic is a tenant. Every clinic-owned record is scoped by clinicId so
@@ -118,6 +121,8 @@ model Clinic {
   paymentOrders     PaymentOrder[]
   notifications     Notification[]
   attachments       Attachment[]
+  consentForms      ConsentForm[]
+  certificates      MedicalCertificate[]
   subscription      Subscription?
   dietPlans         DietPlan[]
   patientProfiles   PatientProfile[]
@@ -174,6 +179,8 @@ model User {
   attachmentsUploaded      Attachment[]   @relation("AttachmentsUploaded")
   dietPlansOwned           DietPlan[]     @relation("PatientDietPlans")
   dietPlansCreated         DietPlan[]     @relation("DietPlansAuthored")
+  certificatesReceived     MedicalCertificate[] @relation("CertificatePatient")
+  consentFormsCreated      ConsentForm[]  @relation("ConsentCreator")
 
   @@unique([clinicId, email])
   @@unique([clinicId, username])
@@ -279,6 +286,8 @@ model DoctorProfile {
   appointments Appointment[]    @relation("DoctorAppointments")
   admissions   Admission[]
   ipdVisits    IpdDoctorVisit[]
+  consentForms ConsentForm[]
+  certificates MedicalCertificate[]
 }
 
 model Schedule {
@@ -738,6 +747,7 @@ model Admission {
   labInvoices       LabInvoice[]
   radiologyInvoices RadiologyInvoice[]
   bill              IpdBill?
+  consentForms      ConsentForm[]
 
   @@index([clinicId])
   @@index([patientId])
@@ -777,6 +787,9 @@ model IpdProcedure {
   name          String
   notes         String?
   consentSigned Boolean   @default(false)
+  // The signed consent form this procedure was done under, if recorded.
+  consentFormId String?
+  consentForm   ConsentForm? @relation(fields: [consentFormId], references: [id], onDelete: SetNull)
   fee           Float     @default(0)
   performedAt   DateTime  @default(now())
 
@@ -1092,4 +1105,81 @@ model PasswordResetOtp {
   createdAt DateTime  @default(now())
 
   @@index([userId, createdAt])
+}
+
+enum ConsentKind {
+  PROCEDURE
+  SURGERY
+  ANAESTHESIA
+  BLOOD_TRANSFUSION
+  HIGH_RISK
+}
+
+// Informed consent for a procedure or surgery during an admission: filled
+// in by the doctor, printed with the clinic's standard consent wording,
+// signed on paper by the patient (or guardian), a witness and the doctor,
+// then marked signed here -- with the scanned copy attached
+// (AttachmentCategory CONSENT_FORM).
+model ConsentForm {
+  id            String        @id @default(uuid())
+  clinicId      String
+  clinic        Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  admissionId   String
+  admission     Admission     @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  kind          ConsentKind
+  procedureName String
+  // Who will perform it.
+  doctorId      String
+  doctor        DoctorProfile @relation(fields: [doctorId], references: [id])
+  plannedAt     DateTime?
+  anaesthesia   String?
+  // What was explained: nature and purpose, risks, alternatives.
+  purpose       String?
+  risks         String?
+  alternatives  String?
+  // Filled in when marked signed.
+  signedAt      DateTime?
+  signedByName  String?
+  // "Self", or the guardian's relationship to the patient.
+  signerRelation String?
+  witnessName   String?
+  createdById   String
+  createdBy     User          @relation("ConsentCreator", fields: [createdById], references: [id])
+  createdAt     DateTime      @default(now())
+
+  procedures IpdProcedure[]
+
+  @@index([admissionId])
+  @@index([clinicId])
+}
+
+enum CertificateType {
+  MEDICAL_FITNESS
+  SICK_LEAVE
+  FIT_TO_RESUME
+  FIT_TO_TRAVEL
+  GENERAL
+}
+
+// A certificate the doctor issues to a patient (fitness, sick leave, ...),
+// printed on the clinic's letterhead. `body` is the final wording the
+// doctor approved; the structured fields are kept for search and reprints.
+model MedicalCertificate {
+  id           String          @id @default(uuid())
+  clinicId     String
+  clinic       Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      User            @relation("CertificatePatient", fields: [patientId], references: [id])
+  doctorId     String
+  doctor       DoctorProfile   @relation(fields: [doctorId], references: [id])
+  type         CertificateType
+  diagnosis    String?
+  fromDate     DateTime?       @db.Date
+  toDate       DateTime?       @db.Date
+  purpose      String?
+  body         String
+  issuedAt     DateTime        @default(now())
+
+  @@index([clinicId])
+  @@index([patientId])
 }

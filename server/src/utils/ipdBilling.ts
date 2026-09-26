@@ -133,3 +133,21 @@ export async function computeIpdBillFigures(
     amountDue,
   };
 }
+
+// An admission's bill as lines for display: the charges that apply, tax,
+// and the deposit taken at admission (shown as a credit).
+export function ipdBillLines(f: IpdBillFigures): { label: string; amount: number }[] {
+  const lines = [
+    { label: 'Room charges', amount: f.roomCharges },
+    { label: 'Doctor visits', amount: f.doctorVisitCharges },
+    { label: 'Procedures & surgery', amount: f.procedureCharges },
+    { label: 'Medicines given (clinic-supplied)', amount: f.medicationCharges },
+    { label: 'Other charges', amount: f.adHocCharges },
+    { label: `Tax (${f.taxPercent}%)`, amount: f.taxAmount },
+    { label: 'Pharmacy', amount: f.pharmacyCharges },
+    { label: 'Laboratory', amount: f.labCharges },
+    { label: 'Radiology', amount: f.radiologyCharges },
+  ].filter((l) => l.amount);
+  if (f.depositAmount) lines.push({ label: 'Deposit paid at admission', amount: -f.depositAmount });
+  return lines;
+}

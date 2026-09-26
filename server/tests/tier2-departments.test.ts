@@ -254,7 +254,7 @@ describe('Tier 2 reports: in-house revenue by department', () => {
     const byDept = Object.fromEntries(mine.body.summary.map((s: any) => [s.department, s]));
     expect(byDept.CONSULTATION).toMatchObject({ ordered: 500, inHouse: 500, notInHouse: 0 });
     // Calpol dispensed for Dolo (₹20); Pan 40 bought outside, 5 tabs × ₹3.
-    expect(byDept.PHARMACY).toEqual({ department: 'PHARMACY', ordered: 35, inHouse: 20, notInHouse: 15, hasUnpriced: false });
+    expect(byDept.PHARMACY).toEqual({ department: 'PHARMACY', ordered: 35, inHouse: 20, notInHouse: 15, hasUnpriced: false, ipd: 0 });
     expect(byDept.LAB).toMatchObject({ ordered: 300, inHouse: 300, notInHouse: 0 });
     expect(byDept.RADIOLOGY).toMatchObject({ ordered: 400, inHouse: 0, notInHouse: 400 });
     expect(mine.body.byDay).toHaveLength(1);

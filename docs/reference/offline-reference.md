@@ -429,7 +429,8 @@ Tabs: **Medicines · Lab Tests · Radiology**.
   delete (bin). E.g. "Paracetamol 250", "Paracetamol 500".
 - Lab Tests: **Add test*** ("e.g. CBC, Blood Sugar") + Add; list rows with
   delete. E.g. "Blood Sugar", "CDC".
-- Radiology: same pattern (screenshot not yet shown).
+- Radiology: **Add item*** ("e.g. Chest X-Ray, MRI Brain") + Add; list rows
+  with delete. E.g. "MRI", "X-Ray".
 - No edit, no search, no import visible -- add and delete only.
 
 **Confirms the tier model:** Tier 1 doctors *prescribe/order* from their own
@@ -447,6 +448,62 @@ department catalogues when a clinic upgrades to Tier 2.
 (CSV), and **ship a ready-made starter list** (common Indian generics with
 strengths, common lab panels, common imaging) so a new clinic isn't typing
 everything by hand; strength with unit; medicine form (tab/syrup/…).
+
+### T1-15. Reports (revenue / activity)
+
+**Filters card:** From date, To date, **Doctor** (All doctors ▾), quick
+chips **Today · This week · This month**, **Export CSV** (primary,
+top-right). "Include:" checkboxes -- only **☑ Consultation** in Tier 1
+(later tiers presumably add pharmacy / lab / radiology / IPD).
+
+**Summary card:** one tile per day with activity (date + count, e.g.
+"2026-09-16 · 2", "2026-09-26 · 1"); "Total: **3** record(s) in this range";
+"Revenue - Consultation: **₹1500** — Total: **₹1500**".
+
+**Table:** Date · Time · Type · Patient · Patient ID · Doctor · Diagnosis /
+Description · Status · Amount.
+
+**Observations (offline data issues to avoid):** two rows show "—" for the
+patient name although they have a Patient ID; one has no doctor and ₹0;
+**Status is "—" everywhere** -- revenue here is fees *recorded*, not money
+*collected* (no paid/unpaid, no payment mode).
+
+**Current web app:** Reports has three tabs -- Financial (revenue by
+module + payments), Daily Activity, Follow-ups Due (with WhatsApp/email
+reminders). It already tracks actual payments (cash/card/UPI/online) per
+bill. Missing vs offline: doctor filter, quick date chips, CSV export,
+per-day tiles, the single detailed transaction table.
+
+**Redesign:** offline's layout (filters + quick chips + summary + table +
+Export CSV/Excel) with the web's real money data: billed vs collected vs
+outstanding, split by payment mode, per doctor; row click opens the visit /
+bill.
+
+### T1-16. Staff accounts
+
+Page: "Staff accounts — Manage who can sign in and what they can access."
+**+ Add staff account** (toggles to **Close**). Each staff row: shield icon,
+full name, "@username · Role", actions **Reset password · Deactivate**.
+
+**New staff account (inline form):** Full name*, Role* (select, defaults to
+Receptionist), **Username*** ("lowercase, no spaces"), **Temporary
+password*** ("at least 6 characters"), **Create account**.
+
+**Owner's rule:** **Admin can access everything (every role's screens);
+every other role sees only its own screens.**
+
+**Current web app:** Staff page (admin only) creates staff with name,
+**email**, phone, password and a role; roles: Doctor, Receptionist,
+Pharmacist, Lab technician, Radiology technician, Nurse, Head nurse (+
+Admin, Patient). Sign-in is by **email** (now also phone). No deactivate,
+no admin reset-password for staff.
+**Gaps to close:** username sign-in (receptionists often have no email),
+deactivate (keep history, block sign-in), admin reset-password / "must
+change password on first login", edit role. And today the web **admin can
+NOT open the doctor's consultation screen** (it's Doctor-only) -- the
+owner's rule means admin must be able to do everything, which also suits
+single-doctor clinics where the owner is both admin and doctor (maybe an
+Admin who is also a doctor = one account with both).
 
 ### Open questions (Tier 1 so far)
 - Patient ID format: `PT` + 6 digits, per clinic, sequential? Can it be
@@ -480,6 +537,12 @@ everything by hand; strength with unit; medicine form (tab/syrup/…).
 - Find Patient screenshot (snap 28) didn't come through -- please resend.
 - Doctor's Catalogue: is it shared by all doctors in the clinic, or does
   each doctor keep their own list?
+- Snap 35 (the Role list) came through identical to snap 34 -- which roles
+  does the offline Tier 1 offer? (Receptionist, Doctor, Admin …?)
+- In a single-doctor clinic, is the owner one account that is both Admin
+  and Doctor?
+- Reports: should revenue mean fees charged, or money actually collected
+  (with unpaid dues shown separately)?
 - Which specialities are the main customers (the imaging example is
   obstetric -- gynaecology/ANC, general physician, paediatrics …)?
 - Can the same form be saved as a draft and completed later (e.g. vitals

@@ -214,7 +214,7 @@ export function toConsultation(
 }
 
 type AppointmentWithRelations = PrismaAppointment & {
-  patient?: User;
+  patient?: (User & { patientProfile?: { patientCode: string } | null }) | null;
   doctor?: PrismaDoctorProfile & { user: User };
   consultation?:
     | (PrismaConsultation & {
@@ -230,6 +230,8 @@ export function toAppointment(a: AppointmentWithRelations): Appointment {
     id: a.id,
     patientId: a.patientId,
     patient: a.patient ? toPublicUser(a.patient) : undefined,
+    guestName: a.guestName,
+    guestPhone: a.guestPhone,
     doctorId: a.doctorId,
     doctor: a.doctor ? toDoctorProfile(a.doctor) : undefined,
     date: a.date.toISOString().slice(0, 10),

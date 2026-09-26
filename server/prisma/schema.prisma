@@ -283,8 +283,14 @@ model Appointment {
   id          String            @id @default(uuid())
   clinicId    String
   clinic      Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  patientId   String
-  patient     User              @relation("PatientAppointments", fields: [patientId], references: [id])
+  // Null for a booking made for someone not registered yet (a phone
+  // booking): guestName/guestPhone hold who it's for until the desk
+  // registers them on arrival. Such a booking can only be BOOKED,
+  // CANCELLED or NO_SHOW -- checking in needs a real patient.
+  patientId   String?
+  patient     User?             @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Restrict)
+  guestName   String?
+  guestPhone  String?
   doctorId    String
   doctor      DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
   date        DateTime

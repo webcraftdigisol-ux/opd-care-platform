@@ -70,8 +70,11 @@ export interface Schedule {
 
 export interface Appointment {
   id: string;
-  patientId: string;
+  // Null for a booking for someone not registered yet (see guestName).
+  patientId: string | null;
   patient?: PublicUser;
+  guestName: string | null;
+  guestPhone: string | null;
   doctorId: string;
   doctor?: DoctorProfile;
   date: string; // ISO date (day only, e.g. 2026-09-18)
@@ -247,6 +250,51 @@ export interface WalkInRequest {
   // The patient agreed, at the desk, to receive WhatsApp messages. Only
   // ever turns consent on -- leaving it unset never revokes it.
   whatsappOptIn?: boolean;
+}
+
+// Staff booking from the Appointments page: a registered patient (picked
+// from the search) or, for a phone booking, just a name and maybe a mobile.
+export interface ScheduleAppointmentRequest {
+  doctorId: string;
+  date: string; // "YYYY-MM-DD"
+  time?: string | null; // "HH:mm", optional -- no slot grid
+  reason?: string;
+  patientId?: string;
+  guestName?: string;
+  guestPhone?: string;
+}
+
+export interface RescheduleAppointmentRequest {
+  date?: string;
+  time?: string | null;
+  doctorId?: string;
+  reason?: string | null;
+}
+
+// Turning a booking for someone not registered yet into a real patient on
+// arrival: link a registered patient (a family member found by mobile) or
+// register a new one from the booking's name and mobile.
+export interface RegisterBookingRequest {
+  patientId?: string;
+  name?: string;
+  phone?: string;
+  checkIn?: boolean;
+}
+
+export interface DashboardDay {
+  date: string; // "YYYY-MM-DD"
+  appointments: number;
+  revenue: number | null; // collected that day; null when not shown to this role
+}
+
+export interface DashboardSummary {
+  date: string;
+  totalPatients: number;
+  registeredToday: number;
+  appointmentsToday: number;
+  revenueThisMonth: number | null;
+  month: string; // "YYYY-MM"
+  days: DashboardDay[];
 }
 
 export interface UpdateAppointmentStatusRequest {

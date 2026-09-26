@@ -25,7 +25,7 @@ test.describe('Razorpay: unconfigured clinic', () => {
     await page.goto('/');
 
     await expect(page.getByText('Balance ₹500.00')).toBeVisible();
-    await expect(page.getByText("Online payment isn't set up for this clinic yet")).toBeVisible();
+    await expect(page.getByText('Please pay this bill at the clinic counter.')).toBeVisible();
     await expect(page.getByRole('button', { name: /Pay .* Online/ })).toHaveCount(0);
   });
 

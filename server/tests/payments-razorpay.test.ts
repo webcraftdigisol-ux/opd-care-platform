@@ -44,6 +44,8 @@ function uniquePaymentId(prefix = 'pay'): string {
 
 beforeEach(() => {
   resetRazorpayClientForTests(new FakeRazorpayClient());
+  // Bill payments are off by default; these tests cover them switched on.
+  process.env.ONLINE_BILL_PAYMENTS = 'true';
 });
 
 afterAll(async () => {
@@ -282,11 +284,33 @@ describe('Razorpay: not configured', () => {
     const session = await loginAs(clinic.slug, email, password);
 
     const status = await request(app).get('/api/payments/razorpay/status').set(auth(session.token));
-    expect(status.body).toEqual({ configured: false });
+    expect(status.body).toEqual({ configured: false, billPayments: false });
 
     const orderRes = await request(app).post('/api/payments/razorpay/orders').set(auth(session.token)).send({ billType: 'CONSULTATION', billId: appt.id });
     expect(orderRes.status).toBe(400);
     expect(orderRes.body.message).toMatch(/not configured/i);
+  });
+});
+
+describe('Razorpay: bill payments switched off (the default)', () => {
+  it('patients are told to pay at the counter, while clinic subscription renewal still works online', async () => {
+    delete process.env.ONLINE_BILL_PAYMENTS;
+    const { clinic, adminToken } = await setupClinicWithAdmin({ tier: 1 });
+    const { doctorProfile } = await createDoctor(clinic.id);
+    const email = `razorpay-off-${crypto.randomBytes(4).toString('hex')}@test.local`;
+    const { user: patient, password } = await createUser(clinic.id, 'PATIENT', { email });
+    const appt = await bookedAppointment(clinic.id, patient.id, doctorProfile.id);
+    const session = await loginAs(clinic.slug, email, password);
+
+    const status = await request(app).get('/api/payments/razorpay/status').set(auth(session.token));
+    expect(status.body).toEqual({ configured: true, billPayments: false });
+    const orderRes = await request(app).post('/api/payments/razorpay/orders').set(auth(session.token)).send({ billType: 'CONSULTATION', billId: appt.id });
+    expect(orderRes.status).toBe(400);
+    expect(orderRes.body.message).toMatch(/pay at the clinic counter/);
+    expect(await prisma.paymentOrder.count({ where: { clinicId: clinic.id } })).toBe(0);
+
+    const sub = await request(app).post('/api/payments/razorpay/subscription-orders').set(auth(adminToken)).send({});
+    expect(sub.status).toBe(201);
   });
 });
 

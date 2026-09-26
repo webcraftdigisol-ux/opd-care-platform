@@ -204,6 +204,16 @@ serves every clinic**, the same shared-account design already used for
 WhatsApp: a clinic gets a working "Pay Online" button immediately on
 signup, with no merchant-onboarding wait of its own.
 
+**Today only subscription renewals are paid online.** With one platform
+account, patients' payments for clinic bills would land in the platform's
+account, not the clinic's — collecting on others' behalf needs Razorpay
+Route (a linked account per clinic) or each clinic's own keys. So patient
+bill payments are off unless `ONLINE_BILL_PAYMENTS=true`: patients see
+"Please pay this bill at the clinic counter" and `POST /payments/razorpay/
+orders` refuses; `GET /payments/razorpay/status` reports
+`{configured, billPayments}`. Clinic admins renewing their subscription
+(the platform's own revenue) work whenever the keys are set.
+
 **Never fakes a successful payment.** Unlike the WhatsApp stub adapter
 (below), which safely fakes success when unconfigured — a missed message is
 low-stakes — a payment must never fake success: a phantom "paid" state with

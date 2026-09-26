@@ -3,7 +3,11 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listAllAppointments } from '../api/admin';
 import { StatusBadge } from '../components/StatusBadge';
+import { PatientLink } from '../components/PatientLink';
 import { PaymentRecorder } from '../components/PaymentRecorder';
+import { PatientSearch } from '../components/PatientSearch';
+import { PageHeader, btnPrimary, btnSecondary } from '../components/ui';
+import { Icon } from '../components/Icon';
 
 export function AdminDashboard() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -15,19 +19,22 @@ export function AdminDashboard() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-teal">Admin Overview</h1>
-        <div className="flex gap-2">
-          <Link to="/admin/doctors" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Manage Doctors
-          </Link>
-          <Link to="/admin/billing" className="rounded-md border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-light">
-            Billing
-          </Link>
-          <Link to="/admin/walk-in" className="rounded-md bg-teal px-3 py-2 text-sm text-white hover:bg-teal-mid">
-            Register Walk-in
-          </Link>
-        </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Find a patient, register someone new, or check today's queue."
+        actions={
+          <>
+            <Link to="/admin/walk-in" className={btnSecondary}>
+              Walk-in
+            </Link>
+            <Link to="/patients/new" className={btnPrimary}>
+              <Icon name="plus" className="h-4 w-4" /> New Patient
+            </Link>
+          </>
+        }
+      />
+      <div className="mb-8">
+        <PatientSearch size="lg" />
       </div>
 
       <div className="mb-4">
@@ -61,7 +68,9 @@ export function AdminDashboard() {
                 <tr className="border-t border-gray-100">
                   <td className="px-4 py-2 font-medium">#{a.tokenNumber}</td>
                   <td className="px-4 py-2 text-gray-500">{a.startTime ?? '—'}</td>
-                  <td className="px-4 py-2">{a.patient?.name}</td>
+                  <td className="px-4 py-2">
+                    <PatientLink patient={a.patient} />
+                  </td>
                   <td className="px-4 py-2">{a.doctor?.user.name}</td>
                   <td className="px-4 py-2 text-gray-500">{a.isWalkIn ? 'Walk-in' : 'Booked'}</td>
                   <td className="px-4 py-2">

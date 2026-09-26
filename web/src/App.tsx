@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Navbar } from './components/Navbar';
+import { AppShell } from './components/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -33,6 +33,12 @@ import { PlatformLoginPage } from './pages/PlatformLoginPage';
 import { PlatformDashboardPage } from './pages/PlatformDashboardPage';
 import { PlatformProtectedRoute } from './components/PlatformProtectedRoute';
 import { homeRouteForRole } from './utils/roleHome';
+import { FindPatientPage } from './pages/FindPatientPage';
+import { PatientFormPage } from './pages/PatientFormPage';
+import { PatientProfilePage } from './pages/PatientProfilePage';
+
+const PATIENT_STAFF = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PHARMACIST', 'LAB_TECHNICIAN', 'RADIOLOGY_TECHNICIAN', 'NURSE', 'HEAD_NURSE'] as const;
+const PATIENT_EDITORS = ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] as const;
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -44,13 +50,13 @@ function HomeRedirect() {
 export default function App() {
   const location = useLocation();
   // The platform-admin section is a separate actor space from any clinic
-  // (see api/platformClient.ts) -- it never shows the clinic Navbar, which
-  // is meaningless outside a clinic session.
-  const isPlatformRoute = location.pathname.startsWith('/platform');
+  // (see api/platformClient.ts), and the sign-in pages come before one --
+  // neither shows the clinic sidebar.
+  const bare =
+    location.pathname.startsWith('/platform') ||
+    ['/login', '/register', '/register-clinic', '/forgot-password'].includes(location.pathname);
 
-  return (
-    <div className="min-h-screen">
-      {!isPlatformRoute && <Navbar />}
+  const routes = (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -81,6 +87,39 @@ export default function App() {
           element={
             <ProtectedRoute roles={['PATIENT']}>
               <PatientRecordsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/patients"
+          element={
+            <ProtectedRoute roles={[...PATIENT_STAFF]}>
+              <FindPatientPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients/new"
+          element={
+            <ProtectedRoute roles={[...PATIENT_EDITORS]}>
+              <PatientFormPage key="new" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients/:id"
+          element={
+            <ProtectedRoute roles={[...PATIENT_STAFF]}>
+              <PatientProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients/:id/edit"
+          element={
+            <ProtectedRoute roles={[...PATIENT_EDITORS]}>
+              <PatientFormPage key="edit" />
             </ProtectedRoute>
           }
         />
@@ -250,6 +289,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </div>
   );
+
+  return <div className="min-h-screen">{bare ? routes : <AppShell>{routes}</AppShell>}</div>;
 }

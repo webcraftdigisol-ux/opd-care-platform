@@ -29,7 +29,7 @@ test.describe('admin walk-in registration + payment recording', () => {
     await expect(page.getByText('Paid in full')).toBeVisible();
   });
 
-  test('a duplicate walk-in phone number reuses the existing patient record', async ({ page }) => {
+  test('a returning patient is picked from the search, and a relative sharing the mobile gets their own record', async ({ page }) => {
     const { admin, doctor } = await setupClinicWithDoctor();
 
     await applySession(page, admin);
@@ -39,12 +39,21 @@ test.describe('admin walk-in registration + payment recording', () => {
     await page.getByTestId('walkin-patient-phone').fill('9998887770');
     await page.getByRole('button', { name: 'Register & Assign Token' }).click();
     await expect(page.getByTestId('walkin-success')).toContainText('#1');
+    await expect(page.getByTestId('walkin-success')).toContainText('PT000001');
 
-    // Same phone number again, later the same day -- should get token #2
-    // under the same patient record rather than erroring or duplicating.
-    await page.getByTestId('walkin-patient-name').fill('Repeat Patient');
-    await page.getByTestId('walkin-patient-phone').fill('9998887770');
+    // Later the same day: found by mobile, picked, token #2 on the same record.
+    await page.getByTestId('patient-search').fill('99988 87770');
+    await page.getByTestId('patient-search-result').first().click();
+    await expect(page.getByTestId('walkin-selected')).toContainText('PT000001');
     await page.getByRole('button', { name: 'Register & Assign Token' }).click();
     await expect(page.getByTestId('walkin-success')).toContainText('#2');
+    await expect(page.getByTestId('walkin-success')).toContainText('PT000001');
+
+    // A family member on the same number is a new patient, not a merge.
+    await page.getByTestId('walkin-patient-name').fill('Repeat Relative');
+    await page.getByTestId('walkin-patient-phone').fill('9998887770');
+    await page.getByRole('button', { name: 'Register & Assign Token' }).click();
+    await expect(page.getByTestId('walkin-success')).toContainText('#3');
+    await expect(page.getByTestId('walkin-success')).toContainText('PT000002');
   });
 });

@@ -257,7 +257,7 @@ patientsRouter.get(
       const attended = ['CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED'].includes(a.status);
       if (!attended && !paid.has(`CONSULTATION:${a.id}`)) continue;
       visit += 1;
-      add('CONSULTATION', a.id, `OPD consultation — Visit ${visit} · Dr. ${a.doctor.user.name}`, a.date, a.consultationFee);
+      add('CONSULTATION', a.id, `OPD consultation — Visit ${visit} · ${/^dr\.?\s/i.test(a.doctor.user.name) ? '' : 'Dr. '}${a.doctor.user.name}`, a.date, a.consultationFee);
     }
     for (const s of sales) add('PHARMACY', s.id, 'Pharmacy', s.createdAt, s.total);
     for (const l of labs) add('LAB', l.id, 'Lab tests', l.createdAt, l.total);
